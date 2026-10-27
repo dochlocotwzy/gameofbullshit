@@ -234,7 +234,7 @@ wss.on("connection", (ws) => {
         victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&(()=>{const rx=t.x-castOriginX,rz=t.z-castOriginZ,along=rx*ux+rz*uz,side=Math.abs(rx*uz-rz*ux);return along>=0&&along<=l&&side<=ability.radius;})());
       } else if(ability.radius&&isArea){
         const ax=selfCentered?p.x:Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimX)),az=selfCentered?p.z:Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimZ));
-        if(!selfCentered&&Math.hypot(ax-castOriginX,az-castOriginZ)>(ability.range||7)+1)return;
+        if(!selfCentered&&!["bloodthirsty","infinity"].includes(abilityId)&&Math.hypot(ax-castOriginX,az-castOriginZ)>(ability.range||7)+1)return;
         if(["bloodthirsty","infinity"].includes(abilityId)){
           const dx=aimX-castOriginX,dz=aimZ-castOriginZ,len=Math.hypot(dx,dz),ux=len>.3?dx/len:Math.sin(p.rotation),uz=len>.3?dz/len:Math.cos(p.rotation);
           victims=[...players.values()].filter(t=>{if(t.hp<=0||t.id===p.id)return false;const rx=t.x-castOriginX,rz=t.z-castOriginZ,d=Math.hypot(rx,rz);return d<=ability.radius&&(d<.3||(rx/d)*ux+(rz/d)*uz>=Math.cos(.8));});
