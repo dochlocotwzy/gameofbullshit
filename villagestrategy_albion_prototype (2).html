@@ -1097,6 +1097,35 @@ function castSlot(slot, ctx, options = {}) {
   }
   return true;
 }
+function localDummyWouldBeHit(abilityId, aim) {
+  if (!aim || !Number.isFinite(aim.x) || !Number.isFinite(aim.z)) return false;
+  const ox = pos.x, oz = pos.z, dx = aim.x - ox, dz = aim.z - oz, len = Math.hypot(dx, dz);
+  const ux = len > .01 ? dx / len : Math.sin(yaw), uz = len > .01 ? dz / len : Math.cos(yaw);
+  const lineHit = (maxLen, halfWidth) => dummies.some(d => {
+    const rx = d.x - ox, rz = d.z - oz, along = rx * ux + rz * uz, side = Math.abs(rx * uz - rz * ux);
+    return along >= 0 && along <= maxLen && side <= halfWidth + (d.r || 0);
+  });
+  const circleHit = (x, z, radius) => dummies.some(d => Math.hypot(d.x - x, d.z - z) <= radius + (d.r || 0));
+  if (['cleave', 'parry', 'majestic'].includes(abilityId)) return circleHit(ox, oz, 6);
+  if (['bloodthirsty', 'infinity'].includes(abilityId)) {
+    return dummies.some(d => {
+      const rx = d.x - ox, rz = d.z - oz, dist = Math.hypot(rx, rz);
+      return dist <= 5 + (d.r || 0) && (dist < .3 || (rx / dist) * ux + (rz / dist) * uz >= Math.cos(.8));
+    });
+  }
+  if (abilityId === 'splitting') return lineHit(14, 1.2);
+  if (abilityId === 'carvingDash') return lineHit(6.5, 1.4);
+  if (abilityId === 'cyclone') return lineHit(7, 2.4);
+  if (abilityId === 'spinning') {
+    const k = len > 12 ? 12 / len : 1;
+    return circleHit(ox + dx * k, oz + dz * k, 3.2);
+  }
+  if (abilityId === 'soulless') {
+    const k = len > 14 ? 14 / len : 1;
+    return circleHit(ox + dx * k, oz + dz * k, 4.5);
+  }
+  return false;
+}
 function trySpell(slot) {
   const sp = spellFor(slot);
   if (!sp || dash || lockT > 0) return;
@@ -1109,17 +1138,24 @@ function trySpell(slot) {
     const abilityId = slot === 'e' ? WEAPONS[loadout.weapon].e : loadout[slot];
     const needsTarget = sp.target === 'enemy';
     const target = window.mpGetTarget && window.mpGetTarget();
-    if (needsTarget && (!window.mpTargetId || !target)) return toast('Сначала выбери живую цель');
-    if (!TEST.free && cd[slot] > 0) return toast('Перезарядка: ' + cd[slot].toFixed(1) + ' с');
-    if (!TEST.free && energy < sp.en) return toast('Не хватает энергии');
-    if (needsTarget) faceXZ(target.x, target.z);
-    else if (sp.target === 'ground') { const aim = aimPoint(); faceXZ(aim.x, aim.z); }
-    return castSlot(slot, null, {
-      multiplayerCast: true,
-      multiplayerTargetId: needsTarget ? window.mpTargetId : null,
-      targetX: target?.x, targetZ: target?.z,
-      abilityId
-    });
+    const localDummyTarget = needsTarget && (!window.mpTargetId || !target) ? pickTarget() : null;
+    const aim = aimPoint();
+    const localGroundCast = !needsTarget && abilityId !== 'ironwill' && !window.mpTargetId && localDummyWouldBeHit(abilityId, aim);
+    // If the player is explicitly training on a mannequin, preserve the original local spell script.
+    // Otherwise PvP casts remain server-authoritative, including targetless ground/AoE abilities.
+    if (!localDummyTarget && !localGroundCast) {
+      if (needsTarget && (!window.mpTargetId || !target)) return toast('Сначала выбери живую цель');
+      if (!TEST.free && cd[slot] > 0) return toast('Перезарядка: ' + cd[slot].toFixed(1) + ' с');
+      if (!TEST.free && energy < sp.en) return toast('Не хватает энергии');
+      if (needsTarget) faceXZ(target.x, target.z);
+      else if (sp.target === 'ground') faceXZ(aim.x, aim.z);
+      return castSlot(slot, null, {
+        multiplayerCast: true,
+        multiplayerTargetId: needsTarget ? window.mpTargetId : null,
+        targetX: target?.x, targetZ: target?.z,
+        abilityId
+      });
+    }
   }
 
   if (!TEST.free && cd[slot] > 0) return toast('Перезарядка: ' + cd[slot].toFixed(1) + ' с');
