@@ -168,7 +168,7 @@ wss.on("connection", (ws) => {
     if (msg.type === "ability-hit") {
       const now=Date.now();
       if(p.hp<=0)return;
-      if(p.statuses?.silence||p.statuses?.stun||p.statuses?.air){send(ws,{type:"combat",result:"disabled",energy:p.energy});return;}
+      if(p.statuses?.silence||p.statuses?.stun||p.statuses?.air){send(ws,{type:"combat",result:"disabled",abilityId:String(msg.abilityId||""),energy:p.energy});return;}
       if(now-p.lastAbility<250)return;
       const target=players.get(String(msg.targetId||"")),slot=String(msg.slot||""),weapon=p.weapon||"broadsword";
       const abilityId=String(msg.abilityId||(slot==="e"?WEAPON_E[weapon]:"")),ability=ABILITIES[abilityId];
