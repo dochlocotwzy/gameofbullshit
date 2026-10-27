@@ -13,6 +13,7 @@ const WEAPON_DAMAGE = { broadsword: 40, claymore: 58, dual: 44, clarent: 42, car
 const ABILITY_MULTIPLIER = { q: 2.2, w: 2.8, e: 3.5 };
 const Q_ALLOWED = new Set(["strike","cleave"]);
 const W_ALLOWED = new Set(["cyclone","interrupt","splitting","hamstring","parry","ironwill"]);
+const PASSIVE_ALLOWED = new Set(["deepcuts","weakening","heroicfighting","increaseddef"]);
 const WEAPON_E = { broadsword:"mightyBlow", claymore:"charge", dual:"spinning", clarent:"bloodthirsty", carving:"carvingDash", galatine:"soulless", kingmaker:"majestic", infinity:"infinity" };
 const ABILITIES = {
  strike:{cost:6,cooldown:3,damage:249,range:3.2,selfEffects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:3.5}]}, cleave:{cost:11,cooldown:3,damage:200,radius:6,selfEffects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:5}]},
@@ -21,7 +22,7 @@ const ABILITIES = {
  parry:{cost:9,cooldown:15,damage:80,radius:6,effects:[{type:"silence",duration:.8}],selfEffects:[{type:"resist",value:1,duration:.8}]}, ironwill:{cost:29,cooldown:20,self:true,selfEffects:[{type:"haste",value:.2,duration:4},{type:"resist",value:.259,duration:4}]},
  mightyBlow:{cost:35,cooldown:10,damage:269,range:10,dash:1.7,effects:[{type:"interrupt"}],selfEffects:[{type:"resist",value:.7,duration:3}]}, charge:{cost:16,cooldown:20,damage:390,range:13,dash:1.7,effects:[{type:"stun",duration:.8}]},
  spinning:{cost:20,cooldown:20,damage:500,radius:3.2,range:12,selfEffects:[{type:"haste",value:.5,duration:4},{type:"attackBuff",value:1,duration:4}]},
- bloodthirsty:{cost:14,cooldown:20,damage:260,radius:5,effects:[{type:"bleed",dps:60,duration:5}],selfEffects:[{type:"haste",value:.3,duration:6},{type:"attackBuff",value:.3,duration:6}]}, carvingDash:{cost:20,cooldown:14,damage:260,line:6.5,range:6,effects:[{type:"armorBreak",duration:5}]},
+ bloodthirsty:{cost:14,cooldown:20,damage:260,radius:5,effects:[{type:"bleed",dps:60,duration:5}],selfEffects:[{type:"haste",value:.3,duration:6},{type:"attackBuff",value:.3,duration:6},{type:"bloodthirst",duration:6}]}, carvingDash:{cost:20,cooldown:14,damage:260,line:6.5,range:6,effects:[{type:"armorBreak",duration:5}]},
  soulless:{cost:28,cooldown:20,damage:150,radius:4.5,range:14,hits:3,effects:[{type:"hpDown",value:.15,duration:6}]}, majestic:{cost:30,cooldown:25,damage:330,radius:6,hits:2,secondDamage:480,effects:[{type:"air",duration:.9}]},
  infinity:{cost:25,cooldown:18,damage:210,radius:5,hits:3,secondDamage:380,effects:[{type:"slow",value:.3,duration:2}]}
 };
@@ -84,7 +85,7 @@ function applyEffects(target,effects,sourceId) {
   }
   broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
 }
-function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{target.hp=PLAYER_MAX_HP;target.x=0;target.z=7;target.statuses={};target.charges=0;target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
+function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{target.hp=PLAYER_MAX_HP;target.x=0;target.z=7;target.statuses={};target.charges=0;target.autoCount=0;target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
 function safeName(value) {
   return String(value || "Player").replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 18) || "Player";
 }
@@ -95,7 +96,7 @@ wss.on("connection", (ws) => {
     return ws.close(1013, "Server full");
   }
   const id = crypto.randomUUID();
-  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone"} };
+  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0 };
   players.set(id, p);
   send(ws, { type: "welcome", id, players: snapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
@@ -138,8 +139,8 @@ wss.on("connection", (ws) => {
       return;
     }
     if (msg.type === "loadout") {
-      const q = String(msg.q || ""), w = String(msg.w || "");
-      if (Q_ALLOWED.has(q) && W_ALLOWED.has(w)) p.loadout = {q,w};
+      const q = String(msg.q || ""), w = String(msg.w || ""), passive = String(msg.p || "deepcuts");
+      if (Q_ALLOWED.has(q) && W_ALLOWED.has(w) && PASSIVE_ALLOWED.has(passive)) p.loadout = {q,w,p:passive};
       return;
     }
     if (msg.type === "stop") {
@@ -167,10 +168,21 @@ wss.on("connection", (ws) => {
       }
       const weapon = p.weapon || "broadsword";
       const baseDamage = WEAPON_DAMAGE[weapon] || WEAPON_DAMAGE.broadsword;
-      const damage = Math.round(baseDamage * (p.statuses?.attackBuff ? 1 + (Number(p.statuses.attackBuff.value) || 0) : 1) * (target.statuses?.armorBreak ? 1.25 : 1) * (target.statuses?.hpDown ? 1 + (Number(target.statuses.hpDown.value) || 0) : 1));
-      const dealt = Math.round(damage * (1 - (target.statuses?.resist?.value || 0)));
+      const outgoingWeak = p.statuses?.weak && p.statuses.weak.until > now ? Math.max(0, Math.min(.9, Number(p.statuses.weak.value) || 0)) : 0;
+      const damage = Math.round(baseDamage * (p.statuses?.attackBuff ? 1 + (Number(p.statuses.attackBuff.value) || 0) : 1) * (1 - outgoingWeak) * (target.statuses?.armorBreak ? 1.25 : 1) * (target.statuses?.hpDown ? 1 + (Number(target.statuses.hpDown.value) || 0) : 1));
+      const defense = target.statuses?.defense && target.statuses.defense.until > now ? Math.max(0, Number(target.statuses.defense.value) || 0) : 0;
+      const defenseReduction = defense > 0 ? Math.min(.5, defense / (defense + 200)) : 0;
+      const dealt = Math.max(0, Math.round(damage * (1 - (target.statuses?.resist?.value || 0)) * (1 - defenseReduction)));
       p.lastAttack = now;
+      p.autoCount = (p.autoCount || 0) + 1;
+      if (p.loadout?.p === "deepcuts" && p.autoCount % 4 === 0) target.statuses.deepBleed = {value:53,until:now+1500,sourceId:p.id};
+      if (p.loadout?.p === "weakening") target.statuses.weak = {value:.04,until:now+2000,sourceId:p.id};
+      if (p.loadout?.p === "heroicfighting" && p.autoCount % 4 === 0) p.charges = Math.min(3,(p.charges||0)+1);
+      if (p.loadout?.p === "increaseddef" && p.autoCount % 5 === 0) p.statuses.defense = {value:68,until:now+2000,sourceId:p.id};
+      if (p.statuses?.bloodthirst && p.statuses.bloodthirst.until > now) target.statuses.bleed = {value:60,until:now+2000,sourceId:p.id};
       target.hp = Math.max(0, target.hp - dealt);
+      broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
+      send(ws,{type:"combat-resource",energy:p.energy,charges:p.charges||0,statuses:p.statuses||{}});
       broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: dealt, hp: target.hp, kind: "auto" });
       broadcast({ type: "player", player: { id: target.id, name: target.name, x: target.x, y: 0, z: target.z, rotation: target.rotation, hp: target.hp } });
       if (target.hp === 0) scheduleRespawn(target);
@@ -244,7 +256,7 @@ wss.on("connection", (ws) => {
       if(abilityId==="cyclone"&&(p.charges||0)>0){castDamage=162;p.charges--;}
       if(["mightyBlow","charge","carvingDash"].includes(abilityId))p.charges=0;
       for(const victim of victims){
-        for(let hit=0;hit<(ability.hits||1);hit++){const amount=hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:castDamage;const reduction=victim.statuses?.resist?.value||0;const vulnerability=(victim.statuses?.armorBreak?1.25:1) ;const dealt=Math.round(amount*(1-reduction)*vulnerability);victim.hp=Math.max(0,victim.hp-dealt);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
+        for(let hit=0;hit<(ability.hits||1);hit++){const amount=hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:castDamage;const reduction=victim.statuses?.resist?.value||0;const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;const outgoingWeak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;const vulnerability=(victim.statuses?.armorBreak?1.25:1) ;const dealt=Math.max(0,Math.round(amount*(1-reduction)*(1-defenseReduction)*(1-outgoingWeak)*vulnerability));victim.hp=Math.max(0,victim.hp-dealt);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
         if(victim.hp>0)applyEffects(victim,ability.effects||[],p.id);
         if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
       }
@@ -283,10 +295,10 @@ const gameTick = setInterval(() => {
     p.lastDotTick = p.lastDotTick || now;
     if (now - p.lastDotTick >= 500) {
       for (const [key, st] of Object.entries(p.statuses)) {
-        if (key === "bleed" && p.hp > 0) {
+        if ((key === "bleed" || key === "deepBleed") && p.hp > 0) {
           const damage = Math.max(1, Math.round(Number(st.value || 60) * .5));
           p.hp = Math.max(0, p.hp - damage);
-          broadcast({type:"combat-hit",attackerId:st.sourceId,targetId:p.id,damage,hp:p.hp,kind:"dot",abilityId:"bloodthirsty"});
+          broadcast({type:"combat-hit",attackerId:st.sourceId,targetId:p.id,damage,hp:p.hp,kind:"dot",abilityId:key === "deepBleed" ? "deepcuts" : "bloodthirsty"});
           if (p.hp===0) scheduleRespawn(p);
         }
       }
