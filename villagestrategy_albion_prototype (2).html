@@ -1383,7 +1383,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 (() => {
   const mpStatus = document.createElement('div');
   Object.assign(mpStatus.style, {
-    position:'fixed', left:'12px', bottom:'12px', zIndex:'1000',
+    position:'fixed', left:'50%', top:'4px', transform:'translateX(-50%)', zIndex:'1000',
     padding:'7px 10px', borderRadius:'8px', background:'#14201be8',
     border:'1px solid #ffffff30', color:'#f3efe3', font:'12px system-ui,sans-serif',
     pointerEvents:'none'
