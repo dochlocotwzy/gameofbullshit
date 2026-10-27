@@ -13,6 +13,10 @@ const WEAPON_DAMAGE = { broadsword: 40, claymore: 58, dual: 44, clarent: 42, car
 const ABILITY_MULTIPLIER = { q: 2.2, w: 2.8, e: 3.5 };
 const ATTACK_RANGE = 3.8;
 const ATTACK_COOLDOWN_MS = 850;
+const MOVE_SPEED = 5.2;
+const RUN_SPEED = 8.0;
+const WORLD_BOUND = 57;
+const TICK_MS = 50;
 const players = new Map();
 
 const server = http.createServer((req, res) => {
@@ -64,7 +68,7 @@ wss.on("connection", (ws) => {
     return ws.close(1013, "Server full");
   }
   const id = crypto.randomUUID();
-  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null };
+  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null };
   players.set(id, p);
   send(ws, { type: "welcome", id, players: snapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
@@ -80,19 +84,23 @@ wss.on("connection", (ws) => {
       send(ws, { type: "welcome", id, players: snapshot() });
       return;
     }
-    if (msg.type === "state") {
-      if (p.hp <= 0) return; // Dead players cannot move until respawn.
-      const now = Date.now();
-      if (now - p.lastUpdate < 40) return;
-      p.lastUpdate = now;
-      const x = Number(msg.x), z = Number(msg.z), rotation = Number(msg.rotation);
-      if (![x, z, rotation].every(Number.isFinite)) return;
-      // Keep clients within a reasonable shared arena.
-      p.x = Math.max(-180, Math.min(180, x));
-      p.z = Math.max(-180, Math.min(180, z));
-      p.rotation = rotation;
-      // HP is server-authoritative; clients cannot set their own health.
-      broadcast({ type: "player", player: { id: p.id, name: p.name, x: p.x, y: 0, z: p.z, rotation: p.rotation, hp: p.hp } }, p.id);
+    if (msg.type === "input") {
+      if (p.hp <= 0) return;
+      const x = Number(msg.x), z = Number(msg.z);
+      if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+      p.input.x = Math.max(-1, Math.min(1, x));
+      p.input.z = Math.max(-1, Math.min(1, z));
+      p.input.running = msg.running === true;
+      p.moveTarget = null;
+      return;
+    }
+    if (msg.type === "move-target") {
+      if (p.hp <= 0) return;
+      const x = Number(msg.x), z = Number(msg.z);
+      if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+      if (Math.hypot(x,z) > WORLD_BOUND) return;
+      p.moveTarget = {x,z};
+      p.input.x = 0; p.input.z = 0;
       return;
     }
     if (msg.type === "attack") {
@@ -154,5 +162,28 @@ const heartbeat = setInterval(() => {
     if (p.ws.readyState === WebSocket.OPEN) send(p.ws, { type: "ping", online: players.size });
   }
 }, 15000);
-server.on("close", () => clearInterval(heartbeat));
+const gameTick = setInterval(() => {
+  const dt = TICK_MS / 1000;
+  for (const p of players.values()) {
+    if (p.hp <= 0) continue;
+    let dx = p.input.x, dz = p.input.z;
+    if (p.moveTarget) {
+      dx = p.moveTarget.x - p.x;
+      dz = p.moveTarget.z - p.z;
+      const d = Math.hypot(dx,dz);
+      if (d < .18) { p.x = p.moveTarget.x; p.z = p.moveTarget.z; p.moveTarget = null; dx = dz = 0; }
+      else { dx /= d; dz /= d; }
+    }
+    const len = Math.hypot(dx,dz);
+    if (len > 1) { dx /= len; dz /= len; }
+    if (len > 0) {
+      const speed = p.moveTarget ? MOVE_SPEED : (p.input.running ? RUN_SPEED : MOVE_SPEED);
+      p.x = Math.max(-WORLD_BOUND, Math.min(WORLD_BOUND, p.x + dx * speed * dt));
+      p.z = Math.max(-WORLD_BOUND, Math.min(WORLD_BOUND, p.z + dz * speed * dt));
+      p.rotation = Math.atan2(dx, dz);
+    }
+  }
+  broadcast({type:"world-state", players:snapshot()});
+}, TICK_MS);
+server.on("close", () => { clearInterval(heartbeat); clearInterval(gameTick); });
 server.listen(PORT, HOST, () => console.log(`Game server listening on ${HOST}:${PORT}`));
