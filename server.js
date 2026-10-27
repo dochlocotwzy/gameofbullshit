@@ -17,12 +17,12 @@ const PASSIVE_ALLOWED = new Set(["deepcuts","weakening","heroicfighting","increa
 const WEAPON_E = { broadsword:"mightyBlow", claymore:"charge", dual:"spinning", clarent:"bloodthirsty", carving:"carvingDash", galatine:"soulless", kingmaker:"majestic", infinity:"infinity" };
 const ABILITIES = {
  strike:{cost:6,cooldown:3,damage:249,range:3.2,selfEffects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:3.5}]}, cleave:{cost:11,cooldown:3,damage:200,radius:6,selfEffects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:5}]},
- cyclone:{cost:24,cooldown:10,damage:120,radius:2.4,hits:3,range:7,path:true}, interrupt:{cost:32,cooldown:10,damage:248,range:3.2,effects:[{type:"interrupt"}],selfEffects:[{type:"attackBuff",value:.2,duration:5}]},
+ cyclone:{cost:24,cooldown:10,damage:120,radius:2.4,hits:3,range:7,path:true}, interrupt:{cost:32,cooldown:10,damage:248,range:3.2,effects:[{type:"interrupt"}],selfEffects:[{type:"interruptAttackBuff",value:.2,duration:5}]},
  splitting:{cost:38,cooldown:15,damage:432,line:14,effects:[{type:"root",duration:1.25}]}, hamstring:{cost:32,cooldown:10,damage:192,range:3.2,effects:[{type:"slow",value:.38,duration:8}]},
  parry:{cost:9,cooldown:15,damage:80,radius:6,effects:[{type:"silence",duration:.8}],selfEffects:[{type:"resist",value:1,duration:.8}]}, ironwill:{cost:29,cooldown:20,self:true,selfEffects:[{type:"haste",value:.2,duration:4},{type:"resist",value:.259,duration:4}]},
  mightyBlow:{cost:35,cooldown:10,damage:269,range:10,dash:1.7,effects:[{type:"interrupt"}],selfEffects:[{type:"resist",value:.7,duration:3}]}, charge:{cost:16,cooldown:20,damage:390,range:13,dash:1.7,effects:[{type:"stun",duration:.8}]},
  spinning:{cost:20,cooldown:20,damage:500,radius:3.2,range:12,selfEffects:[{type:"haste",value:.5,duration:4},{type:"attackBuff",value:1,duration:4}]},
- bloodthirsty:{cost:14,cooldown:20,damage:260,radius:5,effects:[{type:"bleed",dps:60,duration:5}],selfEffects:[{type:"haste",value:.3,duration:6},{type:"attackBuff",value:.3,duration:6},{type:"bloodthirst",duration:6}]}, carvingDash:{cost:20,cooldown:14,damage:260,line:6.5,range:6,effects:[{type:"armorBreak",duration:5}]},
+ bloodthirsty:{cost:14,cooldown:20,damage:260,radius:5,effects:[{type:"bleed",dps:60,duration:5}],selfEffects:[{type:"haste",value:.3,duration:6},{type:"bloodthirstAttackBuff",value:.3,duration:6},{type:"bloodthirst",duration:6}]}, carvingDash:{cost:20,cooldown:14,damage:260,line:6.5,range:6,effects:[{type:"armorBreak",duration:5}]},
  soulless:{cost:28,cooldown:20,damage:150,radius:4.5,range:14,hits:3,effects:[{type:"hpDown",value:.15,duration:6}]}, majestic:{cost:30,cooldown:25,damage:330,radius:6,hits:2,secondDamage:480,effects:[{type:"air",duration:.9}]},
  infinity:{cost:25,cooldown:18,damage:210,radius:5,hits:3,secondDamage:380,effects:[{type:"slow",value:.3,duration:2}]}
 };
@@ -65,7 +65,7 @@ function send(ws, payload) {
 }
 function snapshot() {
   return [...players.values()].map(p => ({
-    id: p.id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp, statuses: p.statuses || {}
+    id: p.id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp, statuses: p.statuses || {}, charges: p.charges || 0, chargeExpiresAt: p.chargeExpiresAt || 0, weapon: p.weapon || "broadsword"
   }));
 }
 function broadcast(payload, exceptId) {
@@ -74,7 +74,7 @@ function broadcast(payload, exceptId) {
     if (p.id !== exceptId && p.ws.readyState === WebSocket.OPEN) p.ws.send(message);
   }
 }
-function publicPlayer(p) { return {id:p.id,name:p.name,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{},charges:p.charges||0,weapon:p.weapon||"broadsword"}; }
+function publicPlayer(p) { return {id:p.id,name:p.name,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{},charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,weapon:p.weapon||"broadsword"}; }
 function applyEffects(target,effects,sourceId) {
   if(!target.statuses)target.statuses={};
   for(const e of effects){if(e.type==="charge"){target.charges=Math.min(3,(target.charges||0)+(e.amount||1));target.chargeExpiresAt=Date.now()+6000;continue;}
@@ -169,7 +169,8 @@ wss.on("connection", (ws) => {
       const weapon = p.weapon || "broadsword";
       const baseDamage = WEAPON_DAMAGE[weapon] || WEAPON_DAMAGE.broadsword;
       const outgoingWeak = p.statuses?.weak && p.statuses.weak.until > now ? Math.max(0, Math.min(.9, Number(p.statuses.weak.value) || 0)) : 0;
-      const damage = Math.round(baseDamage * (p.statuses?.attackBuff ? 1 + (Number(p.statuses.attackBuff.value) || 0) : 1) * (1 - outgoingWeak) * (target.statuses?.armorBreak ? 1.25 : 1));
+      const attackBonus = ["attackBuff","interruptAttackBuff","bloodthirstAttackBuff"].reduce((sum,key) => { const st=p.statuses?.[key]; return sum + (st && st.until > now ? Math.max(0,Number(st.value)||0) : 0); }, 0);
+      const damage = Math.round(baseDamage * (1 + attackBonus) * (1 - outgoingWeak) * (target.statuses?.armorBreak ? 1.25 : 1));
       const defense = target.statuses?.defense && target.statuses.defense.until > now ? Math.max(0, Number(target.statuses.defense.value) || 0) : 0;
       const defenseReduction = defense > 0 ? Math.min(.5, defense / (defense + 200)) : 0;
       const dealt = Math.max(0, Math.round(damage * (1 - (target.statuses?.resist?.value || 0)) * (1 - defenseReduction)));
@@ -182,7 +183,7 @@ wss.on("connection", (ws) => {
       if (p.statuses?.bloodthirst && p.statuses.bloodthirst.until > now) target.statuses.bleed = {value:60,until:now+2000,sourceId:p.id};
       target.hp = Math.max(0, target.hp - dealt);
       broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
-      send(ws,{type:"combat-resource",energy:p.energy,charges:p.charges||0,statuses:p.statuses||{}});
+      send(ws,{type:"combat-resource",energy:p.energy,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
       broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: dealt, hp: target.hp, kind: "auto" });
       broadcast({ type: "player", player: { id: target.id, name: target.name, x: target.x, y: 0, z: target.z, rotation: target.rotation, hp: target.hp } });
       if (target.hp === 0) scheduleRespawn(target);
@@ -212,7 +213,7 @@ wss.on("connection", (ws) => {
       const castOriginX=p.x,castOriginZ=p.z;
       const isArea=Number.isFinite(aimX)&&Number.isFinite(aimZ)&&["cleave","cyclone","splitting","parry","spinning","bloodthirsty","carvingDash","soulless","majestic","infinity"].includes(abilityId);
       const selfCentered = ["cleave","parry","majestic"].includes(abilityId);
-      if(abilityId==="ironwill"){if(!p.testMode){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;}applyEffects(p,ability.selfEffects||[],p.id);broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:[p.id],x:p.x,z:p.z});p.lastAbility=now;send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]});return;}
+      if(abilityId==="ironwill"){if(!p.testMode){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;}applyEffects(p,ability.selfEffects||[],p.id);broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:[p.id],x:p.x,z:p.z});p.lastAbility=now;send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId],charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});return;}
       if(ability.dash&&distance<=ability.range&&distance>1.35){
         const travel=Math.min(distance-1.05,abilityId==="charge"?12:Math.max(2.7,distance-1.7));
         p.rotation=Math.atan2(dx,dz);
@@ -250,12 +251,12 @@ wss.on("connection", (ws) => {
       else {if(!target){send(ws,{type:"combat",result:"no-target",abilityId,energy:p.energy});return;}if(distance>(ability.range||4)){send(ws,{type:"combat",result:"out-of-range",targetId:target.id,abilityId,energy:p.energy});return;}victims=[target];}
       if(!victims.length && !areaAbilityIds.has(abilityId)){send(ws,{type:"combat",result:"no-target",targetId:target?.id,abilityId,energy:p.energy});return;}
       p.lastAbility=now;if(!p.testMode){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;}
-      send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,statuses:p.statuses||{}});
+      send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
       if(abilityId==="parry"){
         applyEffects(p,ability.selfEffects||[],p.id);
         p.statuses.parryLock={value:true,until:now+800,sourceId:p.id};
         broadcast({type:"combat-status",targetId:p.id,statuses:p.statuses});
-        send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,statuses:p.statuses||{}});
+        send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
         setTimeout(()=>{
           if(p.hp<=0)return;
           const impactVictims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&Math.hypot(t.x-p.x,t.z-p.z)<=6);
@@ -317,10 +318,10 @@ wss.on("connection", (ws) => {
         if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
       }
       if(ability.selfEffects && (victims.length || ["parry","bloodthirsty"].includes(abilityId))){
-        const selfEffects=abilityId==="cleave"?ability.selfEffects.map(e=>e.type==="charge"?{...e,amount:victims.length>=3?2:1}:e):ability.selfEffects;
+        const selfEffects=abilityId==="cleave"?ability.selfEffects.map(e=>e.type==="charge"?{...e,amount:victims.length>=3?2:1}:e):abilityId==="interrupt"?(ability.selfEffects||[]).map(e=>e.type==="interruptAttackBuff"?{...e,value:.2*Math.min(3,Math.max(0,p.charges||0))}:e):ability.selfEffects;
         applyEffects(p,selfEffects,p.id);
       }
-      send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,statuses:p.statuses||{}});
+      send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
       broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:victims.map(v=>v.id),x:p.x,z:p.z,originX:castOriginX,originZ:castOriginZ,aimX:selfCentered?p.x:(Number.isFinite(aimX)?aimX:p.x),aimZ:selfCentered?p.z:(Number.isFinite(aimZ)?aimZ:p.z),rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||"broadsword"});
       broadcast({type:"player",player:publicPlayer(p)});
       for(const victim of victims)broadcast({type:"player",player:publicPlayer(victim)});
@@ -344,7 +345,7 @@ const gameTick = setInterval(() => {
     p.energy = Math.min(100, (p.energy ?? 100) + 4 * dt);
     const now = Date.now();
     if (!p.statuses) p.statuses = {};
-    if ((p.charges || 0) > 0 && p.chargeExpiresAt && p.chargeExpiresAt <= now) { p.charges = 0; p.chargeExpiresAt = 0; send(p.ws,{type:"combat-resource",energy:p.energy,charges:0,statuses:p.statuses}); }
+    if ((p.charges || 0) > 0 && p.chargeExpiresAt && p.chargeExpiresAt <= now) { p.charges = 0; p.chargeExpiresAt = 0; send(p.ws,{type:"combat-resource",energy:p.energy,charges:0,chargeExpiresAt:0,statuses:p.statuses}); }
     let statusExpired = false;
     for (const [key, status] of Object.entries(p.statuses)) {
       if (!status || status.until <= now) { delete p.statuses[key]; statusExpired = true; }
