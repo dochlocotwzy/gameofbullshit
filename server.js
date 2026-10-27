@@ -181,20 +181,25 @@ wss.on("connection", (ws) => {
       if(p.hp<=0)return;
       if(p.statuses?.silence||p.statuses?.stun||p.statuses?.air){send(ws,{type:"combat",result:"disabled",abilityId:String(msg.abilityId||""),energy:p.energy});return;}
       if(now-p.lastAbility<250)return;
-      const target=players.get(String(msg.targetId||"")),slot=String(msg.slot||""),weapon=p.weapon||"broadsword";
+      const targetId=String(msg.targetId||""),target=targetId?players.get(targetId):null,slot=String(msg.slot||""),weapon=p.weapon||"broadsword";
       const abilityId=String(msg.abilityId||(slot==="e"?WEAPON_E[weapon]:"")),ability=ABILITIES[abilityId];
-      if(!target||target.id===p.id||target.hp<=0||!ability||!ABILITY_IDS.has(abilityId))return;
+      const areaAbilityIds=new Set(["cleave","cyclone","splitting","parry","spinning","bloodthirsty","carvingDash","soulless","majestic","infinity"]);
+      const selfAbilityIds=new Set(["ironwill"]);
+      const needsTarget=!areaAbilityIds.has(abilityId)&&!selfAbilityIds.has(abilityId);
+      if(!ability||!ABILITY_IDS.has(abilityId)||(needsTarget&&(!target||target.id===p.id||target.hp<=0)))return;
+      if(target&&(target.id===p.id||target.hp<=0))return;
       if(!["q","w","e"].includes(slot))return;
       if(slot==="e"&&WEAPON_E[weapon]!==abilityId)return;
       if(slot==="q"&&p.loadout.q!==abilityId)return;
       if(slot==="w"&&p.loadout.w!==abilityId)return;
       if(!p.testMode && (p.abilityCooldowns[abilityId]||0)>now){send(ws,{type:"combat",result:"cooldown",abilityId,until:p.abilityCooldowns[abilityId],energy:p.energy});return;}
       if(!p.testMode && p.energy < ability.cost){send(ws,{type:"combat",result:"energy",abilityId,energy:p.energy});return;}
-      let dx=target.x-p.x,dz=target.z-p.z,distance=Math.hypot(dx,dz);
+      let dx=target?target.x-p.x:0,dz=target?target.z-p.z:0,distance=target?Math.hypot(dx,dz):Infinity;
       const aimX=Number(msg.aimX),aimZ=Number(msg.aimZ);
+      if(!needsTarget&&!selfAbilityIds.has(abilityId)&&(!Number.isFinite(aimX)||!Number.isFinite(aimZ))){send(ws,{type:"combat",result:"invalid-aim",abilityId,energy:p.energy});return;}
       const castOriginX=p.x,castOriginZ=p.z;
       const isArea=Number.isFinite(aimX)&&Number.isFinite(aimZ)&&["cleave","cyclone","splitting","parry","spinning","bloodthirsty","carvingDash","soulless","majestic","infinity"].includes(abilityId);
-      const selfCentered = ["cleave","parry","bloodthirsty","majestic","infinity"].includes(abilityId);
+      const selfCentered = ["cleave","parry","majestic"].includes(abilityId);
       if(abilityId==="ironwill"){if(!p.testMode){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;}applyEffects(p,ability.selfEffects||[],p.id);broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:[p.id],x:p.x,z:p.z});p.lastAbility=now;send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]});return;}
       if(ability.dash&&distance<=ability.range&&distance>1.35){
         const travel=Math.min(distance-1.05,abilityId==="charge"?12:Math.max(2.7,distance-1.7));
@@ -224,12 +229,12 @@ wss.on("connection", (ws) => {
         } else victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&Math.hypot(t.x-ax,t.z-az)<=ability.radius);
       }
       else if(ability.line){
-        const ox=castOriginX,oz=castOriginZ,tx=(abilityId==="splitting"&&Number.isFinite(aimX))?aimX:target.x,tz=(abilityId==="splitting"&&Number.isFinite(aimZ))?aimZ:target.z;
+        const ox=castOriginX,oz=castOriginZ,tx=Number.isFinite(aimX)?aimX:target.x,tz=Number.isFinite(aimZ)?aimZ:target.z;
         const vx=tx-ox,vz=tz-oz,l=Math.hypot(vx,vz)||1,ux=vx/l,uz=vz/l,len=ability.line;
         victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&(()=>{const rx=t.x-ox,rz=t.z-oz,a=rx*ux+rz*uz,side=Math.abs(rx*uz-rz*ux);return a>=0&&a<=len&&side<=1.5;})());
       }
-      else {if(distance>(ability.range||4)){send(ws,{type:"combat",result:"out-of-range",targetId:target.id,abilityId,energy:p.energy});return;}victims=[target];}
-      if(!victims.length){send(ws,{type:"combat",result:"no-target",targetId:target.id,abilityId,energy:p.energy});return;}
+      else {if(!target){send(ws,{type:"combat",result:"no-target",abilityId,energy:p.energy});return;}if(distance>(ability.range||4)){send(ws,{type:"combat",result:"out-of-range",targetId:target.id,abilityId,energy:p.energy});return;}victims=[target];}
+      if(!victims.length){send(ws,{type:"combat",result:"no-target",targetId:target?.id,abilityId,energy:p.energy});return;}
       p.lastAbility=now;if(!p.testMode){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;}
       send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,statuses:p.statuses||{}});
       let castDamage=ability.damage;
