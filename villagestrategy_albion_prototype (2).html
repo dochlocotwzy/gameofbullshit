@@ -1530,6 +1530,8 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (r.snapshots.length > 12) r.snapshots.splice(0, r.snapshots.length - 12);
     r.targetX = Number(p.x)||0; r.targetZ = Number(p.z)||0;
     r.targetRot = Number(p.rotation)||0; r.hp = Number.isFinite(Number(p.hp)) ? Number(p.hp) : r.hp;
+    r.charges = Number(p.charges)||0; r.weapon = p.weapon || r.weapon || 'broadsword';
+    r.statuses = p.statuses || r.statuses || {};
     setRemoteDead(r, r.hp <= 0);
   }
   function removeRemote(id) {
@@ -1601,7 +1603,18 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         if (msg.targetId === mpId && activeEntries.length) toast('Эффекты: ' + activeEntries.map(([k]) => k).join(', '));
       } else if (msg.type === 'combat-effect') {
         const attacker = remotes.get(msg.attackerId);
-        if (attacker) { attacker.swingT = 1; attacker.abilityT = 1; attacker.lastAbilitySlot = null; }
+        if (attacker) {
+          attacker.swingT = 1; attacker.abilityT = 1; attacker.lastAbilitySlot = null;
+          attacker.weapon = msg.weapon || attacker.weapon;
+          attacker.charges = Number(msg.charges)||0;
+          attacker.potato.rotation.x = -.42;
+          attacker.potato.rotation.z = msg.abilityId === 'spinning' || msg.abilityId === 'cyclone' ? .28 : 0;
+        }
+        if (msg.attackerId === mpId && Number.isFinite(Number(msg.x)) && Number.isFinite(Number(msg.z))) {
+          pos.x = Number(msg.x); pos.z = Number(msg.z);
+          player.position.x = pos.x; player.position.z = pos.z;
+          cancelOrder();
+        }
         const radius = ({cleave:6,cyclone:2.6,parry:6,spinning:3.4,bloodthirsty:5,carvingDash:2.4,soulless:4.5,majestic:6,infinity:5})[msg.abilityId] || 2.5;
         const color = ({charge:0xff7a3a,mightyBlow:0xffb347,bloodthirsty:0xb01830,soulless:0xffe59a,infinity:0x58d6ff,ironwill:0xffd36e,splitting:0xffe27a,hamstring:0x79c96b,spinning:0xffd45a})[msg.abilityId] || 0x9be36a;
         const ex = Number(msg.aimX ?? msg.x) || 0, ez = Number(msg.aimZ ?? msg.z) || 0;
@@ -1708,8 +1721,12 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     const renderAt = now - 110;
     const smooth = 1 - Math.exp(-12 * frameDt);
     for (const r of remotes.values()) {
-      if (!r.dead && r.swingT > 0) { r.swingT = Math.max(0, r.swingT - .06); r.potato.rotation.x = Math.sin((1-r.swingT)*Math.PI) * .22; }
-      else if (!r.dead) r.potato.rotation.x *= .75;
+      if (!r.dead && r.swingT > 0) {
+        r.swingT = Math.max(0, r.swingT - .06);
+        const k = 1 - r.swingT;
+        r.potato.rotation.x = -.42 * (1-k) + Math.sin(k*Math.PI) * .22;
+        r.potato.rotation.z *= .82;
+      } else if (!r.dead) { r.potato.rotation.x *= .75; r.potato.rotation.z *= .75; }
       const snaps = r.snapshots;
       if (snaps && snaps.length >= 2) {
         let a = snaps[0], b = snaps[snaps.length - 1];
