@@ -1413,12 +1413,21 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   window.mpTargetRing = { active:false, x:0, z:0 };
   window.mpTargetId = null;
   window.mpGetTarget = () => { const t = remotes.get(mpTargetId); return t && !t.dead ? {x:t.group.position.x,z:t.group.position.z,name:t.name} : null; };
+  window.mpClearTarget = (notify = false) => {
+    mpTargetId = null;
+    window.mpTargetId = null;
+    if (window.mpTargetRing) window.mpTargetRing.active = false;
+    if (notify) toast('Цель снята');
+  };
   window.mpAbilityHit = (slot, weapon, requestedTargetId = mpTargetId, abilityId = (loadout[slot] || WEAPONS[weapon]?.e)) => {
     const targetId = String(requestedTargetId || '');
     const target = remotes.get(targetId);
     if (!target || target.dead) { toast('Сначала выбери живую цель'); return false; }
     if (!socket || socket.readyState !== WebSocket.OPEN) { toast('Нет соединения с сервером'); return false; }
-    const aim = aimPoint();
+    // Locked PvP abilities must use the selected player's position, not the stale
+    // mouse-ground point used by PvE. Otherwise dashes, cones and line skills
+    // are resolved somewhere other than the selected target.
+    const aim = {x:target.group.position.x, z:target.group.position.z};
     socket.send(JSON.stringify({type:'ability-hit', targetId, slot, weapon, abilityId, aimX:aim.x, aimZ:aim.z}));
     return true;
   };
@@ -1606,7 +1615,15 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     toast('Цель выбрана · ' + (chosen?.name || 'игрок') + ' · ' + nearestDist.toFixed(1) + ' м');
   };
   addEventListener('keydown', ev => {
-    if (ev.code !== 'Space' || ev.repeat || ev.target?.tagName === 'INPUT' || ev.target?.tagName === 'TEXTAREA' || ev.target?.tagName === 'SELECT') return;
+    if (ev.target?.tagName === 'INPUT' || ev.target?.tagName === 'TEXTAREA' || ev.target?.tagName === 'SELECT' || ev.target?.isContentEditable) return;
+    if (ev.code === 'Escape') {
+      if (window.mpTargetId) {
+        ev.preventDefault();
+        window.mpClearTarget(true);
+      }
+      return;
+    }
+    if (ev.code !== 'Space' || ev.repeat) return;
     ev.preventDefault();
     window.mpSelectNearestTarget();
   }, true);
@@ -1624,11 +1641,21 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       if (window.mpTargetRing) window.mpTargetRing.active = false;
       return;
     }
-    const targetId = hits[0].object.userData.mpPlayerId || hits[0].object.parent?.userData.mpPlayerId || hits[0].object.parent?.parent?.userData.mpPlayerId;
+    // Ray hits may land on nested meshes (visor, backpack, boots, label, etc.).
+    // Walk the full scene graph rather than assuming a fixed parent depth.
+    let node = hits[0].object, targetId = null;
+    while (node && !targetId) {
+      targetId = node.userData?.mpPlayerId || null;
+      node = node.parent;
+    }
     if (!targetId) {
-      mpTargetId = null;
-      window.mpTargetId = null;
-      if (window.mpTargetRing) window.mpTargetRing.active = false;
+      window.mpClearTarget();
+      return;
+    }
+    const picked = remotes.get(targetId);
+    if (!picked || picked.dead) {
+      window.mpClearTarget();
+      toast('Нельзя выбрать мёртвого игрока');
       return;
     }
     mpTargetId = targetId;
