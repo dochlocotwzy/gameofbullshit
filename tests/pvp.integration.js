@@ -70,7 +70,14 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     a.send(JSON.stringify({ type: "ability-hit", targetId: bId, slot: "q", weapon: "broadsword", abilityId: "strike", aimX: 0, aimZ: 7 }));
     const rejected = await waitMessage(a, m => m.type === "combat" && m.result === "cooldown" && m.abilityId === "strike");
     assert.ok(rejected.until > Date.now(), "server enforces ability cooldown");
-    console.log("PvP integration OK: damage, status ownership, energy and cooldown");
+
+    a.send(JSON.stringify({ type: "ability-hit", targetId: bId, slot: "w", weapon: "broadsword", abilityId: "hamstring", aimX: 0, aimZ: 7 }));
+    const debuffHit = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "hamstring");
+    assert.equal(debuffHit.damage, 192, "server applies the selected ability's damage");
+    const debuff = await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && m.statuses?.slow);
+    assert.equal(debuff.statuses.slow.value, 0.38, "target debuff is applied to the target");
+    assert.ok(debuff.statuses.slow.until > Date.now(), "target debuff has a server expiry");
+    console.log("PvP integration OK: damage, attacker buffs, target debuffs, energy and cooldown");
   } catch (error) {
     console.error(error);
     process.exitCode = 1;
