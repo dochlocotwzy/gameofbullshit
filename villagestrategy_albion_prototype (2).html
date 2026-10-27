@@ -46,7 +46,7 @@
   .sk .nm{position:absolute;left:0;right:0;bottom:3px;font-size:9px;line-height:1.05;padding:0 2px;color:#dfe8dc}
   .sk kbd{position:absolute;left:4px;top:3px;font:700 11px system-ui;color:#ffe9a6;background:#0008;padding:0 4px;border-radius:4px}
   .sk .cost{position:absolute;right:4px;top:3px;font-size:10px;color:#8fd6ff}
-  .sk .cd{position:absolute;left:0;right:0;bottom:0;height:0;background:#000b}
+  .sk .cd{position:absolute;left:0;right:0;bottom:0;height:0;background:#000b;pointer-events:none}
   .sk .cdt{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:700 17px system-ui;text-shadow:0 1px 3px #000}
   .sk.off{opacity:.4;cursor:default}
   .sk.nomana{border-color:#d66}
@@ -1405,6 +1405,16 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   };
   window.mpSetLoadout = () => {
     if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w}));
+  };
+  // Mouse-click movement is the primary control. Forward world clicks to the
+  // authoritative multiplayer server instead of relying on the local mover.
+  window.mpSendMoveTarget = (x, z) => {
+    if (!socket || socket.readyState !== WebSocket.OPEN || !Number.isFinite(x) || !Number.isFinite(z)) return false;
+    socket.send(JSON.stringify({type:'move-target', x, z}));
+    return true;
+  };
+  window.mpStopMovement = () => {
+    if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'stop'}));
   };
   let selfTargetX = player.position.x, selfTargetZ = player.position.z, selfTargetRot = player.rotation.y;
   const remoteMeshes = new Map();
