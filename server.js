@@ -13,13 +13,13 @@ const WEAPON_DAMAGE = { broadsword: 40, claymore: 58, dual: 44, clarent: 42, car
 const ABILITY_MULTIPLIER = { q: 2.2, w: 2.8, e: 3.5 };
 const WEAPON_E = { broadsword:"mightyBlow", claymore:"charge", dual:"spinning", clarent:"bloodthirsty", carving:"carvingDash", galatine:"soulless", kingmaker:"majestic", infinity:"infinity" };
 const ABILITIES = {
- strike:{cost:6,cooldown:3,damage:249,range:3.2,effects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:3.5}]}, cleave:{cost:11,cooldown:3,damage:200,radius:6,effects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:5}]},
- cyclone:{cost:24,cooldown:10,damage:120,radius:2.4,hits:3,range:7}, interrupt:{cost:32,cooldown:10,damage:248,range:3.2,effects:[{type:"interrupt"}]},
+ strike:{cost:6,cooldown:3,damage:249,range:3.2,selfEffects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:3.5}]}, cleave:{cost:11,cooldown:3,damage:200,radius:6,selfEffects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:5}]},
+ cyclone:{cost:24,cooldown:10,damage:120,radius:2.4,hits:3,range:7}, interrupt:{cost:32,cooldown:10,damage:248,range:3.2,effects:[{type:"interrupt"}],selfEffects:[{type:"attackBuff",value:.2,duration:5}]},
  splitting:{cost:38,cooldown:15,damage:432,line:14,effects:[{type:"root",duration:1.25}]}, hamstring:{cost:32,cooldown:10,damage:192,range:3.2,effects:[{type:"slow",value:.38,duration:8}]},
- parry:{cost:9,cooldown:15,damage:80,radius:6,effects:[{type:"silence",duration:.8}]}, ironwill:{cost:29,cooldown:20,self:true,effects:[{type:"haste",value:.2,duration:4},{type:"resist",value:.259,duration:4}]},
- mightyBlow:{cost:35,cooldown:10,damage:269,range:10,dash:1.7,effects:[{type:"interrupt"},{type:"resist",value:.7,duration:3}]}, charge:{cost:16,cooldown:20,damage:390,range:13,dash:1.7,effects:[{type:"stun",duration:.8}]},
- spinning:{cost:20,cooldown:20,damage:500,radius:3.2,range:12,effects:[{type:"haste",value:.5,duration:4},{type:"attackBuff",value:1,duration:4}]},
- bloodthirsty:{cost:14,cooldown:20,damage:260,radius:5,effects:[{type:"bleed",dps:60,duration:5}]}, carvingDash:{cost:20,cooldown:14,damage:260,line:6.5,range:6,effects:[{type:"armorBreak",duration:5}]},
+ parry:{cost:9,cooldown:15,damage:80,radius:6,effects:[{type:"silence",duration:.8}]}, ironwill:{cost:29,cooldown:20,self:true,selfEffects:[{type:"haste",value:.2,duration:4},{type:"resist",value:.259,duration:4}]},
+ mightyBlow:{cost:35,cooldown:10,damage:269,range:10,dash:1.7,effects:[{type:"interrupt"}],selfEffects:[{type:"resist",value:.7,duration:3}]}, charge:{cost:16,cooldown:20,damage:390,range:13,dash:1.7,effects:[{type:"stun",duration:.8}]},
+ spinning:{cost:20,cooldown:20,damage:500,radius:3.2,range:12,selfEffects:[{type:"haste",value:.5,duration:4},{type:"attackBuff",value:1,duration:4}]},
+ bloodthirsty:{cost:14,cooldown:20,damage:260,radius:5,effects:[{type:"bleed",dps:60,duration:5}],selfEffects:[{type:"haste",value:.3,duration:6},{type:"attackBuff",value:.3,duration:6}]}, carvingDash:{cost:20,cooldown:14,damage:260,line:6.5,range:6,effects:[{type:"armorBreak",duration:5}]},
  soulless:{cost:28,cooldown:20,damage:150,radius:4.5,range:14,hits:3,effects:[{type:"hpDown",value:.15,duration:6}]}, majestic:{cost:30,cooldown:25,damage:330,radius:6,hits:2,secondDamage:480,effects:[{type:"air",duration:.9}]},
  infinity:{cost:25,cooldown:18,damage:210,radius:5,hits:3,secondDamage:380,effects:[{type:"slow",value:.3,duration:2}]}
 };
@@ -169,7 +169,7 @@ wss.on("connection", (ws) => {
       let dx=target.x-p.x,dz=target.z-p.z,distance=Math.hypot(dx,dz);
       const aimX=Number(msg.aimX),aimZ=Number(msg.aimZ);
       const isArea=Number.isFinite(aimX)&&Number.isFinite(aimZ)&&["cleave","cyclone","splitting","parry","spinning","bloodthirsty","carvingDash","soulless","majestic","infinity"].includes(abilityId);
-      if(abilityId==="ironwill"){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;applyEffects(p,ability.effects,p.id);broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:[p.id],x:p.x,z:p.z});p.lastAbility=now;send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]});return;}
+      if(abilityId==="ironwill"){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;applyEffects(p,ability.selfEffects||[],p.id);broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:[p.id],x:p.x,z:p.z});p.lastAbility=now;send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]});return;}
       if(ability.dash&&distance<=ability.range&&distance>1.35){const travel=Math.min(2.7,distance-1.05);p.x+=dx/distance*travel;p.z+=dz/distance*travel;distance=Math.hypot(target.x-p.x,target.z-p.z);}
       let victims=[];
       if(ability.radius&&isArea){const ax=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimX)),az=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimZ));if(Math.hypot(ax-p.x,az-p.z)>(ability.range||7)+1)return;victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&Math.hypot(t.x-ax,t.z-az)<=ability.radius);}
@@ -183,13 +183,13 @@ wss.on("connection", (ws) => {
         if(abilityId==="mightyBlow")damage=[269,432,649,918][Math.min(3,p.charges||0)];
         if(abilityId==="charge")damage=[390,560,780,1030][Math.min(3,p.charges||0)];
         if(abilityId==="carvingDash")damage=[260,340,430,540][Math.min(3,p.charges||0)];
-        if(abilityId==="strike")p.charges=Math.min(3,(p.charges||0)+1);
         if(["mightyBlow","charge","carvingDash"].includes(abilityId))p.charges=0;
         if(abilityId==="cyclone"&&(p.charges||0)>0){damage=162;p.charges--;}
         for(let hit=0;hit<(ability.hits||1);hit++){const amount=hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:damage;const reduction=victim.statuses?.resist?.value||0;const dealt=Math.round(amount*(1-reduction));victim.hp=Math.max(0,victim.hp-dealt);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
         applyEffects(victim,ability.effects||[],p.id);
         if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
       }
+      if(victims.length && ability.selfEffects) applyEffects(p,ability.selfEffects,p.id);
       broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:victims.map(v=>v.id),x:p.x,z:p.z,aimX:Number.isFinite(aimX)?aimX:p.x,aimZ:Number.isFinite(aimZ)?aimZ:p.z});
       for(const victim of victims)broadcast({type:"player",player:publicPlayer(victim)});
     }
