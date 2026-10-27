@@ -123,7 +123,7 @@ wss.on("connection", (ws) => {
       if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(rotation)) return;
       if (Math.abs(x) > WORLD_BOUND || Math.abs(z) > WORLD_BOUND) return;
       // Root is server-authoritative: accept facing updates, but reject movement until it expires.
-      if (p.statuses?.root && p.statuses.root.until > Date.now()) {
+      if ((p.statuses?.root && p.statuses.root.until > Date.now()) || (p.statuses?.parryLock && p.statuses.parryLock.until > Date.now())) {
         p.rotation = rotation;
         broadcast({ type: "player", player: publicPlayer(p) }, p.id);
         return;
@@ -249,6 +249,34 @@ wss.on("connection", (ws) => {
       if(!victims.length && !areaAbilityIds.has(abilityId)){send(ws,{type:"combat",result:"no-target",targetId:target?.id,abilityId,energy:p.energy});return;}
       p.lastAbility=now;if(!p.testMode){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;}
       send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,statuses:p.statuses||{}});
+      if(abilityId==="parry"){
+        applyEffects(p,ability.selfEffects||[],p.id);
+        p.statuses.parryLock={value:true,until:now+800,sourceId:p.id};
+        broadcast({type:"combat-status",targetId:p.id,statuses:p.statuses});
+        send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,statuses:p.statuses||{}});
+        setTimeout(()=>{
+          if(p.hp<=0)return;
+          const impactVictims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&Math.hypot(t.x-p.x,t.z-p.z)<=6);
+          for(const victim of impactVictims){
+            const reduction=victim.statuses?.resist?.value||0;
+            const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
+            const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;
+            const outgoingWeak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;
+            const vulnerability=victim.statuses?.armorBreak?1.25:1;
+            const dealt=Math.max(0,Math.round(80*(1-reduction)*(1-defenseReduction)*(1-outgoingWeak)*vulnerability));
+            victim.hp=Math.max(0,victim.hp-dealt);
+            broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:0});
+            if(victim.hp>0)applyEffects(victim,ability.effects||[],p.id);
+            if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
+            broadcast({type:"player",player:publicPlayer(victim)});
+          }
+          broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:impactVictims.map(v=>v.id),x:p.x,z:p.z,originX:p.x,originZ:p.z,aimX:p.x,aimZ:p.z,rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||"broadsword"});
+          broadcast({type:"player",player:publicPlayer(p)});
+        },800);
+        broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:[],x:p.x,z:p.z,originX:p.x,originZ:p.z,aimX:p.x,aimZ:p.z,rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||"broadsword"});
+        broadcast({type:"player",player:publicPlayer(p)});
+        return;
+      }
       let castDamage=ability.damage;
       if(abilityId==="mightyBlow")castDamage=[269,432,649,918][Math.min(3,p.charges||0)];
       if(abilityId==="charge")castDamage=[390,560,780,1030][Math.min(3,p.charges||0)];
@@ -256,6 +284,32 @@ wss.on("connection", (ws) => {
       if(abilityId==="cyclone"&&(p.charges||0)>0){castDamage=162;p.charges--;if(p.charges<=0)p.chargeExpiresAt=0;}
       if(["mightyBlow","charge","carvingDash"].includes(abilityId)){p.charges=0;p.chargeExpiresAt=0;}
       for(const victim of victims){
+        if(abilityId==="majestic"){
+          const reduction=victim.statuses?.resist?.value||0;
+          const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
+          const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;
+          const outgoingWeak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;
+          const vulnerability=victim.statuses?.armorBreak?1.25:1;
+          const firstDamage=Math.max(0,Math.round(castDamage*(1-reduction)*(1-defenseReduction)*(1-outgoingWeak)*vulnerability));
+          victim.hp=Math.max(0,victim.hp-firstDamage);
+          broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:firstDamage,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:0});
+          if(victim.hp>0)applyEffects(victim,ability.effects||[],p.id);
+          if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
+          else setTimeout(()=>{
+            if(victim.hp<=0)return;
+            const reduction2=victim.statuses?.resist?.value||0;
+            const defense2=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
+            const defenseReduction2=defense2>0?Math.min(.5,defense2/(defense2+200)):0;
+            const outgoingWeak2=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;
+            const vulnerability2=victim.statuses?.armorBreak?1.25:1;
+            const secondDamage=Math.max(0,Math.round((ability.secondDamage||480)*(1-reduction2)*(1-defenseReduction2)*(1-outgoingWeak2)*vulnerability2));
+            victim.hp=Math.max(0,victim.hp-secondDamage);
+            broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:secondDamage,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:1});
+            if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
+            broadcast({type:"player",player:publicPlayer(victim)});
+          },950);
+          continue;
+        }
         for(let hit=0;hit<(ability.hits||1);hit++){const amount=hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:castDamage;const reduction=victim.statuses?.resist?.value||0;const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;const outgoingWeak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;const vulnerability=(victim.statuses?.armorBreak?1.25:1) ;const dealt=Math.max(0,Math.round(amount*(1-reduction)*(1-defenseReduction)*(1-outgoingWeak)*vulnerability));victim.hp=Math.max(0,victim.hp-dealt);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
         if(victim.hp>0)applyEffects(victim,ability.effects||[],p.id);
         if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
