@@ -80,6 +80,7 @@ wss.on("connection", (ws) => {
       return;
     }
     if (msg.type === "state") {
+      if (p.hp <= 0) return; // Dead players cannot move until respawn.
       const now = Date.now();
       if (now - p.lastUpdate < 40) return;
       p.lastUpdate = now;
