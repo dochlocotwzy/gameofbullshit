@@ -1288,6 +1288,117 @@ function loop(now) {
 }
 requestAnimationFrame(loop);
 addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+
+/* ===================== multiplayer: shared player positions ===================== */
+(() => {
+  const mpStatus = document.createElement('div');
+  Object.assign(mpStatus.style, {
+    position:'fixed', left:'12px', bottom:'12px', zIndex:'1000',
+    padding:'7px 10px', borderRadius:'8px', background:'#14201be8',
+    border:'1px solid #ffffff30', color:'#f3efe3', font:'12px system-ui,sans-serif',
+    pointerEvents:'none'
+  });
+  mpStatus.textContent = 'Мультиплеер: подключение…';
+  document.body.appendChild(mpStatus);
+
+  const mpName = 'Игрок-' + Math.floor(100 + Math.random() * 900);
+  const remotes = new Map();
+  let mpId = null, socket = null, lastSend = 0;
+
+  function makeLabel(name) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256; canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'rgba(15,22,18,.78)';
+    ctx.beginPath(); ctx.roundRect(4, 4, 248, 56, 12); ctx.fill();
+    ctx.font = 'bold 26px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff4d4'; ctx.fillText(String(name || 'Игрок').slice(0, 18), 128, 32);
+    const texture = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({map:texture, transparent:true, depthTest:false}));
+    sprite.scale.set(2.7, .68, 1);
+    sprite.position.y = 2.35;
+    return sprite;
+  }
+  function addRemote(p) {
+    if (!p || p.id === mpId || remotes.has(p.id)) return;
+    const group = new THREE.Group();
+    const material = new THREE.MeshStandardMaterial({color:0x5bb8ff, roughness:.8});
+    const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(.38, 1.05, 4, 8), material);
+    mesh.position.y = .9; mesh.castShadow = true; group.add(mesh);
+    group.add(makeLabel(p.name));
+    group.position.set(Number(p.x)||0, 0, Number(p.z)||0);
+    group.rotation.y = Number(p.rotation)||0;
+    scene.add(group);
+    remotes.set(p.id, {group, targetX:group.position.x, targetZ:group.position.z, targetRot:group.rotation.y, name:p.name||'Игрок', hp:p.hp||1000});
+  }
+  function updateRemote(p) {
+    if (!p || p.id === mpId) return;
+    if (!remotes.has(p.id)) addRemote(p);
+    const r = remotes.get(p.id);
+    if (!r) return;
+    r.targetX = Number(p.x)||0; r.targetZ = Number(p.z)||0;
+    r.targetRot = Number(p.rotation)||0; r.hp = Number(p.hp)||1000;
+  }
+  function removeRemote(id) {
+    const r = remotes.get(id);
+    if (!r) return;
+    scene.remove(r.group);
+    r.group.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        mats.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
+      }
+    });
+    remotes.delete(id);
+  }
+  function connect() {
+    if (!/^https?:$/.test(location.protocol)) {
+      mpStatus.textContent = 'Мультиплеер: откройте через Render';
+      return;
+    }
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    socket = new WebSocket(proto + '//' + location.host + '/multiplayer');
+    socket.addEventListener('open', () => {
+      mpStatus.textContent = 'Мультиплеер: подключён · ' + mpName;
+      socket.send(JSON.stringify({type:'hello', name:mpName}));
+    });
+    socket.addEventListener('message', event => {
+      let msg; try { msg = JSON.parse(event.data); } catch { return; }
+      if (msg.type === 'welcome') {
+        mpId = msg.id;
+        (msg.players || []).forEach(p => { if (p.id !== mpId) addRemote(p); });
+      } else if (msg.type === 'joined' || msg.type === 'player') updateRemote(msg.player);
+      else if (msg.type === 'left') removeRemote(msg.id);
+      else if (msg.type === 'ping') mpStatus.textContent = 'Мультиплеер: онлайн · ' + msg.online + ' игрок(ов)';
+      else if (msg.type === 'error') mpStatus.textContent = 'Мультиплеер: ' + msg.message;
+    });
+    socket.addEventListener('close', () => {
+      mpStatus.textContent = 'Мультиплеер: отключён · обновите страницу';
+    });
+    socket.addEventListener('error', () => {
+      mpStatus.textContent = 'Мультиплеер: ошибка соединения';
+    });
+  }
+  function mpFrame(now) {
+    requestAnimationFrame(mpFrame);
+    for (const r of remotes.values()) {
+      r.group.position.x += (r.targetX - r.group.position.x) * .28;
+      r.group.position.z += (r.targetZ - r.group.position.z) * .28;
+      r.group.rotation.y += (r.targetRot - r.group.rotation.y) * .28;
+    }
+    if (socket && socket.readyState === WebSocket.OPEN && player && now - lastSend > 100) {
+      lastSend = now;
+      socket.send(JSON.stringify({
+        type:'state', x:player.position.x, z:player.position.z, rotation:player.rotation.y,
+        hp:playerVitals && playerVitals.hp
+      }));
+    }
+  }
+  connect();
+  requestAnimationFrame(mpFrame);
+})();
+
 </script>
 </body>
 </html>
