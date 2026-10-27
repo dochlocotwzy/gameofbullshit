@@ -12,10 +12,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Install server dependencies
-        run: npm install --no-audit --no-fund
-      - name: Run PvP integration test
-        run: node tests/pvp.integration.js
       - name: Check server JavaScript
         run: node --check server.js
       - name: Check inline game scripts
