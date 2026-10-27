@@ -91,7 +91,17 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     await sleep(3300);
     const expired = await waitMessage(a, m => m.type === "combat-status" && m.targetId === aId && !m.statuses?.resist);
     assert.ok(expired, "expired status is removed and broadcast to clients");
-    console.log("PvP integration OK: damage, attacker buffs, target debuffs, energy, cooldown and status expiry");
+    // Regression: Spinning travels at most 12m. A target near the landing point
+    // must be hit even when the cursor aim is 12.9m away (outside the actual landing circle).
+    a.send(JSON.stringify({ type: "weapon", weapon: "dual" }));
+    a.send(JSON.stringify({ type: "state", x: 0, z: 0, rotation: 0 }));
+    b.send(JSON.stringify({ type: "state", x: 3.1, z: 12, rotation: 0 }));
+    await sleep(100);
+    a.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "e", weapon: "dual", abilityId: "spinning", aimX: 0, aimZ: 12.9 }));
+    const spinningHit = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "spinning");
+    assert.equal(spinningHit.damage, 500, "Spinning resolves its AoE at the server-authoritative 12m landing point");
+
+    console.log("PvP integration OK: damage, attacker buffs, target debuffs, energy, cooldown, status expiry and Spinning landing AoE");
   } catch (error) {
     console.error(error);
     process.exitCode = 1;
