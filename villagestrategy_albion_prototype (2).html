@@ -1639,6 +1639,11 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         if (msg.player.id === mpId) { setPlayerHealth(msg.player.hp); player.position.set(msg.player.x, 0, msg.player.z); resetDeath(); order.mode = 'none'; }
       } else if (msg.type === 'combat-resource') {
         if (Number.isFinite(Number(msg.energy))) energy = Math.max(0, Math.min(100, Number(msg.energy)));
+        if (Number.isFinite(Number(msg.charges))) {
+          buffs.charges.n = Math.max(0, Math.min(COMBAT.CHARGE_MAX, Number(msg.charges)));
+          buffs.charges.t = buffs.charges.n > 0 ? COMBAT.CHARGE_TIME : 0;
+        }
+        if (msg.statuses && typeof msg.statuses === 'object') window.mpSelfStatuses = msg.statuses;
         const slot = ['q','w','e'].find(s => (s === 'e' ? WEAPONS[loadout.weapon].e : loadout[s]) === msg.abilityId);
         if (slot && Number.isFinite(Number(msg.cooldownUntil))) cd[slot] = Math.max(0, (Number(msg.cooldownUntil) - Date.now()) / 1000);
       } else if (msg.type === 'combat') {
