@@ -1051,10 +1051,11 @@ function castSlot(slot, ctx) {
   sp.cast(ctx); return true;
 }
 function trySpell(slot) {
-  if (window.mpTargetId && typeof window.mpAbilityHit === 'function') {
-    const sp = spellFor(slot);
+  const selectedSpell = spellFor(slot);
+  if (window.mpTargetId && typeof window.mpAbilityHit === 'function' && selectedSpell && selectedSpell.target === 'enemy') {
+    const sp = selectedSpell;
     const target = window.mpGetTarget && window.mpGetTarget();
-    if (!sp || !target || dash || lockT > 0) return;
+    if (!target || dash || lockT > 0) return;
     if (!TEST.free && (cd[slot] > 0 || energy < sp.en)) return toast('Перезарядка или не хватает энергии');
     if (!TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }
     faceXZ(target.x, target.z);
