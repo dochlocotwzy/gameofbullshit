@@ -1,6 +1,13 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { spawn } = require("node:child_process");
 const WebSocket = require("ws");
+
+const clientHtml = fs.readFileSync(path.join(__dirname, "..", "villagestrategy_albion_prototype (2).html"), "utf8");
+assert.ok(clientHtml.includes("if (p.id === mpId) {\n      if (Number.isFinite(Number(p.hp))) setPlayerHealth(Number(p.hp));\n      return;\n    }"), "client applies server HP corrections to the local player");
+assert.ok(clientHtml.includes("(buffs.blood.t > 0 ? .3 : 0)"), "local dummy autoattacks include Bloodthirsty damage bonus");
+assert.ok(clientHtml.includes("const expiresAt = Number(msg.chargeExpiresAt);"), "client uses the server charge expiry timestamp");
 
 const port = 10187;
 const base = `http://127.0.0.1:${port}`;
@@ -101,7 +108,80 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     const spinningHit = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "spinning");
     assert.equal(spinningHit.damage, 500, "Spinning resolves its AoE at the server-authoritative 12m landing point");
 
-    console.log("PvP integration OK: damage, attacker buffs, target debuffs, energy, cooldown, status expiry and Spinning landing AoE");
+    // Regression: Interrupt scales auto-attack damage with the Heroic Charges held at cast time.
+    await waitMessage(b, m => m.type === "respawn" && m.player?.id === bId, 7000);
+    a.messages.length = 0; b.messages.length = 0;
+    a.send(JSON.stringify({ type: "test-mode", enabled: true }));
+    a.send(JSON.stringify({ type: "loadout", q: "strike", w: "interrupt", p: "deepcuts" }));
+    a.send(JSON.stringify({ type: "weapon", weapon: "broadsword" }));
+    a.send(JSON.stringify({ type: "state", x: 0, z: 4, rotation: 0 }));
+    b.send(JSON.stringify({ type: "state", x: 0, z: 7, rotation: 0 }));
+    await sleep(100);
+    for (let charges = 1; charges <= 3; charges++) {
+      a.messages.length = 0; b.messages.length = 0;
+      a.send(JSON.stringify({ type: "ability-hit", targetId: bId, slot: "q", weapon: "broadsword", abilityId: "strike", aimX: 0, aimZ: 7 }));
+      const strikeHit = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "strike");
+      assert.equal(strikeHit.damage, 249, "Strike remains server-authoritative while generating a charge");
+      const chargeResource = await waitMessage(a, m => m.type === "combat-resource" && m.abilityId === "strike" && m.charges === charges);
+      assert.ok(chargeResource.chargeExpiresAt > Date.now() && chargeResource.chargeExpiresAt <= Date.now() + 6000, "server sends absolute charge expiry");
+      if (charges < 3) await sleep(300);
+    }
+    await sleep(300);
+    a.messages.length = 0; b.messages.length = 0;
+    a.send(JSON.stringify({ type: "ability-hit", targetId: bId, slot: "w", weapon: "broadsword", abilityId: "interrupt", aimX: 0, aimZ: 7 }));
+    const interruptBuff = await waitMessage(a, m => m.type === "combat-status" && m.targetId === aId && m.statuses?.interruptAttackBuff);
+    assert.equal(interruptBuff.statuses.interruptAttackBuff.value, 0.6, "three charges grant a 60% Interrupt auto-attack bonus");
+    assert.ok(interruptBuff.statuses.interruptAttackBuff.until > Date.now(), "scaled Interrupt buff has server expiry");
+
+    await sleep(900);
+    a.messages.length = 0; b.messages.length = 0;
+    a.send(JSON.stringify({ type: "attack", targetId: bId }));
+    const buffedAuto = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.kind === "auto");
+    assert.equal(buffedAuto.damage, 64, "three charges scale a 40-damage autoattack to 64");
+
+    // Interrupt does not consume charges; the server expires them at the original six-second deadline.
+    const [chargeExpired, respawnedAgain] = await Promise.all([
+      waitMessage(a, m => m.type === "combat-resource" && Number(m.charges) === 0 && Number(m.chargeExpiresAt) === 0, 7000),
+      waitMessage(b, m => m.type === "respawn" && m.player?.id === bId, 7000)
+    ]);
+    assert.equal(chargeExpired.charges, 0, "server clears expired Heroic Charges");
+    assert.equal(respawnedAgain.player.hp, 1000, "dead target respawns at full HP");
+
+    // Regression: Soulless hpDown must sync the corrected HP to the victim client.
+    a.send(JSON.stringify({ type: "test-mode", enabled: false }));
+    a.send(JSON.stringify({ type: "weapon", weapon: "galatine" }));
+    a.send(JSON.stringify({ type: "loadout", q: "strike", w: "interrupt", p: "deepcuts" }));
+    b.send(JSON.stringify({ type: "loadout", q: "strike", w: "parry", p: "deepcuts" }));
+    a.send(JSON.stringify({ type: "state", x: 0, z: 0, rotation: 0 }));
+    b.send(JSON.stringify({ type: "state", x: 0, z: 7, rotation: 0 }));
+    await sleep(100);
+    b.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "w", weapon: "broadsword", abilityId: "parry", aimX: 0, aimZ: 7 }));
+    await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && m.statuses?.resist?.value === 1);
+    a.messages.length = 0; b.messages.length = 0;
+    a.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "e", weapon: "galatine", abilityId: "soulless", aimX: 0, aimZ: 7 }));
+    await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && m.statuses?.hpDown);
+    const hpDownSync = await waitMessage(b, m => m.type === "player" && m.player?.id === bId && m.player?.hp === 850);
+    assert.equal(hpDownSync.player.hp, 850, "Soulless caps server HP and broadcasts the corrected value");
+
+    // Bloodthirsty bleed and its independent 30% auto-attack bonus.
+    await sleep(900);
+    a.send(JSON.stringify({ type: "state", x: 0, z: 4, rotation: 0 }));
+    a.send(JSON.stringify({ type: "weapon", weapon: "clarent" }));
+    await sleep(100);
+    a.messages.length = 0; b.messages.length = 0;
+    a.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "e", weapon: "clarent", abilityId: "bloodthirsty", aimX: 0, aimZ: 7 }));
+    await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && m.statuses?.bleed?.value === 60);
+    const bloodBuff = await waitMessage(a, m => m.type === "combat-status" && m.targetId === aId && m.statuses?.bloodthirstAttackBuff?.value === 0.3);
+    assert.ok(bloodBuff.statuses.bloodthirstAttackBuff.until > Date.now(), "Bloodthirsty bonus has a server expiry");
+    await sleep(900);
+    a.messages.length = 0; b.messages.length = 0;
+    a.send(JSON.stringify({ type: "weapon", weapon: "broadsword" }));
+    a.send(JSON.stringify({ type: "attack", targetId: bId }));
+    const bloodAuto = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.kind === "auto");
+    assert.equal(bloodAuto.damage, 52, "Bloodthirsty grants 30% damage to a 40-damage autoattack");
+    await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.kind === "dot" && m.abilityId === "bloodthirsty", 3000);
+
+    console.log("PvP integration OK: damage, cooldowns, status expiry, Spinning endpoint, Interrupt charge scaling/expiry, hpDown sync and Bloodthirsty bleed/auto damage");
   } catch (error) {
     console.error(error);
     process.exitCode = 1;
