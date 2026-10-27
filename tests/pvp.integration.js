@@ -66,6 +66,7 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     const resource = await waitMessage(a, m => m.type === "combat-resource" && m.abilityId === "strike");
     assert.equal(resource.energy, 94, "server charges ability energy once");
 
+    await sleep(300);
     a.send(JSON.stringify({ type: "ability-hit", targetId: bId, slot: "q", weapon: "broadsword", abilityId: "strike", aimX: 0, aimZ: 7 }));
     const rejected = await waitMessage(a, m => m.type === "combat" && m.result === "cooldown" && m.abilityId === "strike");
     assert.ok(rejected.until > Date.now(), "server enforces ability cooldown");
