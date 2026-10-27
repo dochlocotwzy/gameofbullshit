@@ -1312,7 +1312,7 @@ fillSelect($('#selP'), Object.keys(PASSIVES).map(k => [k, PASSIVES[k].name]), lo
 $('#selWeapon').addEventListener('change', e => { setWeapon(e.target.value); e.target.blur(); });
 $('#selQ').addEventListener('change', e => { loadout.q = e.target.value; cd.q = 0; if (window.mpSetLoadout) window.mpSetLoadout(); renderSlots(); saveLoadout(); e.target.blur(); });
 $('#selW').addEventListener('change', e => { loadout.w = e.target.value; cd.w = 0; if (window.mpSetLoadout) window.mpSetLoadout(); renderSlots(); saveLoadout(); e.target.blur(); });
-$('#selP').addEventListener('change', e => { loadout.p = e.target.value; saveLoadout(); e.target.blur(); toast(PASSIVES[e.target.value].desc); });
+$('#selP').addEventListener('change', e => { loadout.p = e.target.value; if (window.mpSetLoadout) window.mpSetLoadout(); saveLoadout(); e.target.blur(); toast(PASSIVES[e.target.value].desc); });
 $('#chkFree').addEventListener('change', e => { TEST.free = e.target.checked; if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free})); if (TEST.free) { energy = 100; for (const k in cd) cd[k] = 0; } e.target.blur(); });
 $('#dreset').addEventListener('click', e => { S.total = S.hits = S.max = 0; S.ev.length = 0; S.fightTotal = 0; S.last = -99; for (const d of dummies) { d.total = d.hits = d.max = 0; d.st = {}; d.dots = {}; } e.target.blur(); });
 addEventListener('keydown', e => {
@@ -1435,7 +1435,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (socket && socket.readyState === WebSocket.OPEN && WEAPONS[id]) socket.send(JSON.stringify({type:'weapon',weapon:id}));
   };
   window.mpSetLoadout = () => {
-    if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w}));
+    if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w,p:loadout.p}));
   };
   // Mouse-click movement is the primary control. Forward world clicks to the
   // authoritative multiplayer server instead of relying on the local mover.
@@ -1569,7 +1569,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       mpStatus.textContent = 'Мультиплеер: подключён · ' + mpName;
       socket.send(JSON.stringify({type:'hello', name:mpName}));
       socket.send(JSON.stringify({type:'weapon',weapon:loadout.weapon}));
-      socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w}));
+      socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w,p:loadout.p}));
     });
     socket.addEventListener('message', event => {
       let msg; try { msg = JSON.parse(event.data); } catch { return; }
