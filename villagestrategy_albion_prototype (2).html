@@ -1392,6 +1392,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   document.body.appendChild(mpStatus);
 
   const mpPingBadge = document.createElement('div');
+  mpPingBadge.id = 'mpPingBadge';
   Object.assign(mpPingBadge.style, {
     position:'fixed', top:'4px', left:'50%', transform:'translateX(-50%)',
     zIndex:'2147483647', padding:'6px 12px', borderRadius:'8px',
