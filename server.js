@@ -227,7 +227,7 @@ wss.on("connection", (ws) => {
       if(["mightyBlow","charge","carvingDash"].includes(abilityId))p.charges=0;
       for(const victim of victims){
         for(let hit=0;hit<(ability.hits||1);hit++){const amount=hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:castDamage;const reduction=victim.statuses?.resist?.value||0;const vulnerability=(victim.statuses?.armorBreak?1.25:1) ;const dealt=Math.round(amount*(1-reduction)*vulnerability);victim.hp=Math.max(0,victim.hp-dealt);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
-        applyEffects(victim,ability.effects||[],p.id);
+        if(victim.hp>0)applyEffects(victim,ability.effects||[],p.id);
         if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
       }
       if(victims.length && ability.selfEffects){
