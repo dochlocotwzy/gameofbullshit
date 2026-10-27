@@ -24,26 +24,29 @@ jobs:
               def __init__(self):
                   super().__init__()
                   self.current = None
+                  self.current_suffix = ".js"
                   self.items = []
               def handle_starttag(self, tag, attrs):
                   if tag == "script":
                       attrs = dict(attrs)
-                      self.current = None if attrs.get("src") else []
+                      kind = attrs.get("type", "").lower()
+                      self.current = None if attrs.get("src") or kind in ("importmap", "application/json") else []
+                      self.current_suffix = ".mjs" if kind == "module" else ".js"
               def handle_data(self, data):
                   if self.current is not None:
                       self.current.append(data)
               def handle_endtag(self, tag):
                   if tag == "script" and self.current is not None:
-                      self.items.append("".join(self.current))
+                      self.items.append(("".join(self.current), self.current_suffix))
                       self.current = None
           parser = Scripts()
           parser.feed(Path("villagestrategy_albion_prototype (2).html").read_text())
-          scripts = [s for s in parser.items if s.strip()]
+          scripts = [(s, ext) for s, ext in parser.items if s.strip()]
           if not scripts:
               raise SystemExit("No inline scripts found")
           with tempfile.TemporaryDirectory() as tmp:
-              for i, script in enumerate(scripts):
-                  path = Path(tmp) / f"script-{i}.js"
+              for i, (script, suffix) in enumerate(scripts):
+                  path = Path(tmp) / f"script-{i}{suffix}"
                   path.write_text(script)
                   subprocess.run(["node", "--check", str(path)], check=True)
           print(f"Syntax OK: {len(scripts)} inline script(s)")
