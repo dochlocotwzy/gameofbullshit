@@ -1406,9 +1406,10 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   window.mpAbilityHit = (slot, weapon, requestedTargetId = mpTargetId) => {
     const targetId = String(requestedTargetId || '');
     const target = remotes.get(targetId);
-    if (!target || target.dead) return toast('Сначала выбери живую цель');
-    if (!socket || socket.readyState !== WebSocket.OPEN) return toast('Нет соединения с сервером');
+    if (!target || target.dead) { toast('Сначала выбери живую цель'); return false; }
+    if (!socket || socket.readyState !== WebSocket.OPEN) { toast('Нет соединения с сервером'); return false; }
     socket.send(JSON.stringify({type:'ability-hit', targetId, slot, weapon}));
+    return true;
   };
 
   function makeLabel(name) {
