@@ -9,7 +9,8 @@ const HOST = "0.0.0.0";
 const GAME_FILE = path.join(__dirname, "villagestrategy_albion_prototype (2).html");
 const MAX_PLAYERS = 40;
 const PLAYER_MAX_HP = 1000;
-const ATTACK_DAMAGE = 100;
+const WEAPON_DAMAGE = { broadsword: 40, claymore: 58, dual: 44, clarent: 42, carving: 54, galatine: 46, kingmaker: 60, infinity: 44 };
+const ABILITY_MULTIPLIER = { q: 2.2, w: 2.8, e: 3.5 };
 const ATTACK_RANGE = 3.8;
 const ATTACK_COOLDOWN_MS = 850;
 const players = new Map();
@@ -63,7 +64,7 @@ wss.on("connection", (ws) => {
     return ws.close(1013, "Server full");
   }
   const id = crypto.randomUUID();
-  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, respawnTimer: null };
+  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null };
   players.set(id, p);
   send(ws, { type: "welcome", id, players: snapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
@@ -104,9 +105,11 @@ wss.on("connection", (ws) => {
         send(ws, { type: "combat", result: "out-of-range", targetId: target.id });
         return;
       }
+      const weapon = String(msg.weapon || "broadsword");
+      const damage = WEAPON_DAMAGE[weapon] || WEAPON_DAMAGE.broadsword;
       p.lastAttack = now;
-      target.hp = Math.max(0, target.hp - ATTACK_DAMAGE);
-      broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: ATTACK_DAMAGE, hp: target.hp });
+      target.hp = Math.max(0, target.hp - damage);
+      broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage, hp: target.hp, kind: "auto" });
       broadcast({ type: "player", player: { id: target.id, name: target.name, x: target.x, y: 0, z: target.z, rotation: target.rotation, hp: target.hp } });
       if (target.hp === 0 && !target.respawnTimer) {
         target.respawnTimer = setTimeout(() => {
@@ -116,6 +119,27 @@ wss.on("connection", (ws) => {
           broadcast({ type: "respawn", player: { id: target.id, name: target.name, x: target.x, y: 0, z: target.z, rotation: target.rotation, hp: target.hp } });
         }, 5000);
       }
+      return;
+    }
+    if (msg.type === "ability-hit") {
+      const now = Date.now();
+      if (p.hp <= 0 || now - p.lastAbility < 500) return;
+      const target = players.get(String(msg.targetId || ""));
+      const slot = String(msg.slot || "q");
+      const weapon = String(msg.weapon || "broadsword");
+      if (!target || target.id === p.id || target.hp <= 0 || !ABILITY_MULTIPLIER[slot]) return;
+      const distance = Math.hypot(target.x - p.x, target.z - p.z);
+      const range = slot === "e" ? 6 : slot === "w" ? 4.5 : 4;
+      if (!Number.isFinite(distance) || distance > range) { send(ws, { type: "combat", result: "out-of-range", targetId: target.id }); return; }
+      const damage = Math.round((WEAPON_DAMAGE[weapon] || WEAPON_DAMAGE.broadsword) * ABILITY_MULTIPLIER[slot]);
+      p.lastAbility = now;
+      target.hp = Math.max(0, target.hp - damage);
+      broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage, hp: target.hp, kind: "ability", slot });
+      broadcast({ type: "player", player: { id: target.id, name: target.name, x: target.x, y: 0, z: target.z, rotation: target.rotation, hp: target.hp } });
+      if (target.hp === 0 && !target.respawnTimer) target.respawnTimer = setTimeout(() => {
+        target.hp = PLAYER_MAX_HP; target.x = 0; target.z = 7; target.respawnTimer = null;
+        broadcast({ type: "respawn", player: { id: target.id, name: target.name, x: target.x, y: 0, z: target.z, rotation: target.rotation, hp: target.hp } });
+      }, 5000);
     }
   });
   ws.on("close", () => {
