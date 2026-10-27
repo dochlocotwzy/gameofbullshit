@@ -1286,8 +1286,8 @@ fillSelect($('#selQ'), Q_LIST.map(k => [k, SPELLS[k].name]), loadout.q);
 fillSelect($('#selW'), W_LIST.map(k => [k, SPELLS[k].name]), loadout.w);
 fillSelect($('#selP'), Object.keys(PASSIVES).map(k => [k, PASSIVES[k].name]), loadout.p);
 $('#selWeapon').addEventListener('change', e => { setWeapon(e.target.value); e.target.blur(); });
-$('#selQ').addEventListener('change', e => { loadout.q = e.target.value; cd.q = 0; renderSlots(); saveLoadout(); e.target.blur(); });
-$('#selW').addEventListener('change', e => { loadout.w = e.target.value; cd.w = 0; renderSlots(); saveLoadout(); e.target.blur(); });
+$('#selQ').addEventListener('change', e => { loadout.q = e.target.value; cd.q = 0; if (window.mpSetLoadout) window.mpSetLoadout(); renderSlots(); saveLoadout(); e.target.blur(); });
+$('#selW').addEventListener('change', e => { loadout.w = e.target.value; cd.w = 0; if (window.mpSetLoadout) window.mpSetLoadout(); renderSlots(); saveLoadout(); e.target.blur(); });
 $('#selP').addEventListener('change', e => { loadout.p = e.target.value; saveLoadout(); e.target.blur(); toast(PASSIVES[e.target.value].desc); });
 $('#chkFree').addEventListener('change', e => { TEST.free = e.target.checked; e.target.blur(); });
 $('#dreset').addEventListener('click', e => { S.total = S.hits = S.max = 0; S.ev.length = 0; S.fightTotal = 0; S.last = -99; for (const d of dummies) { d.total = d.hits = d.max = 0; d.st = {}; d.dots = {}; } e.target.blur(); });
@@ -1403,6 +1403,9 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   window.mpSetWeapon = id => {
     if (socket && socket.readyState === WebSocket.OPEN && WEAPONS[id]) socket.send(JSON.stringify({type:'weapon',weapon:id}));
   };
+  window.mpSetLoadout = () => {
+    if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w}));
+  };
   let selfTargetX = player.position.x, selfTargetZ = player.position.z, selfTargetRot = player.rotation.y;
   const remoteMeshes = new Map();
   const MP_ATTACK_RANGE = 3.8;
@@ -1500,6 +1503,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       mpStatus.textContent = 'Мультиплеер: подключён · ' + mpName;
       socket.send(JSON.stringify({type:'hello', name:mpName}));
       socket.send(JSON.stringify({type:'weapon',weapon:loadout.weapon}));
+      socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w}));
     });
     socket.addEventListener('message', event => {
       let msg; try { msg = JSON.parse(event.data); } catch { return; }
