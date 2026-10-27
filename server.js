@@ -278,6 +278,7 @@ const gameTick = setInterval(() => {
       }
       p.lastDotTick = now;
     }
+  }
 }, TICK_MS);
 server.on("close", () => { clearInterval(heartbeat); clearInterval(gameTick); });
 server.listen(PORT, HOST, () => console.log(`Game server listening on ${HOST}:${PORT}`));
