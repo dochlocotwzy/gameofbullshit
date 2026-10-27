@@ -1366,27 +1366,6 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   window.mpAbilityHit = (slot, weapon) => {
     const target = remotes.get(mpTargetId);
     if (!target || target.dead) return toast('Сначала выбери живую цель');
-    // Claymore E is a charge: lunge toward the target before the server hit resolves.
-    if (slot === 'e' && weapon === 'claymore') {
-      const dx = target.group.position.x - player.position.x;
-      const dz = target.group.position.z - player.position.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > 1.25) {
-        const travel = Math.min(2.7, dist - 1.05);
-        const fromX = player.position.x, fromZ = player.position.z;
-        const toX = fromX + dx / dist * travel, toZ = fromZ + dz / dist * travel;
-        const started = performance.now();
-        const duration = 220;
-        const lunge = () => {
-          const k = Math.min(1, (performance.now() - started) / duration);
-          const eased = 1 - Math.pow(1-k, 3);
-          player.position.x = fromX + (toX-fromX)*eased;
-          player.position.z = fromZ + (toZ-fromZ)*eased;
-          if (k < 1) requestAnimationFrame(lunge);
-        };
-        requestAnimationFrame(lunge);
-      }
-    }
     if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'ability-hit', targetId:mpTargetId, slot, weapon}));
   };
 
