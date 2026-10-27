@@ -711,8 +711,10 @@ ring.rotation.x = -Math.PI / 2; ring.renderOrder = 5; ring.visible = false; scen
 const marker = new THREE.Mesh(new THREE.RingGeometry(.25, .4, 24), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .9, side: THREE.DoubleSide, depthTest: false }));
 marker.rotation.x = -Math.PI / 2; marker.renderOrder = 5; marker.visible = false; scene.add(marker);
 function cancelOrder() { order.mode = null; order.res = null; order.dummy = null; order.slot = null; gather.active = false; gather.t = 0; marker.visible = false; gbar.style.display = 'none'; }
-function orderMove(x, z) { order.dummy = null; order.mode = 'move'; order.x = x; order.z = z; order.res = null; gather.active = false; gather.t = 0; marker.position.set(x, .08, z); marker.visible = true; }
-function orderGather(r) { order.dummy = null; if (order.res && order.res !== r) { order.res.mesh.position.x = order.res.x; order.res.mesh.rotation.z = 0; } order.mode = 'gather'; order.res = r; gather.t = 0; gather.active = false; marker.visible = false; }
+function orderMove(x, z) {
+  if (window.mpSendMoveTarget) window.mpSendMoveTarget(x, z);
+  order.dummy = null; order.mode = 'move'; order.x = x; order.z = z; order.res = null; gather.active = false; gather.t = 0; marker.position.set(x, .08, z); marker.visible = true; }
+function orderGather(r) { if (window.mpStopMovement) window.mpStopMovement(); order.dummy = null; if (order.res && order.res !== r) { order.res.mesh.position.x = order.res.x; order.res.mesh.rotation.z = 0; } order.mode = 'gather'; order.res = r; gather.t = 0; gather.active = false; marker.visible = false; }
 canvas.addEventListener('pointerdown', e => {
   if (e.button !== 0) return; canvas.setPointerCapture(e.pointerId); mouseDown = true; mouse.x = e.clientX; mouse.y = e.clientY;
   const dm = pickDummy(e.clientX, e.clientY);
@@ -1042,32 +1044,71 @@ function pickTarget() {
   if (order.mode === 'attack' && order.dummy) return order.dummy;
   let b = null, bd = 30; for (const d of dummies) { const k = edgeDist(d); if (k < bd) { bd = k; b = d; } } return b;
 }
-function castSlot(slot, ctx) {
-  const sp = spellFor(slot); if (!sp || dash || lockT > 0) return false;
+function castSlot(slot, ctx, options = {}) {
+  const sp = spellFor(slot);
+  if (!sp || dash || lockT > 0) return false;
   if (!TEST.free && (cd[slot] > 0 || energy < sp.en)) return false;
+
+  // Shared resource/cooldown gate. In multiplayer PvP, gameplay effects are
+  // server-owned; never run the dummy-oriented spell script on a fake target.
   if (!TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }
-  sp.cast(ctx); return true;
+
+  if (options.multiplayerTargetId) {
+    const sent = typeof window.mpAbilityHit === 'function' &&
+      window.mpAbilityHit(slot, loadout.weapon, options.multiplayerTargetId, loadout[slot] || WEAPONS[loadout.weapon].e);
+    if (!sent) {
+      // Do not charge the player for a command that could not be sent.
+      if (!TEST.free) { energy = Math.min(100, energy + sp.en); cd[slot] = 0; }
+      return false;
+    }
+    faceXZ(options.targetX, options.targetZ);
+    // Caster-side weapon motion only. The authoritative server event drives
+    // remote hit/impact presentation; no local fake target or fake damage.
+    const anim = slot === 'q' ? 'slash' : slot === 'w' ? 'spin' : 'chop';
+    swing(anim, slot === 'w' ? .42 : .32);
+    return true;
+  }
+
+  try {
+    sp.cast(ctx);
+  } catch (error) {
+    console.error('Spell cast failed:', sp.name, error);
+    if (!TEST.free) { energy = Math.min(100, energy + sp.en); cd[slot] = 0; }
+    return false;
+  }
+  return true;
 }
 function trySpell(slot) {
-  if (window.mpTargetId && typeof window.mpAbilityHit === 'function') {
-    const sp = spellFor(slot);
-    if (!sp || dash || lockT > 0) return;
-    if (!TEST.free && (cd[slot] > 0 || energy < sp.en)) return toast('Перезарядка или не хватает энергии');
-    if (!TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }
-    faceXZ(pos.x + Math.sin(player.rotation.y || yaw), pos.z + Math.cos(player.rotation.y || yaw));
-    swing(slot === 'q' ? 'slash' : slot === 'w' ? 'spin' : 'chop', .32);
-    window.mpAbilityHit(slot, loadout.weapon);
-    return;
+  const sp = spellFor(slot);
+  if (!sp || dash || lockT > 0) return;
+  // Never fall through to local-only spell scripts while connected: otherwise
+  // buffs, costs, and hit effects would diverge between client and server.
+  if (window.mpConnected && !window.mpTargetId) return toast('В мультиплеере сначала выбери игрока-цель');
+
+  // In multiplayer, all player-targeted PvP effects are server-owned.
+  if (window.mpConnected && window.mpTargetId && typeof window.mpAbilityHit === 'function') {
+    const target = window.mpGetTarget && window.mpGetTarget();
+    if (!target) return toast('Сначала выбери живую цель');
+    if (!TEST.free && cd[slot] > 0) return toast('Перезарядка: ' + cd[slot].toFixed(1) + ' с');
+    if (!TEST.free && energy < sp.en) return toast('Не хватает энергии');
+    faceXZ(target.x, target.z);
+    return castSlot(slot, null, {
+      multiplayerTargetId: window.mpTargetId,
+      targetX: target.x, targetZ: target.z
+    });
   }
-  const sp = spellFor(slot); if (!sp || dash || lockT > 0) return;
-  if (!TEST.free) { if (cd[slot] > 0) return toast('Перезарядка: ' + cd[slot].toFixed(1) + ' с'); if (energy < sp.en) return toast('Не хватает энергии'); }
+
+  if (!TEST.free && cd[slot] > 0) return toast('Перезарядка: ' + cd[slot].toFixed(1) + ' с');
+  if (!TEST.free && energy < sp.en) return toast('Не хватает энергии');
   if (sp.target === 'enemy') {
-    const t = pickTarget(); if (!t) return toast('Нет цели: наведи курсор на манекен');
+    const t = pickTarget();
+    if (!t) return toast('Нет цели: наведи курсор на манекен');
     if (edgeDist(t) > sp.range) { cancelOrder(); order.mode = 'cast'; order.slot = slot; order.dummy = t; return; }
-    castSlot(slot, { t });
-  } else castSlot(slot, { aim: aimPoint() });
+    return castSlot(slot, { t });
+  }
+  return castSlot(slot, { aim: aimPoint() });
 }
-function orderAttack(d) { cancelOrder(); order.mode = 'attack'; order.dummy = d; }
+function orderAttack(d) { if (window.mpStopMovement) window.mpStopMovement(); cancelOrder(); order.mode = 'attack'; order.dummy = d; }
 
 /* ---- автоатака и пассивки ---- */
 function afterAuto(t, n) {
@@ -1237,6 +1278,7 @@ function fillSelect(sel, items, cur) { sel.innerHTML = ''; for (const [id, n] of
 const saveLoadout = () => { try { localStorage.setItem('vs_loadout', JSON.stringify(loadout)); } catch (e) { } };
 function setWeapon(id) {
   if (!WEAPONS[id]) return; loadout.weapon = id; $('#selWeapon').value = id; takeCharges(); cd.q = cd.w = cd.e = 0; swingS = null;
+  if (window.mpConnected && typeof window.mpSetWeapon === 'function') window.mpSetWeapon(id);
   rebuildWeapons(); renderSlots(); saveLoadout(); toast(WEAPONS[id].name + (WEAPONS[id].hands === 2 ? ' (двуручный)' : ' (одноручный)'));
 }
 fillSelect($('#selWeapon'), WEAPON_ORDER.map((k, i) => [k, `${i + 1}. ${WEAPONS[k].name}`]), loadout.weapon);
@@ -1244,8 +1286,8 @@ fillSelect($('#selQ'), Q_LIST.map(k => [k, SPELLS[k].name]), loadout.q);
 fillSelect($('#selW'), W_LIST.map(k => [k, SPELLS[k].name]), loadout.w);
 fillSelect($('#selP'), Object.keys(PASSIVES).map(k => [k, PASSIVES[k].name]), loadout.p);
 $('#selWeapon').addEventListener('change', e => { setWeapon(e.target.value); e.target.blur(); });
-$('#selQ').addEventListener('change', e => { loadout.q = e.target.value; cd.q = 0; renderSlots(); saveLoadout(); e.target.blur(); });
-$('#selW').addEventListener('change', e => { loadout.w = e.target.value; cd.w = 0; renderSlots(); saveLoadout(); e.target.blur(); });
+$('#selQ').addEventListener('change', e => { loadout.q = e.target.value; cd.q = 0; if (window.mpSetLoadout) window.mpSetLoadout(); renderSlots(); saveLoadout(); e.target.blur(); });
+$('#selW').addEventListener('change', e => { loadout.w = e.target.value; cd.w = 0; if (window.mpSetLoadout) window.mpSetLoadout(); renderSlots(); saveLoadout(); e.target.blur(); });
 $('#selP').addEventListener('change', e => { loadout.p = e.target.value; saveLoadout(); e.target.blur(); toast(PASSIVES[e.target.value].desc); });
 $('#chkFree').addEventListener('change', e => { TEST.free = e.target.checked; e.target.blur(); });
 $('#dreset').addEventListener('click', e => { S.total = S.hits = S.max = 0; S.ev.length = 0; S.fightTotal = 0; S.last = -99; for (const d of dummies) { d.total = d.hits = d.max = 0; d.st = {}; d.dots = {}; } e.target.blur(); });
@@ -1258,6 +1300,11 @@ rebuildWeapons(); renderSlots();
 
 
 function updatePlayer(dt) {
+  if (window.mpConnected) {
+    // Multiplayer movement is server-authoritative. Do not force Idle here:
+    // it runs every frame and can interrupt any animation started by a cast.
+    return;
+  }
   if (deathState !== 'alive' || playerVitals.hp <= 0) { order.mode = null; gather.active = false; return; }
   const WK = CFG.WASD_MOVE;
   let ix = (down('ArrowRight', WK && 'KeyD') ? 1 : 0) - (down('ArrowLeft', WK && 'KeyA') ? 1 : 0), iz = (down('ArrowDown', WK && 'KeyS') ? 1 : 0) - (down('ArrowUp', WK && 'KeyW') ? 1 : 0);
@@ -1351,37 +1398,38 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 
   const mpName = 'Игрок-' + Math.floor(100 + Math.random() * 900);
   const remotes = new Map();
-  let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0;
+  let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0, lastInputSend = 0;
+  window.mpConnected = false;
+  window.mpSetWeapon = id => {
+    if (socket && socket.readyState === WebSocket.OPEN && WEAPONS[id]) socket.send(JSON.stringify({type:'weapon',weapon:id}));
+  };
+  window.mpSetLoadout = () => {
+    if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w}));
+  };
+  let selfTargetX = player.position.x, selfTargetZ = player.position.z, selfTargetRot = player.rotation.y;
   const remoteMeshes = new Map();
   const MP_ATTACK_RANGE = 3.8;
   const MP_ATTACK_INTERVAL = 900;
   window.mpTargetRing = { active:false, x:0, z:0 };
   window.mpTargetId = null;
-  window.mpAbilityHit = (slot, weapon) => {
-    const target = remotes.get(mpTargetId);
-    if (!target || target.dead) return toast('Сначала выбери живую цель');
-    // Claymore E is a charge: lunge toward the target before the server hit resolves.
-    if (slot === 'e' && weapon === 'claymore') {
-      const dx = target.group.position.x - player.position.x;
-      const dz = target.group.position.z - player.position.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist > 1.25) {
-        const travel = Math.min(2.7, dist - 1.05);
-        const fromX = player.position.x, fromZ = player.position.z;
-        const toX = fromX + dx / dist * travel, toZ = fromZ + dz / dist * travel;
-        const started = performance.now();
-        const duration = 220;
-        const lunge = () => {
-          const k = Math.min(1, (performance.now() - started) / duration);
-          const eased = 1 - Math.pow(1-k, 3);
-          player.position.x = fromX + (toX-fromX)*eased;
-          player.position.z = fromZ + (toZ-fromZ)*eased;
-          if (k < 1) requestAnimationFrame(lunge);
-        };
-        requestAnimationFrame(lunge);
-      }
-    }
-    if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'ability-hit', targetId:mpTargetId, slot, weapon}));
+  window.mpGetTarget = () => { const t = remotes.get(mpTargetId); return t && !t.dead ? {x:t.group.position.x,z:t.group.position.z,name:t.name} : null; };
+  window.mpClearTarget = (notify = false) => {
+    mpTargetId = null;
+    window.mpTargetId = null;
+    if (window.mpTargetRing) window.mpTargetRing.active = false;
+    if (notify) toast('Цель снята');
+  };
+  window.mpAbilityHit = (slot, weapon, requestedTargetId = mpTargetId, abilityId = (loadout[slot] || WEAPONS[weapon]?.e)) => {
+    const targetId = String(requestedTargetId || '');
+    const target = remotes.get(targetId);
+    if (!target || target.dead) { toast('Сначала выбери живую цель'); return false; }
+    if (!socket || socket.readyState !== WebSocket.OPEN) { toast('Нет соединения с сервером'); return false; }
+    // Locked PvP abilities must use the selected player's position, not the stale
+    // mouse-ground point used by PvE. Otherwise dashes, cones and line skills
+    // are resolved somewhere other than the selected target.
+    const aim = {x:target.group.position.x, z:target.group.position.z};
+    socket.send(JSON.stringify({type:'ability-hit', targetId, slot, weapon, abilityId, aimX:aim.x, aimZ:aim.z}));
+    return true;
   };
 
   function makeLabel(name) {
@@ -1460,8 +1508,11 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     socket = new WebSocket(proto + '//' + location.host + '/multiplayer');
     socket.addEventListener('open', () => {
+      window.mpConnected = true;
       mpStatus.textContent = 'Мультиплеер: подключён · ' + mpName;
       socket.send(JSON.stringify({type:'hello', name:mpName}));
+      socket.send(JSON.stringify({type:'weapon',weapon:loadout.weapon}));
+      socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w}));
     });
     socket.addEventListener('message', event => {
       let msg; try { msg = JSON.parse(event.data); } catch { return; }
@@ -1469,19 +1520,79 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         mpId = msg.id;
         (msg.players || []).forEach(p => { if (p.id !== mpId) addRemote(p); });
       } else if (msg.type === 'joined' || msg.type === 'player') updateRemote(msg.player);
+      else if (msg.type === 'world-state') {
+        for (const p of (msg.players || [])) {
+          if (p.id === mpId) { selfTargetX = Number(p.x)||0; selfTargetZ = Number(p.z)||0; selfTargetRot = Number(p.rotation)||0; if (Number.isFinite(Number(p.hp))) setPlayerHealth(Number(p.hp)); }
+          else updateRemote(p);
+        }
+      }
       else if (msg.type === 'left') removeRemote(msg.id);
       else if (msg.type === 'combat-hit') {
         if (msg.targetId === mpId) { setPlayerHealth(msg.hp); if (msg.hp > 0) toast('Получен урон: ' + msg.damage); }
-        const r = remotes.get(msg.targetId); if (r) { r.hp = msg.hp; setRemoteDead(r, msg.hp <= 0); }
-        if (msg.attackerId === mpId) toast((msg.kind === 'ability' ? 'Способность попала' : 'Попадание') + ': -' + msg.damage + ' HP');
-        if (msg.attackerId) { const a = remotes.get(msg.attackerId); if (a && msg.targetId !== mpId) a.swingT = 1; }
-      } else if (msg.type === 'respawn') {
+        const victim = remotes.get(msg.targetId);
+        if (victim) { victim.hp = msg.hp; setRemoteDead(victim, msg.hp <= 0); victim.hitT = 1; }
+        if (msg.attackerId === mpId) toast('Попадание: -' + msg.damage + ' HP');
+        const attacker = remotes.get(msg.attackerId);
+        if (attacker) { attacker.swingT = 1; attacker.abilityT = msg.kind === 'ability' ? 1 : 0; attacker.lastAbilitySlot = msg.slot || null; }
+      } else if (msg.type === 'combat-status') {
+        window.mpStatuses = window.mpStatuses || {};
+        window.mpStatuses[msg.targetId] = msg.statuses || {};
+        const affected = remotes.get(msg.targetId);
+        if (affected) affected.statuses = msg.statuses || {};
+        const activeEntries = Object.entries(msg.statuses || {}).filter(([,v]) => v && v.until > Date.now());
+        if (activeEntries.length) {
+          const statusKey = activeEntries[activeEntries.length - 1][0];
+          const statusColor = ({bleed:0xb01830,slow:0x79c96b,root:0xffe27a,stun:0xff7a3a,air:0xffd45a,resist:0x6cc9ff,haste:0xffd36e,armorBreak:0xe7a35a,hpDown:0x9d80ff})[statusKey] || 0xffffff;
+          const unit = msg.targetId === mpId ? player : affected?.group;
+          if (unit && typeof fxRing === 'function') fxRing(unit.position.x, unit.position.z, 1.25, statusColor, .65);
+        }
+        if (msg.targetId === mpId && activeEntries.length) toast('Эффекты: ' + activeEntries.map(([k]) => k).join(', '));
+      } else if (msg.type === 'combat-effect') {
+        const attacker = remotes.get(msg.attackerId);
+        if (attacker) { attacker.swingT = 1; attacker.abilityT = 1; attacker.lastAbilitySlot = null; }
+        const radius = ({cleave:6,cyclone:2.6,parry:6,spinning:3.4,bloodthirsty:5,carvingDash:2.4,soulless:4.5,majestic:6,infinity:5})[msg.abilityId] || 2.5;
+        const color = ({charge:0xff7a3a,mightyBlow:0xffb347,bloodthirsty:0xb01830,soulless:0xffe59a,infinity:0x58d6ff,ironwill:0xffd36e,splitting:0xffe27a,hamstring:0x79c96b,spinning:0xffd45a})[msg.abilityId] || 0x9be36a;
+        const ex = Number(msg.aimX ?? msg.x) || 0, ez = Number(msg.aimZ ?? msg.z) || 0;
+        if (typeof fxRing === 'function') {
+          fxRing(ex, ez, radius, color, .55);
+          for (const id of (msg.targetIds || [])) {
+            const hit = id === mpId ? player : remotes.get(id)?.group;
+            if (hit && msg.abilityId !== 'ironwill') {
+              const x = hit.position.x, z = hit.position.z;
+              burst(x, 1.4, z, color);
+              fxRing(x, z, msg.abilityId === 'charge' || msg.abilityId === 'mightyBlow' ? 3 : 1.5, color, .38);
+            }
+          }
+          if (['splitting','carvingDash','charge','mightyBlow','soulless','cyclone'].includes(msg.abilityId)) {
+            const sx = Number(msg.originX ?? msg.x) || 0, sz = Number(msg.originZ ?? msg.z) || 0;
+            const dx = ex - sx, dz = ez - sz, len = Math.hypot(dx,dz);
+            if (len > .2) fxLine(sx, sz, dx/len, dz/len, Math.min(len, 14), msg.abilityId === 'soulless' ? 1.8 : 1.1, color, .45);
+          }
+        }
+      }else if (msg.type === 'respawn') {
         updateRemote(msg.player);
         if (msg.player.id === mpId) { setPlayerHealth(msg.player.hp); player.position.set(msg.player.x, 0, msg.player.z); resetDeath(); order.mode = 'none'; }
+      } else if (msg.type === 'combat-resource') {
+        if (Number.isFinite(Number(msg.energy))) energy = Math.max(0, Math.min(100, Number(msg.energy)));
+        const slot = ['q','w','e'].find(s => (s === 'e' ? WEAPONS[loadout.weapon].e : loadout[s]) === msg.abilityId);
+        if (slot && Number.isFinite(Number(msg.cooldownUntil))) cd[slot] = Math.max(cd[slot], (Number(msg.cooldownUntil) - Date.now()) / 1000);
+      } else if (msg.type === 'combat') {
+        if (Number.isFinite(Number(msg.energy))) energy = Math.max(0, Math.min(100, Number(msg.energy)));
+        const rejectedSlot = ['q','w','e'].find(s => (s === 'e' ? WEAPONS[loadout.weapon].e : loadout[s]) === msg.abilityId);
+        if (rejectedSlot) {
+          if (msg.result === 'cooldown' && Number.isFinite(Number(msg.until))) cd[rejectedSlot] = Math.max(0, (Number(msg.until) - Date.now()) / 1000);
+          else cd[rejectedSlot] = 0;
+        }
+        if (msg.result === 'out-of-range') toast('Слишком далеко для способности');
+        else if (msg.result === 'cooldown') toast('Способность на перезарядке');
+        else if (msg.result === 'energy') toast('Не хватает энергии');
+        else if (msg.result === 'no-target') toast('Нет цели в области действия');
+        else if (msg.result === 'disabled') toast('Нельзя использовать способности под контролем');
       } else if (msg.type === 'ping') mpStatus.textContent = 'Мультиплеер: онлайн · ' + msg.online + ' игрок(ов)';
       else if (msg.type === 'error') mpStatus.textContent = 'Мультиплеер: ' + msg.message;
     });
     socket.addEventListener('close', () => {
+      window.mpConnected = false;
       mpStatus.textContent = 'Мультиплеер: отключён · обновите страницу';
     });
     socket.addEventListener('error', () => {
@@ -1491,20 +1602,28 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   // Space selects the nearest living multiplayer opponent. This is independent of mouse picking.
   window.mpSelectNearestTarget = () => {
     if (!player) return;
-    let nearestId = null, nearestDist = Infinity;
+    let nearestId = null, nearestDist = 20;
     for (const [id, remote] of remotes) {
       if (!remote || remote.dead || !remote.group || remote.group.visible === false) continue;
       const d = Math.hypot(player.position.x - remote.group.position.x, player.position.z - remote.group.position.z);
-      if (d < nearestDist) { nearestDist = d; nearestId = id; }
+      if (d <= nearestDist) { nearestDist = d; nearestId = id; }
     }
-    if (!nearestId) { toast('Рядом нет живых игроков'); return; }
+    if (!nearestId) { toast('Нет живых целей в радиусе 20 м'); return; }
     mpTargetId = nearestId;
     window.mpTargetId = nearestId;
     const chosen = remotes.get(nearestId);
     toast('Цель выбрана · ' + (chosen?.name || 'игрок') + ' · ' + nearestDist.toFixed(1) + ' м');
   };
   addEventListener('keydown', ev => {
-    if (ev.code !== 'Space' || ev.repeat || ev.target?.tagName === 'INPUT' || ev.target?.tagName === 'TEXTAREA' || ev.target?.tagName === 'SELECT') return;
+    if (ev.target?.tagName === 'INPUT' || ev.target?.tagName === 'TEXTAREA' || ev.target?.tagName === 'SELECT' || ev.target?.isContentEditable) return;
+    if (ev.code === 'Escape') {
+      if (window.mpTargetId) {
+        ev.preventDefault();
+        window.mpClearTarget(true);
+      }
+      return;
+    }
+    if (ev.code !== 'Space' || ev.repeat) return;
     ev.preventDefault();
     window.mpSelectNearestTarget();
   }, true);
@@ -1514,9 +1633,31 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (ev.button !== 0) return;
     pointerRay(ev.clientX, ev.clientY);
     const hits = ray.intersectObjects([...remotes.values()].map(r => r.group), true);
-    if (!hits.length) return;
-    const targetId = hits[0].object.userData.mpPlayerId || hits[0].object.parent?.userData.mpPlayerId || hits[0].object.parent?.parent?.userData.mpPlayerId;
-    if (!targetId) return;
+    if (!hits.length) {
+      // Clicking the ground or anything other than a player clears PvP target;
+      // let the normal world-click handler process movement/resource orders.
+      mpTargetId = null;
+      window.mpTargetId = null;
+      if (window.mpTargetRing) window.mpTargetRing.active = false;
+      return;
+    }
+    // Ray hits may land on nested meshes (visor, backpack, boots, label, etc.).
+    // Walk the full scene graph rather than assuming a fixed parent depth.
+    let node = hits[0].object, targetId = null;
+    while (node && !targetId) {
+      targetId = node.userData?.mpPlayerId || null;
+      node = node.parent;
+    }
+    if (!targetId) {
+      window.mpClearTarget();
+      return;
+    }
+    const picked = remotes.get(targetId);
+    if (!picked || picked.dead) {
+      window.mpClearTarget();
+      toast('Нельзя выбрать мёртвого игрока');
+      return;
+    }
     mpTargetId = targetId;
     window.mpTargetId = targetId;
     toast('Цель захвачена: автоатака в радиусе, E — особая способность оружия.');
@@ -1526,6 +1667,12 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 
   function mpFrame(now) {
     requestAnimationFrame(mpFrame);
+    if (window.mpConnected && player && playerVitals.hp > 0) {
+      player.position.x += (selfTargetX - player.position.x) * .42;
+      player.position.z += (selfTargetZ - player.position.z) * .42;
+      player.rotation.y += (selfTargetRot - player.rotation.y) * .42;
+    }
+
     for (const r of remotes.values()) {
       if (!r.dead && r.swingT > 0) { r.swingT = Math.max(0, r.swingT - .06); r.potato.rotation.x = Math.sin((1-r.swingT)*Math.PI) * .22; }
       else if (!r.dead) r.potato.rotation.x *= .75;
@@ -1549,12 +1696,13 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         lastAttack = now;
       }
     }
-    if (socket && socket.readyState === WebSocket.OPEN && player && now - lastSend > 100) {
-      lastSend = now;
-      if (playerVitals.hp > 0) socket.send(JSON.stringify({
-        type:'state', x:player.position.x, z:player.position.z, rotation:player.rotation.y,
-        hp:playerVitals && playerVitals.hp
-      }));
+    if (socket && socket.readyState === WebSocket.OPEN && now - lastInputSend > 50) {
+      lastInputSend = now;
+      const WK = CFG.WASD_MOVE;
+      const ix = (down('ArrowRight', WK && 'KeyD') ? 1 : 0) - (down('ArrowLeft', WK && 'KeyA') ? 1 : 0);
+      const iz = (down('ArrowDown', WK && 'KeyS') ? 1 : 0) - (down('ArrowUp', WK && 'KeyW') ? 1 : 0);
+      const c = Math.cos(camYaw), s = Math.sin(camYaw);
+      socket.send(JSON.stringify({type:'input', x:ix*c + iz*s, z:-ix*s + iz*c, running:down('ShiftLeft','ShiftRight')}));
     }
   }
   connect();
