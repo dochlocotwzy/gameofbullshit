@@ -1488,6 +1488,27 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       mpStatus.textContent = 'Мультиплеер: ошибка соединения';
     });
   }
+  // Space selects the nearest living multiplayer opponent. This is independent of mouse picking.
+  window.mpSelectNearestTarget = () => {
+    if (!player) return;
+    let nearestId = null, nearestDist = Infinity;
+    for (const [id, remote] of remotes) {
+      if (!remote || remote.dead || !remote.group || remote.group.visible === false) continue;
+      const d = Math.hypot(player.position.x - remote.group.position.x, player.position.z - remote.group.position.z);
+      if (d < nearestDist) { nearestDist = d; nearestId = id; }
+    }
+    if (!nearestId) { toast('Рядом нет живых игроков'); return; }
+    mpTargetId = nearestId;
+    window.mpTargetId = nearestId;
+    const chosen = remotes.get(nearestId);
+    toast('Цель выбрана · ' + (chosen?.name || 'игрок') + ' · ' + nearestDist.toFixed(1) + ' м');
+  };
+  addEventListener('keydown', ev => {
+    if (ev.code !== 'Space' || ev.repeat || ev.target?.tagName === 'INPUT' || ev.target?.tagName === 'TEXTAREA' || ev.target?.tagName === 'SELECT') return;
+    ev.preventDefault();
+    window.mpSelectNearestTarget();
+  }, true);
+
   // Select another player by clicking their character.
   canvas.addEventListener('pointerdown', ev => {
     if (ev.button !== 0) return;
