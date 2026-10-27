@@ -1182,7 +1182,7 @@ function afterAuto(t, n) {
 function doAuto(t) {
   const w = WEAPONS[loadout.weapon], n = ++autoN; faceXZ(t.x, t.z);
   swing(n % 2 ? 'slash' : 'chop', .26);
-  const base = w.auto * (1 + (buffs.atk.t > 0 ? 1 : 0) + (buffs.intr.t > 0 ? buffs.intr.v : 0));
+  const base = w.auto * (1 + (buffs.atk.t > 0 ? 1 : 0) + (buffs.intr.t > 0 ? buffs.intr.v : 0) + (buffs.blood.t > 0 ? .3 : 0));
   later(.1, () => { dmg(t, base, 'auto'); afterAuto(t, n); });
   autoCd = w.aint / atkSpeed();
 }
@@ -1330,6 +1330,8 @@ function renderHud() {
   if (left('haste') > 0 && buffs.ms.t <= 0) b.push(`🏃 +${Math.round((Number(mpS.haste.value) || 0) * 100)}% скорость ${sec(left('haste'))}`);
   if (left('resist') > 0 && buffs.resist.t <= 0) b.push(`🛡️ Сопротивление ${Math.round((Number(mpS.resist.value) || 0) * 100)}% ${sec(left('resist'))}`);
   if (left('attackBuff') > 0 && buffs.atk.t <= 0 && buffs.intr.t <= 0) b.push(`⚔️ +${Math.round((Number(mpS.attackBuff.value) || 0) * 100)}% урон автоатак ${sec(left('attackBuff'))}`);
+  if (left('interruptAttackBuff') > 0 && buffs.intr.t <= 0) b.push(`✋ автоатаки +${Math.round((Number(mpS.interruptAttackBuff.value) || 0) * 100)}% ${sec(left('interruptAttackBuff'))}`);
+  if (left('bloodthirstAttackBuff') > 0 && buffs.blood.t <= 0) b.push(`🩸 автоатаки +${Math.round((Number(mpS.bloodthirstAttackBuff.value) || 0) * 100)}% ${sec(left('bloodthirstAttackBuff'))}`);
   if (left('bloodthirst') > 0 && buffs.blood.t <= 0) b.push(`🩸 Bloodthirst ${sec(left('bloodthirst'))}`);
   if (left('defense') > 0 && buffs.def.t <= 0) b.push(`🧱 +${Number(mpS.defense.value) || 68} защиты ${sec(left('defense'))}`);
   if (left('weak') > 0) b.push(`⬇️ Ослабление урона −${Math.round((Number(mpS.weak.value) || 0) * 100)}% ${sec(left('weak'))}`);
@@ -1562,7 +1564,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     group.rotation.y = Number(p.rotation)||0;
     scene.add(group);
     const hp = Number.isFinite(Number(p.hp)) ? Number(p.hp) : 1000;
-    remotes.set(p.id, {group, mesh, potato, label, targetX:group.position.x, targetZ:group.position.z, targetRot:group.rotation.y, name:p.name||'Игрок', hp, dead:hp <= 0, swingT:0});
+    remotes.set(p.id, {group, mesh, potato, label, targetX:group.position.x, targetZ:group.position.z, targetRot:group.rotation.y, name:p.name||'Игрок', hp, dead:hp <= 0, charges:Number(p.charges)||0, chargeExpiresAt:Number(p.chargeExpiresAt)||0, swingT:0});
     if (hp <= 0) setRemoteDead(remotes.get(p.id), true);
     remoteMeshes.set(p.id, mesh);
   }
@@ -1575,7 +1577,11 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     r.label.visible = !dead;
   }
   function updateRemote(p) {
-    if (!p || p.id === mpId) return;
+    if (!p) return;
+    if (p.id === mpId) {
+      if (Number.isFinite(Number(p.hp))) setPlayerHealth(Number(p.hp));
+      return;
+    }
     if (!remotes.has(p.id)) addRemote(p);
     const r = remotes.get(p.id);
     if (!r) return;
@@ -1585,7 +1591,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (r.snapshots.length > 12) r.snapshots.splice(0, r.snapshots.length - 12);
     r.targetX = Number(p.x)||0; r.targetZ = Number(p.z)||0;
     r.targetRot = Number(p.rotation)||0; r.hp = Number.isFinite(Number(p.hp)) ? Number(p.hp) : r.hp;
-    r.charges = Number(p.charges)||0; r.weapon = p.weapon || r.weapon || 'broadsword';
+    r.charges = Number(p.charges)||0; r.chargeExpiresAt = Number(p.chargeExpiresAt)||0; r.weapon = p.weapon || r.weapon || 'broadsword';
     r.statuses = p.statuses || r.statuses || {};
     setRemoteDead(r, r.hp <= 0);
   }
@@ -1698,7 +1704,8 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         if (Number.isFinite(Number(msg.energy))) energy = Math.max(0, Math.min(100, Number(msg.energy)));
         if (Number.isFinite(Number(msg.charges))) {
           buffs.charges.n = Math.max(0, Math.min(COMBAT.CHARGE_MAX, Number(msg.charges)));
-          buffs.charges.t = buffs.charges.n > 0 ? COMBAT.CHARGE_TIME : 0;
+          const expiresAt = Number(msg.chargeExpiresAt);
+          buffs.charges.t = buffs.charges.n > 0 ? (Number.isFinite(expiresAt) && expiresAt > 0 ? Math.max(0, (expiresAt - Date.now()) / 1000) : COMBAT.CHARGE_TIME) : 0;
         }
         if (msg.statuses && typeof msg.statuses === 'object') window.mpSelfStatuses = msg.statuses;
         const slot = ['q','w','e'].find(s => (s === 'e' ? WEAPONS[loadout.weapon].e : loadout[s]) === msg.abilityId);
