@@ -1393,10 +1393,12 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   window.mpTargetRing = { active:false, x:0, z:0 };
   window.mpTargetId = null;
   window.mpGetTarget = () => { const t = remotes.get(mpTargetId); return t && !t.dead ? {x:t.group.position.x,z:t.group.position.z,name:t.name} : null; };
-  window.mpAbilityHit = (slot, weapon) => {
-    const target = remotes.get(mpTargetId);
+  window.mpAbilityHit = (slot, weapon, requestedTargetId = mpTargetId) => {
+    const targetId = String(requestedTargetId || '');
+    const target = remotes.get(targetId);
     if (!target || target.dead) return toast('Сначала выбери живую цель');
-    if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'ability-hit', targetId:mpTargetId, slot, weapon}));
+    if (!socket || socket.readyState !== WebSocket.OPEN) return toast('Нет соединения с сервером');
+    socket.send(JSON.stringify({type:'ability-hit', targetId, slot, weapon}));
   };
 
   function makeLabel(name) {
@@ -1490,7 +1492,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         if (msg.targetId === mpId) { setPlayerHealth(msg.hp); if (msg.hp > 0) toast('Получен урон: ' + msg.damage); }
         const r = remotes.get(msg.targetId); if (r) { r.hp = msg.hp; setRemoteDead(r, msg.hp <= 0); }
         if (msg.attackerId === mpId) toast((msg.kind === 'ability' ? 'Способность попала' : 'Попадание') + ': -' + msg.damage + ' HP');
-        if (msg.attackerId) { const a = remotes.get(msg.attackerId); if (a && msg.targetId !== mpId) { a.swingT = 1; a.abilityT = msg.kind === 'ability' ? 1 : 0; a.lastAbilitySlot = msg.slot || null; } }\n        if (msg.targetId === mpId && msg.kind === 'ability') { swing(msg.slot === 'q' ? 'slash' : msg.slot === 'w' ? 'spin' : 'chop', .32); }
+        if (msg.attackerId) { const a = remotes.get(msg.attackerId); if (a && msg.targetId !== mpId) { a.swingT = 1; a.abilityT = msg.kind === 'ability' ? 1 : 0; a.lastAbilitySlot = msg.slot || null; } }\n        // Only the attacker plays the attack animation; being hit must not make the victim swing.
       } else if (msg.type === 'respawn') {
         updateRemote(msg.player);
         if (msg.player.id === mpId) { setPlayerHealth(msg.player.hp); player.position.set(msg.player.x, 0, msg.player.z); resetDeath(); order.mode = 'none'; }
