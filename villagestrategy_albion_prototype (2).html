@@ -1055,7 +1055,7 @@ function castSlot(slot, ctx, options = {}) {
 
   if (options.multiplayerTargetId) {
     const sent = typeof window.mpAbilityHit === 'function' &&
-      window.mpAbilityHit(slot, loadout.weapon, options.multiplayerTargetId);
+      window.mpAbilityHit(slot, loadout.weapon, options.multiplayerTargetId, loadout[slot] || WEAPONS[loadout.weapon].e);
     if (!sent) {
       // Do not charge the player for a command that could not be sent.
       if (!TEST.free) { energy = Math.min(100, energy + sp.en); cd[slot] = 0; }
@@ -1082,18 +1082,16 @@ function trySpell(slot) {
   const sp = spellFor(slot);
   if (!sp || dash || lockT > 0) return;
 
-  // The same castSlot path handles both local dummies and remote players.
-  if (window.mpTargetId && typeof window.mpAbilityHit === 'function' && sp.target === 'enemy') {
+  // In multiplayer, all player-targeted PvP effects are server-owned.
+  if (window.mpConnected && window.mpTargetId && typeof window.mpAbilityHit === 'function') {
     const target = window.mpGetTarget && window.mpGetTarget();
     if (!target) return toast('Сначала выбери живую цель');
     if (!TEST.free && cd[slot] > 0) return toast('Перезарядка: ' + cd[slot].toFixed(1) + ' с');
     if (!TEST.free && energy < sp.en) return toast('Не хватает энергии');
-
     faceXZ(target.x, target.z);
     return castSlot(slot, null, {
       multiplayerTargetId: window.mpTargetId,
-      targetX: target.x,
-      targetZ: target.z
+      targetX: target.x, targetZ: target.z
     });
   }
 
@@ -1403,12 +1401,13 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   window.mpTargetRing = { active:false, x:0, z:0 };
   window.mpTargetId = null;
   window.mpGetTarget = () => { const t = remotes.get(mpTargetId); return t && !t.dead ? {x:t.group.position.x,z:t.group.position.z,name:t.name} : null; };
-  window.mpAbilityHit = (slot, weapon, requestedTargetId = mpTargetId) => {
+  window.mpAbilityHit = (slot, weapon, requestedTargetId = mpTargetId, abilityId = (loadout[slot] || WEAPONS[weapon]?.e)) => {
     const targetId = String(requestedTargetId || '');
     const target = remotes.get(targetId);
     if (!target || target.dead) { toast('Сначала выбери живую цель'); return false; }
     if (!socket || socket.readyState !== WebSocket.OPEN) { toast('Нет соединения с сервером'); return false; }
-    socket.send(JSON.stringify({type:'ability-hit', targetId, slot, weapon}));
+    const aim = aimPoint();
+    socket.send(JSON.stringify({type:'ability-hit', targetId, slot, weapon, abilityId, aimX:aim.x, aimZ:aim.z}));
     return true;
   };
 
