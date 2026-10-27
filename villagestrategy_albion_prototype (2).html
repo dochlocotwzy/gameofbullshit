@@ -1551,7 +1551,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
             }
           }
           if (['splitting','carvingDash','charge','mightyBlow','soulless'].includes(msg.abilityId)) {
-            const sx = Number(msg.x) || 0, sz = Number(msg.z) || 0;
+            const sx = Number(msg.originX ?? msg.x) || 0, sz = Number(msg.originZ ?? msg.z) || 0;
             const dx = ex - sx, dz = ez - sz, len = Math.hypot(dx,dz);
             if (len > .2) fxLine(sx, sz, dx/len, dz/len, Math.min(len, 14), msg.abilityId === 'soulless' ? 1.8 : 1.1, color, .45);
           }
