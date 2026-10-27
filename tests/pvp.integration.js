@@ -54,6 +54,7 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     const aId = wa.id;
     const bId = wb.id;
     assert.ok(aId && bId && aId !== bId, "server assigns distinct player IDs");
+    a.send(JSON.stringify({ type: "loadout", q: "strike", w: "hamstring" }));
 
     a.send(JSON.stringify({ type: "ability-hit", targetId: bId, slot: "q", weapon: "broadsword", abilityId: "strike", aimX: 0, aimZ: 7 }));
     const hit = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId);
