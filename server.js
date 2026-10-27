@@ -209,14 +209,14 @@ wss.on("connection", (ws) => {
       if(!victims.length){send(ws,{type:"combat",result:"no-target",targetId:target.id,abilityId,energy:p.energy});return;}
       p.lastAbility=now;p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;
       send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]});
+      let castDamage=ability.damage;
+      if(abilityId==="mightyBlow")castDamage=[269,432,649,918][Math.min(3,p.charges||0)];
+      if(abilityId==="charge")castDamage=[390,560,780,1030][Math.min(3,p.charges||0)];
+      if(abilityId==="carvingDash")castDamage=[260,340,430,540][Math.min(3,p.charges||0)];
+      if(abilityId==="cyclone"&&(p.charges||0)>0){castDamage=162;p.charges--;}
+      if(["mightyBlow","charge","carvingDash"].includes(abilityId))p.charges=0;
       for(const victim of victims){
-        let damage=ability.damage;
-        if(abilityId==="mightyBlow")damage=[269,432,649,918][Math.min(3,p.charges||0)];
-        if(abilityId==="charge")damage=[390,560,780,1030][Math.min(3,p.charges||0)];
-        if(abilityId==="carvingDash")damage=[260,340,430,540][Math.min(3,p.charges||0)];
-        if(["mightyBlow","charge","carvingDash"].includes(abilityId))p.charges=0;
-        if(abilityId==="cyclone"&&(p.charges||0)>0){damage=162;p.charges--;}
-        for(let hit=0;hit<(ability.hits||1);hit++){const amount=hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:damage;const reduction=victim.statuses?.resist?.value||0;const vulnerability=(victim.statuses?.armorBreak?1.25:1)*(victim.statuses?.hpDown?1+(Number(victim.statuses.hpDown.value)||0):1);const dealt=Math.round(amount*(1-reduction)*vulnerability);victim.hp=Math.max(0,victim.hp-dealt);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
+        for(let hit=0;hit<(ability.hits||1);hit++){const amount=hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:castDamage;const reduction=victim.statuses?.resist?.value||0;const vulnerability=(victim.statuses?.armorBreak?1.25:1)*(victim.statuses?.hpDown?1+(Number(victim.statuses.hpDown.value)||0):1);const dealt=Math.round(amount*(1-reduction)*vulnerability);victim.hp=Math.max(0,victim.hp-dealt);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
         applyEffects(victim,ability.effects||[],p.id);
         if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
       }
