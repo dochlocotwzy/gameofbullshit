@@ -27,6 +27,10 @@
   .fl{position:fixed;pointer-events:none;font-weight:700;font-size:16px;color:#fff3b0;text-shadow:0 1px 3px #000;transform:translate(-50%,-50%);animation:rise 1.3s ease-out forwards}
   @keyframes rise{to{transform:translate(-50%,-170%);opacity:0}}
 
+  #player-health{position:fixed;left:50%;bottom:190px;transform:translateX(-50%);width:min(360px,70vw);padding:7px 10px;background:#14201bd9;border:1px solid #ffffff30;border-radius:9px;box-shadow:0 3px 12px #0006;pointer-events:none}
+  #player-health .hp-head{display:flex;justify-content:space-between;gap:12px;font-size:12px;margin-bottom:5px;color:#f3efe3}
+  #player-health .hp-track{height:13px;border-radius:7px;overflow:hidden;background:#260d0d;border:1px solid #ffffff2a}
+  #player-health .hp-fill{height:100%;width:100%;background:linear-gradient(90deg,#a52328,#ef5350 70%,#ff8a80);transition:width .12s}
   #hud{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);padding:8px 12px 10px;display:flex;flex-direction:column;align-items:center;gap:6px}
   #buffs{display:flex;gap:5px;min-height:20px;flex-wrap:wrap;justify-content:center;max-width:520px}
   .bf{padding:1px 8px;border-radius:10px;background:#0008;border:1px solid #ffffff30;white-space:nowrap;font-size:11px}
@@ -79,6 +83,11 @@
   <button id="qbtn">Графика: Авто</button>
 </div>
 <canvas id="mini" width="170" height="170"></canvas>
+<div id="player-health" class="glass" aria-label="Здоровье персонажа">
+  <div class="hp-head"><span>❤️ Здоровье</span><b id="hp-text">1000 / 1000</b></div>
+  <div class="hp-track"><div class="hp-fill" id="hp-fill"></div></div>
+</div>
+
 <div id="inv" class="glass">
   <div class="slot"><b>🪵</b><span id="c-wood">0</span><small>Древесина</small></div>
   <div class="slot"><b>🪨</b><span id="c-stone">0</span><small>Камень</small></div>
@@ -604,6 +613,20 @@ function updateChips(dt) {
 
 /* =====================  игрок  ===================== */
 const player = new THREE.Group(), body = new THREE.Group(); player.add(body); scene.add(player);
+const PLAYER_MAX_HP = 1000;
+const playerVitals = { hp: PLAYER_MAX_HP, maxHp: PLAYER_MAX_HP };
+const hpFillEl = document.getElementById("hp-fill"), hpTextEl = document.getElementById("hp-text");
+function setPlayerHealth(value) {
+  playerVitals.hp = Math.max(0, Math.min(playerVitals.maxHp, Number(value) || 0));
+  const pct = playerVitals.hp / playerVitals.maxHp * 100;
+  hpFillEl.style.width = pct + "%";
+  hpFillEl.style.filter = pct <= 25 ? "saturate(1.5) brightness(1.2)" : "none";
+  hpTextEl.textContent = Math.ceil(playerVitals.hp) + " / " + playerVitals.maxHp;
+}
+// Entry point for combat and future server-authoritative multiplayer damage.
+function damagePlayer(amount) { setPlayerHealth(playerVitals.hp - Math.max(0, Number(amount) || 0)); }
+function healPlayer(amount) { setPlayerHealth(playerVitals.hp + Math.max(0, Number(amount) || 0)); }
+setPlayerHealth(PLAYER_MAX_HP);
 const pos = player.position; pos.set(0, 0, 7);
 let mixer = null, actions = {}, active = null, hasAnim = false;
 const loader = new GLTFLoader();
