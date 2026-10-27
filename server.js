@@ -111,14 +111,13 @@ wss.on("connection", (ws) => {
       send(ws, { type: "welcome", id, players: snapshot() });
       return;
     }
-    if (msg.type === "input") {
+    if (msg.type === "state") {
       if (p.hp <= 0) return;
-      const x = Number(msg.x), z = Number(msg.z);
-      if (!Number.isFinite(x) || !Number.isFinite(z)) return;
-      p.input.x = Math.max(-1, Math.min(1, x));
-      p.input.z = Math.max(-1, Math.min(1, z));
-      p.input.running = msg.running === true;
-      p.moveTarget = null;
+      const x = Number(msg.x), z = Number(msg.z), rotation = Number(msg.rotation);
+      if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(rotation)) return;
+      if (Math.abs(x) > WORLD_BOUND || Math.abs(z) > WORLD_BOUND) return;
+      p.x = x; p.z = z; p.rotation = rotation;
+      broadcast({ type: "player", player: publicPlayer(p) }, p.id);
       return;
     }
     if (msg.type === "test-mode") { p.testMode = msg.enabled === true; if (p.testMode) { p.energy = 100; p.abilityCooldowns = {}; } send(ws, {type:"test-mode", enabled:p.testMode, energy:p.energy}); return; }
@@ -274,28 +273,6 @@ const gameTick = setInterval(() => {
       }
       p.lastDotTick = now;
     }
-    if (p.hp <= 0) continue;
-    const rooted = ["root","stun","air"].some(key => p.statuses[key]);
-    let dx = rooted ? 0 : p.input.x, dz = rooted ? 0 : p.input.z;
-    if (p.moveTarget && !rooted) {
-      dx = p.moveTarget.x - p.x;
-      dz = p.moveTarget.z - p.z;
-      const d = Math.hypot(dx,dz);
-      if (d < .18) { p.x = p.moveTarget.x; p.z = p.moveTarget.z; p.moveTarget = null; dx = dz = 0; }
-      else { dx /= d; dz /= d; }
-    }
-    const len = Math.hypot(dx,dz);
-    if (len > 1) { dx /= len; dz /= len; }
-    if (len > 0) {
-      const slow = p.statuses.slow ? Math.max(0.2, 1 - Number(p.statuses.slow.value || 0)) : 1;
-      const haste = p.statuses.haste ? 1 + Number(p.statuses.haste.value || 0) : 1;
-      const speed = (p.moveTarget ? MOVE_SPEED : (p.input.running ? RUN_SPEED : MOVE_SPEED)) * slow * haste;
-      p.x = Math.max(-WORLD_BOUND, Math.min(WORLD_BOUND, p.x + dx * speed * dt));
-      p.z = Math.max(-WORLD_BOUND, Math.min(WORLD_BOUND, p.z + dz * speed * dt));
-      p.rotation = Math.atan2(dx, dz);
-    }
-  }
-  broadcast({type:"world-state", players:snapshot()});
 }, TICK_MS);
 server.on("close", () => { clearInterval(heartbeat); clearInterval(gameTick); });
 server.listen(PORT, HOST, () => console.log(`Game server listening on ${HOST}:${PORT}`));
