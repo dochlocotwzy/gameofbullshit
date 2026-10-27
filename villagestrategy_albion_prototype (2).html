@@ -1468,8 +1468,11 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     const needsTarget = !groundAoE.has(String(abilityId)) && !selfCast.has(String(abilityId));
     if (needsTarget && (!target || target.dead)) { toast('Сначала выбери живую цель'); return false; }
     if (!socket || socket.readyState !== WebSocket.OPEN) { toast('Нет соединения с сервером'); return false; }
-    // Point/cone AoE uses cursor aim and never depends on the selected PvP target.
-    let aim = target && !target.dead ? {x:target.group.position.x, z:target.group.position.z} : aimPoint();
+    // Ground AoE (including the 5th weapon's Carving Dash E) is always aimed at the cursor/ground,
+    // never at the selected player. If the cursor has no ground intersection, aimPoint falls forward.
+    let aim = groundAoE.has(String(abilityId)) || !target || target.dead
+      ? aimPoint()
+      : {x:target.group.position.x, z:target.group.position.z};
     if (groundAoE.has(String(abilityId)) && mouse.x >= 0 && mouse.y >= 0) {
       const point = groundPoint(mouse.x, mouse.y);
       if (point && Number.isFinite(point.x) && Number.isFinite(point.z)) {
