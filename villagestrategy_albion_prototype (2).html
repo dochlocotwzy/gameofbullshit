@@ -1044,46 +1044,58 @@ function pickTarget() {
   if (order.mode === 'attack' && order.dummy) return order.dummy;
   let b = null, bd = 30; for (const d of dummies) { const k = edgeDist(d); if (k < bd) { bd = k; b = d; } } return b;
 }
-function castSlot(slot, ctx) {
-  const sp = spellFor(slot); if (!sp || dash || lockT > 0) return false;
+function castSlot(slot, ctx, options = {}) {
+  const sp = spellFor(slot);
+  if (!sp || dash || lockT > 0) return false;
   if (!TEST.free && (cd[slot] > 0 || energy < sp.en)) return false;
+
+  // Single cast pipeline for dummies and multiplayer targets: pay costs once,
+  // start cooldown once, execute the selected spell definition once.
   if (!TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }
-  sp.cast(ctx); return true;
+  try {
+    sp.cast(ctx);
+  } catch (error) {
+    console.error('Spell cast failed:', sp.name, error);
+    return false;
+  }
+
+  // Multiplayer damage is validated and applied by the server. The local
+  // spell definition is used for the same caster-side visuals/passives.
+  if (options.multiplayerTargetId && typeof window.mpAbilityHit === 'function') {
+    window.mpAbilityHit(slot, loadout.weapon, options.multiplayerTargetId);
+  }
+  return true;
 }
 function trySpell(slot) {
-  const selectedSpell = spellFor(slot);
-  if (window.mpTargetId && typeof window.mpAbilityHit === 'function' && selectedSpell && selectedSpell.target === 'enemy') {
-    const sp = selectedSpell;
+  const sp = spellFor(slot);
+  if (!sp || dash || lockT > 0) return;
+
+  // The same castSlot path handles both local dummies and remote players.
+  if (window.mpTargetId && typeof window.mpAbilityHit === 'function' && sp.target === 'enemy') {
     const target = window.mpGetTarget && window.mpGetTarget();
-    if (!target || dash || lockT > 0) return;
-    if (!TEST.free && (cd[slot] > 0 || energy < sp.en)) return toast('Перезарядка или не хватает энергии');
-    if (!TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }
+    if (!target) return toast('Сначала выбери живую цель');
+    if (!TEST.free && cd[slot] > 0) return toast('Перезарядка: ' + cd[slot].toFixed(1) + ' с');
+    if (!TEST.free && energy < sp.en) return toast('Не хватает энергии');
+
     faceXZ(target.x, target.z);
-    // Always play a visible weapon animation immediately; some spell scripts
-    // only spawn effects when their original dummy-specific conditions match.
-    const anim = slot === 'q' ? 'slash' : slot === 'w' ? 'spin' : 'chop';
-    swing(anim, slot === 'w' ? .42 : .32);
-    const proxy = {name:target.name, x:target.x, z:target.z, r:.5, total:0, hits:0, max:0,
-      st:{}, dots:{}, flash:0, shake:0, caster:null, hp:1000, maxHp:1000, alive:true};
-    // Execute the real spell script to retain its animations, charges, buffs
-    // and passive triggers locally. Server remains authoritative for PvP HP.
-    try {
-      if (sp.target === 'enemy') sp.cast({t:proxy});
-      else if (sp.target === 'self') sp.cast({aim:{x:target.x,z:target.z}});
-      else sp.cast({aim:clampAim({x:target.x,z:target.z}, sp.range || 4)});
-    } catch (e) {
-      console.warn('PvP spell visual/effect fallback:', e);
-    }
-    window.mpAbilityHit(slot, loadout.weapon);
-    return;
+    const proxy = {
+      name: target.name, x: target.x, z: target.z, r: .5,
+      total: 0, hits: 0, max: 0, st: {}, dots: {}, flash: 0, shake: 0,
+      caster: null, hp: 1000, maxHp: 1000, alive: true,
+      multiplayerProxy: true
+    };
+    return castSlot(slot, { t: proxy }, { multiplayerTargetId: window.mpTargetId });
   }
-  const sp = spellFor(slot); if (!sp || dash || lockT > 0) return;
-  if (!TEST.free) { if (cd[slot] > 0) return toast('Перезарядка: ' + cd[slot].toFixed(1) + ' с'); if (energy < sp.en) return toast('Не хватает энергии'); }
+
+  if (!TEST.free && cd[slot] > 0) return toast('Перезарядка: ' + cd[slot].toFixed(1) + ' с');
+  if (!TEST.free && energy < sp.en) return toast('Не хватает энергии');
   if (sp.target === 'enemy') {
-    const t = pickTarget(); if (!t) return toast('Нет цели: наведи курсор на манекен');
+    const t = pickTarget();
+    if (!t) return toast('Нет цели: наведи курсор на манекен');
     if (edgeDist(t) > sp.range) { cancelOrder(); order.mode = 'cast'; order.slot = slot; order.dummy = t; return; }
-    castSlot(slot, { t });
-  } else castSlot(slot, { aim: aimPoint() });
+    return castSlot(slot, { t });
+  }
+  return castSlot(slot, { aim: aimPoint() });
 }
 function orderAttack(d) { if (window.mpStopMovement) window.mpStopMovement(); cancelOrder(); order.mode = 'attack'; order.dummy = d; }
 
@@ -1277,7 +1289,8 @@ rebuildWeapons(); renderSlots();
 
 function updatePlayer(dt) {
   if (window.mpConnected) {
-    if (deathState === 'alive' && hasAnim) { play('Idle'); if (active) active.timeScale = 1; }
+    // Multiplayer movement is server-authoritative. Do not force Idle here:
+    // it runs every frame and can interrupt any animation started by a cast.
     return;
   }
   if (deathState !== 'alive' || playerVitals.hp <= 0) { order.mode = null; gather.active = false; return; }
