@@ -1393,7 +1393,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 
   const mpName = 'Игрок-' + Math.floor(100 + Math.random() * 900);
   const remotes = new Map();
-  let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0, lastInputSend = 0;
+  let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0, lastInputSend = 0, lastPingSend = 0, pingMs = null, lastMpFrame = 0;
   window.mpConnected = false;
   window.mpSetWeapon = id => {
     if (socket && socket.readyState === WebSocket.OPEN && WEAPONS[id]) socket.send(JSON.stringify({type:'weapon',weapon:id}));
@@ -1521,7 +1521,13 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     });
     socket.addEventListener('message', event => {
       let msg; try { msg = JSON.parse(event.data); } catch { return; }
-      if (msg.type === 'welcome') {
+      if (msg.type === 'latency-pong') {
+        const sentAt = Number(msg.sentAt);
+        if (Number.isFinite(sentAt)) {
+          pingMs = Math.max(0, Math.round(performance.now() - sentAt));
+          mpStatus.textContent = 'Мультиплеер: онлайн · ' + (msg.online || '—') + ' игрок(ов) · пинг ' + pingMs + ' мс';
+        }
+      } else if (msg.type === 'welcome') {
         socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free}));
         mpId = msg.id;
         (msg.players || []).forEach(p => { if (p.id !== mpId) addRemote(p); });
@@ -1594,7 +1600,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         else if (msg.result === 'energy') toast('Не хватает энергии');
         else if (msg.result === 'no-target') toast('Нет цели в области действия');
         else if (msg.result === 'disabled') toast('Нельзя использовать способности под контролем');
-      } else if (msg.type === 'ping') mpStatus.textContent = 'Мультиплеер: онлайн · ' + msg.online + ' игрок(ов)';
+      } else if (msg.type === 'ping') mpStatus.textContent = 'Мультиплеер: онлайн · ' + msg.online + ' игрок(ов)' + (pingMs !== null ? ' · пинг ' + pingMs + ' мс' : ' · пинг…');
       else if (msg.type === 'error') mpStatus.textContent = 'Мультиплеер: ' + msg.message;
     });
     socket.addEventListener('close', () => {
@@ -1673,12 +1679,15 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 
   function mpFrame(now) {
     requestAnimationFrame(mpFrame);
+    const frameDt = lastMpFrame ? Math.min((now - lastMpFrame) / 1000, .1) : 1 / 60;
+    lastMpFrame = now;
+    const smooth = 1 - Math.exp(-12 * frameDt);
     for (const r of remotes.values()) {
       if (!r.dead && r.swingT > 0) { r.swingT = Math.max(0, r.swingT - .06); r.potato.rotation.x = Math.sin((1-r.swingT)*Math.PI) * .22; }
       else if (!r.dead) r.potato.rotation.x *= .75;
-      r.group.position.x += (r.targetX - r.group.position.x) * .28;
-      r.group.position.z += (r.targetZ - r.group.position.z) * .28;
-      r.group.rotation.y += (r.targetRot - r.group.rotation.y) * .28;
+      r.group.position.x += (r.targetX - r.group.position.x) * smooth;
+      r.group.position.z += (r.targetZ - r.group.position.z) * smooth;
+      r.group.rotation.y += (r.targetRot - r.group.rotation.y) * smooth;
     }
     const selectedTarget = mpTargetId ? remotes.get(mpTargetId) : null;
     if (selectedTarget && !selectedTarget.dead) {
@@ -1695,6 +1704,10 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         socket.send(JSON.stringify({type:'attack', targetId:mpTargetId, weapon:loadout.weapon}));
         lastAttack = now;
       }
+    }
+    if (socket && socket.readyState === WebSocket.OPEN && now - lastPingSend > 2000) {
+      lastPingSend = now;
+      socket.send(JSON.stringify({type:'latency-ping', sentAt:performance.now()}));
     }
     if (socket && socket.readyState === WebSocket.OPEN && player && now - lastInputSend > 80) {
       lastInputSend = now;
