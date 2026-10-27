@@ -154,14 +154,7 @@ wss.on("connection", (ws) => {
       target.hp = Math.max(0, target.hp - dealt);
       broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: dealt, hp: target.hp, kind: "auto" });
       broadcast({ type: "player", player: { id: target.id, name: target.name, x: target.x, y: 0, z: target.z, rotation: target.rotation, hp: target.hp } });
-      if (target.hp === 0 && !target.respawnTimer) {
-        target.respawnTimer = setTimeout(() => {
-          target.hp = PLAYER_MAX_HP;
-          target.x = 0; target.z = 7;
-          target.respawnTimer = null;
-          broadcast({ type: "respawn", player: { id: target.id, name: target.name, x: target.x, y: 0, z: target.z, rotation: target.rotation, hp: target.hp } });
-        }, 5000);
-      }
+      if (target.hp === 0) scheduleRespawn(target);
       return;
     }
     if (msg.type === "ability-hit") {
