@@ -78,7 +78,14 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     const debuff = await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && m.statuses?.slow);
     assert.equal(debuff.statuses.slow.value, 0.38, "target debuff is applied to the target");
     assert.ok(debuff.statuses.slow.until > Date.now(), "target debuff has a server expiry");
-    console.log("PvP integration OK: damage, attacker buffs, target debuffs, energy and cooldown");
+
+    a.send(JSON.stringify({ type: "ability-hit", targetId: bId, slot: "e", weapon: "broadsword", abilityId: "mightyBlow", aimX: 0, aimZ: 7 }));
+    const selfBuff = await waitMessage(a, m => m.type === "combat-status" && m.targetId === aId && m.statuses?.resist);
+    assert.equal(selfBuff.statuses.resist.value, 0.7, "self-defense buff is applied to the caster");
+    await sleep(3300);
+    const expired = await waitMessage(a, m => m.type === "combat-status" && m.targetId === aId && !m.statuses?.resist);
+    assert.ok(expired, "expired status is removed and broadcast to clients");
+    console.log("PvP integration OK: damage, attacker buffs, target debuffs, energy, cooldown and status expiry");
   } catch (error) {
     console.error(error);
     process.exitCode = 1;
