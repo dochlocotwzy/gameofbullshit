@@ -1303,7 +1303,10 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 
   const mpName = 'Игрок-' + Math.floor(100 + Math.random() * 900);
   const remotes = new Map();
-  let mpId = null, socket = null, lastSend = 0;
+  let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0;
+  const remoteMeshes = new Map();
+  const MP_ATTACK_RANGE = 3.8;
+  const MP_ATTACK_INTERVAL = 900;
 
   function makeLabel(name) {
     const canvas = document.createElement('canvas');
@@ -1324,12 +1327,14 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     const group = new THREE.Group();
     const material = new THREE.MeshStandardMaterial({color:0x5bb8ff, roughness:.8});
     const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(.38, 1.05, 4, 8), material);
+    mesh.userData.mpPlayerId = p.id;
     mesh.position.y = .9; mesh.castShadow = true; group.add(mesh);
     group.add(makeLabel(p.name));
     group.position.set(Number(p.x)||0, 0, Number(p.z)||0);
     group.rotation.y = Number(p.rotation)||0;
     scene.add(group);
-    remotes.set(p.id, {group, targetX:group.position.x, targetZ:group.position.z, targetRot:group.rotation.y, name:p.name||'Игрок', hp:p.hp||1000});
+    remotes.set(p.id, {group, mesh, targetX:group.position.x, targetZ:group.position.z, targetRot:group.rotation.y, name:p.name||'Игрок', hp:Number.isFinite(Number(p.hp)) ? Number(p.hp) : 1000});
+    remoteMeshes.set(p.id, mesh);
   }
   function updateRemote(p) {
     if (!p || p.id === mpId) return;
@@ -1337,7 +1342,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     const r = remotes.get(p.id);
     if (!r) return;
     r.targetX = Number(p.x)||0; r.targetZ = Number(p.z)||0;
-    r.targetRot = Number(p.rotation)||0; r.hp = Number(p.hp)||1000;
+    r.targetRot = Number(p.rotation)||0; r.hp = Number.isFinite(Number(p.hp)) ? Number(p.hp) : r.hp;
   }
   function removeRemote(id) {
     const r = remotes.get(id);
@@ -1350,7 +1355,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         mats.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
       }
     });
-    remotes.delete(id);
+    remotes.delete(id); remoteMeshes.delete(id); if (mpTargetId === id) mpTargetId = null;
   }
   function connect() {
     if (!/^https?:$/.test(location.protocol)) {
@@ -1370,7 +1375,14 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         (msg.players || []).forEach(p => { if (p.id !== mpId) addRemote(p); });
       } else if (msg.type === 'joined' || msg.type === 'player') updateRemote(msg.player);
       else if (msg.type === 'left') removeRemote(msg.id);
-      else if (msg.type === 'ping') mpStatus.textContent = 'Мультиплеер: онлайн · ' + msg.online + ' игрок(ов)';
+      else if (msg.type === 'combat-hit') {
+        if (msg.targetId === mpId) { setPlayerHealth(msg.hp); toast('Получен урон: ' + msg.damage); }
+        const r = remotes.get(msg.targetId); if (r) r.hp = msg.hp;
+        if (msg.attackerId === mpId) toast('Попадание: -' + msg.damage + ' HP');
+      } else if (msg.type === 'respawn') {
+        updateRemote(msg.player);
+        if (msg.player.id === mpId) setPlayerHealth(msg.player.hp);
+      } else if (msg.type === 'ping') mpStatus.textContent = 'Мультиплеер: онлайн · ' + msg.online + ' игрок(ов)';
       else if (msg.type === 'error') mpStatus.textContent = 'Мультиплеер: ' + msg.message;
     });
     socket.addEventListener('close', () => {
@@ -1380,12 +1392,34 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       mpStatus.textContent = 'Мультиплеер: ошибка соединения';
     });
   }
+  // Select another player by clicking their character.
+  canvas.addEventListener('pointerdown', ev => {
+    if (ev.button !== 0) return;
+    pointerRay(ev.clientX, ev.clientY);
+    const hits = ray.intersectObjects([...remoteMeshes.values()], false);
+    if (!hits.length) return;
+    const targetId = hits[0].object.userData.mpPlayerId;
+    if (!targetId) return;
+    mpTargetId = targetId;
+    toast('Цель выбрана. Подойди вплотную для автоатаки.');
+    ev.stopImmediatePropagation();
+    ev.preventDefault();
+  }, true);
+
   function mpFrame(now) {
     requestAnimationFrame(mpFrame);
     for (const r of remotes.values()) {
       r.group.position.x += (r.targetX - r.group.position.x) * .28;
       r.group.position.z += (r.targetZ - r.group.position.z) * .28;
       r.group.rotation.y += (r.targetRot - r.group.rotation.y) * .28;
+    }
+    if (socket && socket.readyState === WebSocket.OPEN && player && mpTargetId && now - lastAttack > MP_ATTACK_INTERVAL) {
+      const target = remotes.get(mpTargetId);
+      if (!target) mpTargetId = null;
+      else if (Math.hypot(player.position.x - target.group.position.x, player.position.z - target.group.position.z) <= MP_ATTACK_RANGE) {
+        socket.send(JSON.stringify({type:'attack', targetId:mpTargetId}));
+        lastAttack = now;
+      }
     }
     if (socket && socket.readyState === WebSocket.OPEN && player && now - lastSend > 100) {
       lastSend = now;
