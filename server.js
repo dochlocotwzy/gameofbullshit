@@ -169,10 +169,15 @@ wss.on("connection", (ws) => {
       let dx=target.x-p.x,dz=target.z-p.z,distance=Math.hypot(dx,dz);
       const aimX=Number(msg.aimX),aimZ=Number(msg.aimZ);
       const isArea=Number.isFinite(aimX)&&Number.isFinite(aimZ)&&["cleave","cyclone","splitting","parry","spinning","bloodthirsty","carvingDash","soulless","majestic","infinity"].includes(abilityId);
+      const selfCentered = ["cleave","parry","bloodthirsty","majestic","infinity"].includes(abilityId);
       if(abilityId==="ironwill"){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;applyEffects(p,ability.selfEffects||[],p.id);broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:[p.id],x:p.x,z:p.z});p.lastAbility=now;send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]});return;}
       if(ability.dash&&distance<=ability.range&&distance>1.35){const travel=Math.min(2.7,distance-1.05);p.x+=dx/distance*travel;p.z+=dz/distance*travel;distance=Math.hypot(target.x-p.x,target.z-p.z);}
       let victims=[];
-      if(ability.radius&&isArea){const ax=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimX)),az=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimZ));if(Math.hypot(ax-p.x,az-p.z)>(ability.range||7)+1)return;victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&Math.hypot(t.x-ax,t.z-az)<=ability.radius);}
+      if(ability.radius&&isArea){
+        const ax=selfCentered?p.x:Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimX)),az=selfCentered?p.z:Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimZ));
+        if(!selfCentered&&Math.hypot(ax-p.x,az-p.z)>(ability.range||7)+1)return;
+        victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&Math.hypot(t.x-ax,t.z-az)<=ability.radius);
+      }
       else if(ability.line){const len=ability.line,l=distance||1,ux=dx/l,uz=dz/l;victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&(()=>{const rx=t.x-p.x,rz=t.z-p.z,a=rx*ux+rz*uz,side=Math.abs(rx*uz-rz*ux);return a>=0&&a<=len&&side<=1.5;})());}
       else {if(distance>(ability.range||4)){send(ws,{type:"combat",result:"out-of-range",targetId:target.id});return;}victims=[target];}
       if(!victims.length){send(ws,{type:"combat",result:"no-target",targetId:target.id});return;}
@@ -185,12 +190,12 @@ wss.on("connection", (ws) => {
         if(abilityId==="carvingDash")damage=[260,340,430,540][Math.min(3,p.charges||0)];
         if(["mightyBlow","charge","carvingDash"].includes(abilityId))p.charges=0;
         if(abilityId==="cyclone"&&(p.charges||0)>0){damage=162;p.charges--;}
-        for(let hit=0;hit<(ability.hits||1);hit++){const amount=hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:damage;const reduction=victim.statuses?.resist?.value||0;const dealt=Math.round(amount*(1-reduction));victim.hp=Math.max(0,victim.hp-dealt);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
+        for(let hit=0;hit<(ability.hits||1);hit++){const amount=hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:damage;const reduction=victim.statuses?.resist?.value||0;const vulnerability=(victim.statuses?.armorBreak?1.25:1)*(victim.statuses?.hpDown?1+(Number(victim.statuses.hpDown.value)||0):1);const dealt=Math.round(amount*(1-reduction)*vulnerability);victim.hp=Math.max(0,victim.hp-dealt);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
         applyEffects(victim,ability.effects||[],p.id);
         if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
       }
       if(victims.length && ability.selfEffects) applyEffects(p,ability.selfEffects,p.id);
-      broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:victims.map(v=>v.id),x:p.x,z:p.z,aimX:Number.isFinite(aimX)?aimX:p.x,aimZ:Number.isFinite(aimZ)?aimZ:p.z});
+      broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:victims.map(v=>v.id),x:p.x,z:p.z,aimX:selfCentered?p.x:(Number.isFinite(aimX)?aimX:p.x),aimZ:selfCentered?p.z:(Number.isFinite(aimZ)?aimZ:p.z)});
       for(const victim of victims)broadcast({type:"player",player:publicPlayer(victim)});
     }
   });
