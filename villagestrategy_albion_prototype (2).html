@@ -711,7 +711,9 @@ ring.rotation.x = -Math.PI / 2; ring.renderOrder = 5; ring.visible = false; scen
 const marker = new THREE.Mesh(new THREE.RingGeometry(.25, .4, 24), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .9, side: THREE.DoubleSide, depthTest: false }));
 marker.rotation.x = -Math.PI / 2; marker.renderOrder = 5; marker.visible = false; scene.add(marker);
 function cancelOrder() { order.mode = null; order.res = null; order.dummy = null; order.slot = null; gather.active = false; gather.t = 0; marker.visible = false; gbar.style.display = 'none'; }
-function orderMove(x, z) { order.dummy = null; order.mode = 'move'; order.x = x; order.z = z; order.res = null; gather.active = false; gather.t = 0; marker.position.set(x, .08, z); marker.visible = true; }
+function orderMove(x, z) {
+  if (window.mpSendMoveTarget) window.mpSendMoveTarget(x, z);
+  order.dummy = null; order.mode = 'move'; order.x = x; order.z = z; order.res = null; gather.active = false; gather.t = 0; marker.position.set(x, .08, z); marker.visible = true; }
 function orderGather(r) { order.dummy = null; if (order.res && order.res !== r) { order.res.mesh.position.x = order.res.x; order.res.mesh.rotation.z = 0; } order.mode = 'gather'; order.res = r; gather.t = 0; gather.active = false; marker.visible = false; }
 canvas.addEventListener('pointerdown', e => {
   if (e.button !== 0) return; canvas.setPointerCapture(e.pointerId); mouseDown = true; mouse.x = e.clientX; mouse.y = e.clientY;
@@ -1258,6 +1260,10 @@ rebuildWeapons(); renderSlots();
 
 
 function updatePlayer(dt) {
+  if (window.mpConnected) {
+    if (deathState === 'alive' && hasAnim) { play('Idle'); if (active) active.timeScale = 1; }
+    return;
+  }
   if (deathState !== 'alive' || playerVitals.hp <= 0) { order.mode = null; gather.active = false; return; }
   const WK = CFG.WASD_MOVE;
   let ix = (down('ArrowRight', WK && 'KeyD') ? 1 : 0) - (down('ArrowLeft', WK && 'KeyA') ? 1 : 0), iz = (down('ArrowDown', WK && 'KeyS') ? 1 : 0) - (down('ArrowUp', WK && 'KeyW') ? 1 : 0);
@@ -1351,7 +1357,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 
   const mpName = 'Игрок-' + Math.floor(100 + Math.random() * 900);
   const remotes = new Map();
-  let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0;
+  let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0, lastInputSend = 0;\n  window.mpConnected = false;\n  let selfTargetX = player.position.x, selfTargetZ = player.position.z, selfTargetRot = player.rotation.y;
   const remoteMeshes = new Map();
   const MP_ATTACK_RANGE = 3.8;
   const MP_ATTACK_INTERVAL = 900;
@@ -1468,7 +1474,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       if (msg.type === 'welcome') {
         mpId = msg.id;
         (msg.players || []).forEach(p => { if (p.id !== mpId) addRemote(p); });
-      } else if (msg.type === 'joined' || msg.type === 'player') updateRemote(msg.player);
+      } else if (msg.type === 'joined' || msg.type === 'player') updateRemote(msg.player);\n      else if (msg.type === 'world-state') {\n        for (const p of (msg.players || [])) {\n          if (p.id === mpId) { selfTargetX = Number(p.x)||0; selfTargetZ = Number(p.z)||0; selfTargetRot = Number(p.rotation)||0; if (Number.isFinite(Number(p.hp))) setPlayerHealth(Number(p.hp)); }\n          else updateRemote(p);\n        }\n      }
       else if (msg.type === 'left') removeRemote(msg.id);
       else if (msg.type === 'combat-hit') {
         if (msg.targetId === mpId) { setPlayerHealth(msg.hp); if (msg.hp > 0) toast('Получен урон: ' + msg.damage); }
