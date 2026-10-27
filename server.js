@@ -14,7 +14,7 @@ const ABILITY_MULTIPLIER = { q: 2.2, w: 2.8, e: 3.5 };
 const WEAPON_E = { broadsword:"mightyBlow", claymore:"charge", dual:"spinning", clarent:"bloodthirsty", carving:"carvingDash", galatine:"soulless", kingmaker:"majestic", infinity:"infinity" };
 const ABILITIES = {
  strike:{cost:6,cooldown:3,damage:249,range:3.2,selfEffects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:3.5}]}, cleave:{cost:11,cooldown:3,damage:200,radius:6,selfEffects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:5}]},
- cyclone:{cost:24,cooldown:10,damage:120,radius:2.4,hits:3,range:7}, interrupt:{cost:32,cooldown:10,damage:248,range:3.2,effects:[{type:"interrupt"}],selfEffects:[{type:"attackBuff",value:.2,duration:5}]},
+ cyclone:{cost:24,cooldown:10,damage:120,radius:2.4,hits:3,range:7,path:true}, interrupt:{cost:32,cooldown:10,damage:248,range:3.2,effects:[{type:"interrupt"}],selfEffects:[{type:"attackBuff",value:.2,duration:5}]},
  splitting:{cost:38,cooldown:15,damage:432,line:14,effects:[{type:"root",duration:1.25}]}, hamstring:{cost:32,cooldown:10,damage:192,range:3.2,effects:[{type:"slow",value:.38,duration:8}]},
  parry:{cost:9,cooldown:15,damage:80,radius:6,effects:[{type:"silence",duration:.8}],selfEffects:[{type:"resist",value:1,duration:.8}]}, ironwill:{cost:29,cooldown:20,self:true,selfEffects:[{type:"haste",value:.2,duration:4},{type:"resist",value:.259,duration:4}]},
  mightyBlow:{cost:35,cooldown:10,damage:269,range:10,dash:1.7,effects:[{type:"interrupt"}],selfEffects:[{type:"resist",value:.7,duration:3}]}, charge:{cost:16,cooldown:20,damage:390,range:13,dash:1.7,effects:[{type:"stun",duration:.8}]},
@@ -182,17 +182,23 @@ wss.on("connection", (ws) => {
         p.z=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+dz/distance*travel));
         distance=Math.hypot(target.x-p.x,target.z-p.z);
       }
-      if((abilityId==="spinning"||abilityId==="carvingDash")&&Number.isFinite(aimX)&&Number.isFinite(aimZ)){
-        const maxTravel=abilityId==="spinning"?12:6,ax=aimX-p.x,az=aimZ-p.z,len=Math.hypot(ax,az);
+      if((abilityId==="spinning"||abilityId==="carvingDash"||abilityId==="cyclone")&&Number.isFinite(aimX)&&Number.isFinite(aimZ)){
+        const maxTravel=abilityId==="spinning"?12:abilityId==="carvingDash"?6:7,ax=aimX-p.x,az=aimZ-p.z,len=Math.hypot(ax,az);
         if(len>maxTravel+1)return;
         const travel=Math.min(maxTravel,len);
         if(len>.01){p.x=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+ax/len*travel));p.z=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+az/len*travel));p.rotation=Math.atan2(ax,az);}
       }
       let victims=[];
-      if(ability.radius&&isArea){
+      if(ability.path&&isArea){
+        const vx=p.x-castOriginX,vz=p.z-castOriginZ,l=Math.hypot(vx,vz)||1,ux=vx/l,uz=vz/l;
+        victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&(()=>{const rx=t.x-castOriginX,rz=t.z-castOriginZ,along=rx*ux+rz*uz,side=Math.abs(rx*uz-rz*ux);return along>=0&&along<=l&&side<=ability.radius;})());
+      } else if(ability.radius&&isArea){
         const ax=selfCentered?p.x:Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimX)),az=selfCentered?p.z:Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimZ));
-        if(!selfCentered&&Math.hypot(ax-p.x,az-p.z)>(ability.range||7)+1)return;
-        victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&Math.hypot(t.x-ax,t.z-az)<=ability.radius);
+        if(!selfCentered&&Math.hypot(ax-castOriginX,az-castOriginZ)>(ability.range||7)+1)return;
+        if(["bloodthirsty","infinity"].includes(abilityId)){
+          const dx=aimX-castOriginX,dz=aimZ-castOriginZ,len=Math.hypot(dx,dz),ux=len>.3?dx/len:Math.sin(p.rotation),uz=len>.3?dz/len:Math.cos(p.rotation);
+          victims=[...players.values()].filter(t=>{if(t.hp<=0||t.id===p.id)return false;const rx=t.x-castOriginX,rz=t.z-castOriginZ,d=Math.hypot(rx,rz);return d<=ability.radius&&(d<.3||(rx/d)*ux+(rz/d)*uz>=Math.cos(.8));});
+        } else victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&Math.hypot(t.x-ax,t.z-az)<=ability.radius);
       }
       else if(ability.line){
         const ox=castOriginX,oz=castOriginZ,tx=(abilityId==="splitting"&&Number.isFinite(aimX))?aimX:target.x,tz=(abilityId==="splitting"&&Number.isFinite(aimZ))?aimZ:target.z;
