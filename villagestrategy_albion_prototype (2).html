@@ -1655,15 +1655,16 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         }
         if (msg.targetId === mpId && activeEntries.length) toast('Эффекты: ' + activeEntries.map(([k]) => k).join(', '));
       } else if (msg.type === 'combat-effect') {
+        const impactPhase = msg.phase === 'impact';
         const attacker = remotes.get(msg.attackerId);
-        if (attacker) {
+        if (attacker && !impactPhase) {
           attacker.swingT = 1; attacker.abilityT = 1; attacker.lastAbilitySlot = null;
           attacker.weapon = msg.weapon || attacker.weapon;
           attacker.charges = Number(msg.charges)||0;
           attacker.potato.rotation.x = -.42;
           attacker.potato.rotation.z = msg.abilityId === 'spinning' || msg.abilityId === 'cyclone' ? .28 : 0;
         }
-        if (msg.attackerId === mpId && Number.isFinite(Number(msg.x)) && Number.isFinite(Number(msg.z))) {
+        if (!impactPhase && msg.attackerId === mpId && Number.isFinite(Number(msg.x)) && Number.isFinite(Number(msg.z))) {
           pos.x = Number(msg.x); pos.z = Number(msg.z);
           player.position.x = pos.x; player.position.z = pos.z;
           cancelOrder();
@@ -1672,7 +1673,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         const color = ({charge:0xff7a3a,mightyBlow:0xffb347,bloodthirsty:0xb01830,soulless:0xffe59a,infinity:0x58d6ff,ironwill:0xffd36e,splitting:0xffe27a,hamstring:0x79c96b,spinning:0xffd45a})[msg.abilityId] || 0x9be36a;
         const ex = Number(msg.aimX ?? msg.x) || 0, ez = Number(msg.aimZ ?? msg.z) || 0;
         if (typeof fxRing === 'function') {
-          fxRing(ex, ez, radius, color, .55);
+          if (msg.phase !== 'cast' || msg.attackerId === mpId) fxRing(ex, ez, radius, color, .55);
           for (const id of (msg.targetIds || [])) {
             const hit = id === mpId ? player : remotes.get(id)?.group;
             if (hit && msg.abilityId !== 'ironwill') {
