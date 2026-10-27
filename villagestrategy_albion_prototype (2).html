@@ -613,15 +613,32 @@ function updateChips(dt) {
 
 /* =====================  игрок  ===================== */
 const player = new THREE.Group(), body = new THREE.Group(); player.add(body); scene.add(player);
+let deathState = 'alive', deathAnim = 0;
 const PLAYER_MAX_HP = 1000;
 const playerVitals = { hp: PLAYER_MAX_HP, maxHp: PLAYER_MAX_HP };
 const hpFillEl = document.getElementById("hp-fill"), hpTextEl = document.getElementById("hp-text");
 function setPlayerHealth(value) {
+  const previousHp = playerVitals.hp;
   playerVitals.hp = Math.max(0, Math.min(playerVitals.maxHp, Number(value) || 0));
+  if (playerVitals.hp <= 0 && previousHp > 0) startDeath();
+  else if (playerVitals.hp > 0 && deathState !== 'alive') resetDeath();
   const pct = playerVitals.hp / playerVitals.maxHp * 100;
   hpFillEl.style.width = pct + "%";
   hpFillEl.style.filter = pct <= 25 ? "saturate(1.5) brightness(1.2)" : "none";
   hpTextEl.textContent = Math.ceil(playerVitals.hp) + " / " + playerVitals.maxHp;
+}
+function startDeath() {
+  if (deathState !== 'alive') return;
+  deathState = 'falling'; deathAnim = 0;
+  order.mode = null; gather.active = false; mouseDown = false;
+  for (const k in keys) keys[k] = false;
+  toast('Вы погибли. Возрождение через 5 секунд.');
+}
+function resetDeath() {
+  deathState = 'alive'; deathAnim = 0;
+  body.rotation.set(0, 0, 0); body.position.set(0, 0, 0);
+  weaponR.rotation.set(0, 0, 0); weaponL.rotation.set(0, 0, 0);
+  order.mode = null; swingS = null;
 }
 // Entry point for combat and future server-authoritative multiplayer damage.
 function damagePlayer(amount) { setPlayerHealth(playerVitals.hp - Math.max(0, Number(amount) || 0)); }
@@ -1221,6 +1238,7 @@ rebuildWeapons(); renderSlots();
 
 
 function updatePlayer(dt) {
+  if (deathState !== 'alive' || playerVitals.hp <= 0) { order.mode = null; gather.active = false; return; }
   const WK = CFG.WASD_MOVE;
   let ix = (down('ArrowRight', WK && 'KeyD') ? 1 : 0) - (down('ArrowLeft', WK && 'KeyA') ? 1 : 0), iz = (down('ArrowDown', WK && 'KeyS') ? 1 : 0) - (down('ArrowUp', WK && 'KeyW') ? 1 : 0);
   const running = down('ShiftLeft', 'ShiftRight'); let dx = 0, dz = 0, moving = false;
@@ -1279,7 +1297,14 @@ function updateHover() {
 function loop(now) {
   requestAnimationFrame(loop);
   const raw = (now - last) / 1000, dt = Math.min(raw, .05); last = now; gameT += dt; frame++; perfTick(raw);
-  combatTick(dt); updatePlayer(dt); if (mixer) mixer.update(dt); updateWeapon(dt); updateRespawn(); updateChips(dt); updateCamera(dt);
+  combatTick(dt); updatePlayer(dt); if (mixer) mixer.update(dt);
+  if (deathState !== 'alive') {
+    deathAnim = Math.min(1, deathAnim + dt * 1.7);
+    const k = deathAnim * deathAnim * (3 - 2 * deathAnim);
+    body.rotation.z = 1.48 * k; body.rotation.x = .12 * k; body.position.y = -.12 * k;
+    weaponR.rotation.z = -.35 * k; weaponL.rotation.z = -.35 * k;
+  } else updateWeapon(dt);
+  updateRespawn(); updateChips(dt); updateCamera(dt);
   for (const r of resources) if (r.pop < 1) { r.pop = Math.min(1, r.pop + dt * 2.2); r.mesh.scale.setScalar(r.s * (.2 + .8 * r.pop)); }
   if (marker.visible) { const k = 1 + .15 * Math.sin(gameT * 8); marker.scale.set(k, k, k); }
   flameA.scale.set(1, 1 + .25 * Math.sin(gameT * 13), 1); flameA.rotation.y += dt * 3; flameB.scale.set(1, 1 + .3 * Math.sin(gameT * 17 + 1), 1);
@@ -1326,15 +1351,25 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (!p || p.id === mpId || remotes.has(p.id)) return;
     const group = new THREE.Group();
     const material = new THREE.MeshStandardMaterial({color:0x5bb8ff, roughness:.8});
-    const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(.38, 1.05, 4, 8), material);
+    const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(.42, .82, 5, 10), material);
     mesh.userData.mpPlayerId = p.id;
-    mesh.position.y = .9; mesh.castShadow = true; group.add(mesh);
-    group.add(makeLabel(p.name));
+    mesh.position.y = .82; mesh.castShadow = true; group.add(mesh);
+    const label = makeLabel(p.name); group.add(label);
     group.position.set(Number(p.x)||0, 0, Number(p.z)||0);
     group.rotation.y = Number(p.rotation)||0;
     scene.add(group);
-    remotes.set(p.id, {group, mesh, targetX:group.position.x, targetZ:group.position.z, targetRot:group.rotation.y, name:p.name||'Игрок', hp:Number.isFinite(Number(p.hp)) ? Number(p.hp) : 1000});
+    const hp = Number.isFinite(Number(p.hp)) ? Number(p.hp) : 1000;
+    remotes.set(p.id, {group, mesh, label, targetX:group.position.x, targetZ:group.position.z, targetRot:group.rotation.y, name:p.name||'Игрок', hp, dead:hp <= 0});
+    if (hp <= 0) setRemoteDead(remotes.get(p.id), true);
     remoteMeshes.set(p.id, mesh);
+  }
+  function setRemoteDead(r, dead) {
+    if (!r) return;
+    r.dead = dead;
+    r.mesh.rotation.z = dead ? 1.42 : 0;
+    r.mesh.position.y = dead ? .38 : .82;
+    r.label.visible = !dead;
+    r.mesh.material.color.setHex(dead ? 0x777777 : 0x5bb8ff);
   }
   function updateRemote(p) {
     if (!p || p.id === mpId) return;
@@ -1343,6 +1378,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (!r) return;
     r.targetX = Number(p.x)||0; r.targetZ = Number(p.z)||0;
     r.targetRot = Number(p.rotation)||0; r.hp = Number.isFinite(Number(p.hp)) ? Number(p.hp) : r.hp;
+    setRemoteDead(r, r.hp <= 0);
   }
   function removeRemote(id) {
     const r = remotes.get(id);
@@ -1376,12 +1412,12 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       } else if (msg.type === 'joined' || msg.type === 'player') updateRemote(msg.player);
       else if (msg.type === 'left') removeRemote(msg.id);
       else if (msg.type === 'combat-hit') {
-        if (msg.targetId === mpId) { setPlayerHealth(msg.hp); toast('Получен урон: ' + msg.damage); }
-        const r = remotes.get(msg.targetId); if (r) r.hp = msg.hp;
+        if (msg.targetId === mpId) { setPlayerHealth(msg.hp); if (msg.hp > 0) toast('Получен урон: ' + msg.damage); }
+        const r = remotes.get(msg.targetId); if (r) { r.hp = msg.hp; setRemoteDead(r, msg.hp <= 0); }
         if (msg.attackerId === mpId) toast('Попадание: -' + msg.damage + ' HP');
       } else if (msg.type === 'respawn') {
         updateRemote(msg.player);
-        if (msg.player.id === mpId) { setPlayerHealth(msg.player.hp); player.position.set(msg.player.x, 0, msg.player.z); order.mode = 'none'; }
+        if (msg.player.id === mpId) { setPlayerHealth(msg.player.hp); player.position.set(msg.player.x, 0, msg.player.z); resetDeath(); order.mode = 'none'; }
       } else if (msg.type === 'ping') mpStatus.textContent = 'Мультиплеер: онлайн · ' + msg.online + ' игрок(ов)';
       else if (msg.type === 'error') mpStatus.textContent = 'Мультиплеер: ' + msg.message;
     });
@@ -1416,14 +1452,14 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (socket && socket.readyState === WebSocket.OPEN && player && mpTargetId && now - lastAttack > MP_ATTACK_INTERVAL) {
       const target = remotes.get(mpTargetId);
       if (!target) mpTargetId = null;
-      else if (Math.hypot(player.position.x - target.group.position.x, player.position.z - target.group.position.z) <= MP_ATTACK_RANGE) {
+      else if (playerVitals.hp > 0 && !target.dead && Math.hypot(player.position.x - target.group.position.x, player.position.z - target.group.position.z) <= MP_ATTACK_RANGE) {
         socket.send(JSON.stringify({type:'attack', targetId:mpTargetId}));
         lastAttack = now;
       }
     }
     if (socket && socket.readyState === WebSocket.OPEN && player && now - lastSend > 100) {
       lastSend = now;
-      socket.send(JSON.stringify({
+      if (playerVitals.hp > 0) socket.send(JSON.stringify({
         type:'state', x:player.position.x, z:player.position.z, rotation:player.rotation.y,
         hp:playerVitals && playerVitals.hp
       }));
