@@ -1603,7 +1603,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       } else if (msg.type === 'combat-resource') {
         if (Number.isFinite(Number(msg.energy))) energy = Math.max(0, Math.min(100, Number(msg.energy)));
         const slot = ['q','w','e'].find(s => (s === 'e' ? WEAPONS[loadout.weapon].e : loadout[s]) === msg.abilityId);
-        if (slot && Number.isFinite(Number(msg.cooldownUntil))) cd[slot] = Math.max(cd[slot], (Number(msg.cooldownUntil) - Date.now()) / 1000);
+        if (slot && Number.isFinite(Number(msg.cooldownUntil))) cd[slot] = Math.max(0, (Number(msg.cooldownUntil) - Date.now()) / 1000);
       } else if (msg.type === 'combat') {
         if (Number.isFinite(Number(msg.energy))) energy = Math.max(0, Math.min(100, Number(msg.energy)));
         const rejectedSlot = ['q','w','e'].find(s => (s === 'e' ? WEAPONS[loadout.weapon].e : loadout[s]) === msg.abilityId);
