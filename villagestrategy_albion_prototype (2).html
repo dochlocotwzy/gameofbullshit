@@ -1441,10 +1441,15 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     const target = remotes.get(targetId);
     if (!target || target.dead) { toast('Сначала выбери живую цель'); return false; }
     if (!socket || socket.readyState !== WebSocket.OPEN) { toast('Нет соединения с сервером'); return false; }
-    // Locked PvP abilities must use the selected player's position, not the stale
-    // mouse-ground point used by PvE. Otherwise dashes, cones and line skills
-    // are resolved somewhere other than the selected target.
-    const aim = {x:target.group.position.x, z:target.group.position.z};
+    // AoE spells are aimed at the ground under the cursor; single-target spells stay locked.
+    const groundAoE = new Set(['cleave','cyclone','splitting','parry','spinning','bloodthirsty','carvingDash','soulless','majestic','infinity']);
+    let aim = {x:target.group.position.x, z:target.group.position.z};
+    if (groundAoE.has(String(abilityId)) && mouse.x >= 0 && mouse.y >= 0) {
+      const point = groundPoint(mouse.x, mouse.y);
+      if (point && Number.isFinite(point.x) && Number.isFinite(point.z)) {
+        aim = {x:Math.max(-CFG.BOUND,Math.min(CFG.BOUND,point.x)), z:Math.max(-CFG.BOUND,Math.min(CFG.BOUND,point.z))};
+      }
+    }
     socket.send(JSON.stringify({type:'ability-hit', targetId, slot, weapon, abilityId, aimX:aim.x, aimZ:aim.z}));
     return true;
   };
