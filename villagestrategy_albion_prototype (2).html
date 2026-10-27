@@ -1391,6 +1391,17 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   mpStatus.textContent = 'Мультиплеер: подключение…';
   document.body.appendChild(mpStatus);
 
+  const mpPingBadge = document.createElement('div');
+  Object.assign(mpPingBadge.style, {
+    position:'fixed', top:'4px', left:'50%', transform:'translateX(-50%)',
+    zIndex:'2147483647', padding:'6px 12px', borderRadius:'8px',
+    background:'#101820f2', border:'1px solid #72e6a6', color:'#ffffff',
+    font:'bold 13px system-ui,sans-serif', textShadow:'0 1px 2px #000',
+    boxShadow:'0 2px 8px #0009', pointerEvents:'none', whiteSpace:'nowrap'
+  });
+  mpPingBadge.textContent = 'ПИНГ: ожидание соединения…';
+  document.body.appendChild(mpPingBadge);
+
   const mpName = 'Игрок-' + Math.floor(100 + Math.random() * 900);
   const remotes = new Map();
   let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0, lastInputSend = 0, lastPingSend = 0, pingMs = null, lastMpFrame = 0;
@@ -1525,7 +1536,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         const sentAt = Number(msg.sentAt);
         if (Number.isFinite(sentAt)) {
           pingMs = Math.max(0, Math.round(performance.now() - sentAt));
-          mpStatus.textContent = 'Мультиплеер: онлайн · ' + (msg.online || '—') + ' игрок(ов) · пинг ' + pingMs + ' мс';
+          mpPingBadge.textContent = 'ПИНГ: ' + pingMs + ' мс';
         }
       } else if (msg.type === 'welcome') {
         socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free}));
