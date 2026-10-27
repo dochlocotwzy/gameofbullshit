@@ -14,7 +14,7 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function waitUntil(fn, timeout = 8000) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
-    if (fn()) return;
+    if (await fn()) return;
     await sleep(50);
   }
   throw new Error("Timed out waiting for server readiness");
