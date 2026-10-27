@@ -8,6 +8,10 @@ const PORT = Number(process.env.PORT) || 10000;
 const HOST = "0.0.0.0";
 const GAME_FILE = path.join(__dirname, "villagestrategy_albion_prototype (2).html");
 const MAX_PLAYERS = 40;
+const PLAYER_MAX_HP = 1000;
+const ATTACK_DAMAGE = 100;
+const ATTACK_RANGE = 3.8;
+const ATTACK_COOLDOWN_MS = 850;
 const players = new Map();
 
 const server = http.createServer((req, res) => {
@@ -59,7 +63,7 @@ wss.on("connection", (ws) => {
     return ws.close(1013, "Server full");
   }
   const id = crypto.randomUUID();
-  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: 1000, lastUpdate: 0 };
+  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, respawnTimer: null };
   players.set(id, p);
   send(ws, { type: "welcome", id, players: snapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
@@ -85,8 +89,32 @@ wss.on("connection", (ws) => {
       p.x = Math.max(-180, Math.min(180, x));
       p.z = Math.max(-180, Math.min(180, z));
       p.rotation = rotation;
-      if (Number.isFinite(Number(msg.hp))) p.hp = Math.max(0, Math.min(1000, Number(msg.hp)));
+      // HP is server-authoritative; clients cannot set their own health.
       broadcast({ type: "player", player: { id: p.id, name: p.name, x: p.x, y: 0, z: p.z, rotation: p.rotation, hp: p.hp } }, p.id);
+      return;
+    }
+    if (msg.type === "attack") {
+      const now = Date.now();
+      if (p.hp <= 0 || now - p.lastAttack < ATTACK_COOLDOWN_MS) return;
+      const target = players.get(String(msg.targetId || ""));
+      if (!target || target.id === p.id || target.hp <= 0) return;
+      const distance = Math.hypot(target.x - p.x, target.z - p.z);
+      if (!Number.isFinite(distance) || distance > ATTACK_RANGE) {
+        send(ws, { type: "combat", result: "out-of-range", targetId: target.id });
+        return;
+      }
+      p.lastAttack = now;
+      target.hp = Math.max(0, target.hp - ATTACK_DAMAGE);
+      broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: ATTACK_DAMAGE, hp: target.hp });
+      broadcast({ type: "player", player: { id: target.id, name: target.name, x: target.x, y: 0, z: target.z, rotation: target.rotation, hp: target.hp } });
+      if (target.hp === 0 && !target.respawnTimer) {
+        target.respawnTimer = setTimeout(() => {
+          target.hp = PLAYER_MAX_HP;
+          target.x = 0; target.z = 7;
+          target.respawnTimer = null;
+          broadcast({ type: "respawn", player: { id: target.id, name: target.name, x: target.x, y: 0, z: target.z, rotation: target.rotation, hp: target.hp } });
+        }, 5000);
+      }
     }
   });
   ws.on("close", () => {
