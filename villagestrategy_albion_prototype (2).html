@@ -714,7 +714,7 @@ function cancelOrder() { order.mode = null; order.res = null; order.dummy = null
 function orderMove(x, z) {
   if (window.mpSendMoveTarget) window.mpSendMoveTarget(x, z);
   order.dummy = null; order.mode = 'move'; order.x = x; order.z = z; order.res = null; gather.active = false; gather.t = 0; marker.position.set(x, .08, z); marker.visible = true; }
-function orderGather(r) { order.dummy = null; if (order.res && order.res !== r) { order.res.mesh.position.x = order.res.x; order.res.mesh.rotation.z = 0; } order.mode = 'gather'; order.res = r; gather.t = 0; gather.active = false; marker.visible = false; }
+function orderGather(r) { if (window.mpStopMovement) window.mpStopMovement(); order.dummy = null; if (order.res && order.res !== r) { order.res.mesh.position.x = order.res.x; order.res.mesh.rotation.z = 0; } order.mode = 'gather'; order.res = r; gather.t = 0; gather.active = false; marker.visible = false; }
 canvas.addEventListener('pointerdown', e => {
   if (e.button !== 0) return; canvas.setPointerCapture(e.pointerId); mouseDown = true; mouse.x = e.clientX; mouse.y = e.clientY;
   const dm = pickDummy(e.clientX, e.clientY);
@@ -1069,7 +1069,7 @@ function trySpell(slot) {
     castSlot(slot, { t });
   } else castSlot(slot, { aim: aimPoint() });
 }
-function orderAttack(d) { cancelOrder(); order.mode = 'attack'; order.dummy = d; }
+function orderAttack(d) { if (window.mpStopMovement) window.mpStopMovement(); cancelOrder(); order.mode = 'attack'; order.dummy = d; }
 
 /* ---- автоатака и пассивки ---- */
 function afterAuto(t, n) {
