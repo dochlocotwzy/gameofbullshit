@@ -168,17 +168,28 @@ wss.on("connection", (ws) => {
       if(p.energy < ability.cost){send(ws,{type:"combat",result:"energy",abilityId,energy:p.energy});return;}
       let dx=target.x-p.x,dz=target.z-p.z,distance=Math.hypot(dx,dz);
       const aimX=Number(msg.aimX),aimZ=Number(msg.aimZ);
+      const castOriginX=p.x,castOriginZ=p.z;
       const isArea=Number.isFinite(aimX)&&Number.isFinite(aimZ)&&["cleave","cyclone","splitting","parry","spinning","bloodthirsty","carvingDash","soulless","majestic","infinity"].includes(abilityId);
       const selfCentered = ["cleave","parry","bloodthirsty","majestic","infinity"].includes(abilityId);
       if(abilityId==="ironwill"){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;applyEffects(p,ability.selfEffects||[],p.id);broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:[p.id],x:p.x,z:p.z});p.lastAbility=now;send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]});return;}
       if(ability.dash&&distance<=ability.range&&distance>1.35){const travel=Math.min(2.7,distance-1.05);p.x+=dx/distance*travel;p.z+=dz/distance*travel;distance=Math.hypot(target.x-p.x,target.z-p.z);}
+      if((abilityId==="spinning"||abilityId==="carvingDash")&&Number.isFinite(aimX)&&Number.isFinite(aimZ)){
+        const maxTravel=abilityId==="spinning"?12:6,ax=aimX-p.x,az=aimZ-p.z,len=Math.hypot(ax,az);
+        if(len>maxTravel+1)return;
+        const travel=Math.min(maxTravel,len);
+        if(len>.01){p.x=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+ax/len*travel));p.z=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+az/len*travel));p.rotation=Math.atan2(ax,az);}
+      }
       let victims=[];
       if(ability.radius&&isArea){
         const ax=selfCentered?p.x:Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimX)),az=selfCentered?p.z:Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimZ));
         if(!selfCentered&&Math.hypot(ax-p.x,az-p.z)>(ability.range||7)+1)return;
         victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&Math.hypot(t.x-ax,t.z-az)<=ability.radius);
       }
-      else if(ability.line){const len=ability.line,l=distance||1,ux=dx/l,uz=dz/l;victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&(()=>{const rx=t.x-p.x,rz=t.z-p.z,a=rx*ux+rz*uz,side=Math.abs(rx*uz-rz*ux);return a>=0&&a<=len&&side<=1.5;})());}
+      else if(ability.line){
+        const ox=castOriginX,oz=castOriginZ,tx=(abilityId==="splitting"&&Number.isFinite(aimX))?aimX:target.x,tz=(abilityId==="splitting"&&Number.isFinite(aimZ))?aimZ:target.z;
+        const vx=tx-ox,vz=tz-oz,l=Math.hypot(vx,vz)||1,ux=vx/l,uz=vz/l,len=ability.line;
+        victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&(()=>{const rx=t.x-ox,rz=t.z-oz,a=rx*ux+rz*uz,side=Math.abs(rx*uz-rz*ux);return a>=0&&a<=len&&side<=1.5;})());
+      }
       else {if(distance>(ability.range||4)){send(ws,{type:"combat",result:"out-of-range",targetId:target.id});return;}victims=[target];}
       if(!victims.length){send(ws,{type:"combat",result:"no-target",targetId:target.id});return;}
       p.lastAbility=now;p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;
