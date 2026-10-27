@@ -1081,6 +1081,9 @@ function castSlot(slot, ctx, options = {}) {
 function trySpell(slot) {
   const sp = spellFor(slot);
   if (!sp || dash || lockT > 0) return;
+  // Never fall through to local-only spell scripts while connected: otherwise
+  // buffs, costs, and hit effects would diverge between client and server.
+  if (window.mpConnected && !window.mpTargetId) return toast('В мультиплеере сначала выбери игрока-цель');
 
   // In multiplayer, all player-targeted PvP effects are server-owned.
   if (window.mpConnected && window.mpTargetId && typeof window.mpAbilityHit === 'function') {
