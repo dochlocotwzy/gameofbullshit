@@ -1392,7 +1392,6 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     r.mesh.material.color.setHex(dead ? 0x777777 : 0x438fe0);
     r.potato.position.y = dead ? -.02 : 0;
     r.label.visible = !dead;
-    r.mesh.material.color.setHex(dead ? 0x777777 : 0x5bb8ff);
   }
   function updateRemote(p) {
     if (!p || p.id === mpId) return;
