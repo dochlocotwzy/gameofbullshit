@@ -136,9 +136,18 @@ wss.on("connection", (ws) => {
       const slot = String(msg.slot || "q");
       const weapon = String(msg.weapon || "broadsword");
       if (!target || target.id === p.id || target.hp <= 0 || !ABILITY_MULTIPLIER[slot]) return;
-      const distance = Math.hypot(target.x - p.x, target.z - p.z);
+      let distance = Math.hypot(target.x - p.x, target.z - p.z);
+      if (!Number.isFinite(distance)) return;
+      // Claymore E charge is simulated by the server, never by client coordinates.
+      if (slot === "e" && weapon === "claymore" && distance <= 8 && distance > 1.35) {
+        const travel = Math.min(2.7, distance - 1.05);
+        p.x += (target.x - p.x) / distance * travel;
+        p.z += (target.z - p.z) / distance * travel;
+        p.rotation = Math.atan2(target.x - p.x, target.z - p.z);
+        distance = Math.hypot(target.x - p.x, target.z - p.z);
+      }
       const range = slot === "e" ? 6 : slot === "w" ? 4.5 : 4;
-      if (!Number.isFinite(distance) || distance > range) { send(ws, { type: "combat", result: "out-of-range", targetId: target.id }); return; }
+      if (distance > range) { send(ws, { type: "combat", result: "out-of-range", targetId: target.id }); return; }
       const damage = Math.round((WEAPON_DAMAGE[weapon] || WEAPON_DAMAGE.broadsword) * ABILITY_MULTIPLIER[slot]);
       p.lastAbility = now;
       target.hp = Math.max(0, target.hp - damage);
