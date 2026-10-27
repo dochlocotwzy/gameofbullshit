@@ -1053,11 +1053,26 @@ function castSlot(slot, ctx) {
 function trySpell(slot) {
   if (window.mpTargetId && typeof window.mpAbilityHit === 'function') {
     const sp = spellFor(slot);
-    if (!sp || dash || lockT > 0) return;
+    const target = window.mpGetTarget && window.mpGetTarget();
+    if (!sp || !target || dash || lockT > 0) return;
     if (!TEST.free && (cd[slot] > 0 || energy < sp.en)) return toast('Перезарядка или не хватает энергии');
     if (!TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }
-    faceXZ(pos.x + Math.sin(player.rotation.y || yaw), pos.z + Math.cos(player.rotation.y || yaw));
-    swing(slot === 'q' ? 'slash' : slot === 'w' ? 'spin' : 'chop', .32);
+    faceXZ(target.x, target.z);
+    // Keep the weapon's real spell animation and local passive/buff logic for
+    // enemy-targeted abilities, while server validates actual PvP damage.
+    const proxy = {name:target.name, x:target.x, z:target.z, r:.5, total:0, hits:0, max:0,
+      st:{}, dots:{}, flash:0, shake:0, caster:null};
+    const isDash = /charge|mighty|leap|jump/i.test(sp.name || '');
+    if (sp.target === 'enemy' && !isDash) {
+      try { sp.cast({t:proxy}); }
+      catch (e) { swing(slot === 'q' ? 'slash' : slot === 'w' ? 'spin' : 'chop', .32); }
+    } else {
+      swing(slot === 'q' ? 'slash' : slot === 'w' ? 'spin' : 'chop', .32);
+      if (sp.target === 'self') {
+        // Preserve self-buff behavior from the actual weapon spell.
+        try { sp.cast({aim:{x:target.x,z:target.z}}); } catch (e) {}
+      }
+    }
     window.mpAbilityHit(slot, loadout.weapon);
     return;
   }
@@ -1363,6 +1378,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   const MP_ATTACK_INTERVAL = 900;
   window.mpTargetRing = { active:false, x:0, z:0 };
   window.mpTargetId = null;
+  window.mpGetTarget = () => { const t = remotes.get(mpTargetId); return t && !t.dead ? {x:t.group.position.x,z:t.group.position.z,name:t.name} : null; };
   window.mpAbilityHit = (slot, weapon) => {
     const target = remotes.get(mpTargetId);
     if (!target || target.dead) return toast('Сначала выбери живую цель');
@@ -1460,7 +1476,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         if (msg.targetId === mpId) { setPlayerHealth(msg.hp); if (msg.hp > 0) toast('Получен урон: ' + msg.damage); }
         const r = remotes.get(msg.targetId); if (r) { r.hp = msg.hp; setRemoteDead(r, msg.hp <= 0); }
         if (msg.attackerId === mpId) toast((msg.kind === 'ability' ? 'Способность попала' : 'Попадание') + ': -' + msg.damage + ' HP');
-        if (msg.attackerId) { const a = remotes.get(msg.attackerId); if (a && msg.targetId !== mpId) a.swingT = 1; }
+        if (msg.attackerId) { const a = remotes.get(msg.attackerId); if (a && msg.targetId !== mpId) { a.swingT = 1; a.abilityT = msg.kind === 'ability' ? 1 : 0; a.lastAbilitySlot = msg.slot || null; } }\n        if (msg.targetId === mpId && msg.kind === 'ability') { swing(msg.slot === 'q' ? 'slash' : msg.slot === 'w' ? 'spin' : 'chop', .32); }
       } else if (msg.type === 'respawn') {
         updateRemote(msg.player);
         if (msg.player.id === mpId) { setPlayerHealth(msg.player.hp); player.position.set(msg.player.x, 0, msg.player.z); resetDeath(); order.mode = 'none'; }
