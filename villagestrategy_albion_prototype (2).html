@@ -1066,7 +1066,7 @@ function castSlot(slot, ctx, options = {}) {
     // remote hit/impact presentation; no local fake target or fake damage.
     // Preserve weapon/ability-specific cast motion in PvP instead of the old
     // generic slot animation. Claymore charge and dual-sword spinning are distinct.
-    const abilityKey = String(loadout[slot] || WEAPONS[weapon].e || abilityId || '');
+    const abilityKey = String(loadout[slot] || WEAPONS[loadout.weapon]?.e || abilityId || '');
     const motion = ({
       charge: ['chop', .42],
       spinning: ['spin', .58],
@@ -1355,7 +1355,7 @@ $('#selWeapon').addEventListener('change', e => { setWeapon(e.target.value); e.t
 $('#selQ').addEventListener('change', e => { loadout.q = e.target.value; cd.q = 0; if (window.mpSetLoadout) window.mpSetLoadout(); renderSlots(); saveLoadout(); e.target.blur(); });
 $('#selW').addEventListener('change', e => { loadout.w = e.target.value; cd.w = 0; if (window.mpSetLoadout) window.mpSetLoadout(); renderSlots(); saveLoadout(); e.target.blur(); });
 $('#selP').addEventListener('change', e => { loadout.p = e.target.value; if (window.mpSetLoadout) window.mpSetLoadout(); saveLoadout(); e.target.blur(); toast(PASSIVES[e.target.value].desc); });
-$('#chkFree').addEventListener('change', e => { TEST.free = e.target.checked; if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free})); if (TEST.free) { energy = 100; for (const k in cd) cd[k] = 0; } e.target.blur(); });
+$('#chkFree').addEventListener('change', e => { TEST.free = e.target.checked; if (window.mpSetTestMode) window.mpSetTestMode(TEST.free); if (TEST.free) { energy = 100; for (const k in cd) cd[k] = 0; } e.target.blur(); });
 $('#dreset').addEventListener('click', e => { S.total = S.hits = S.max = 0; S.ev.length = 0; S.fightTotal = 0; S.last = -99; for (const d of dummies) { d.total = d.hits = d.max = 0; d.st = {}; d.dots = {}; } e.target.blur(); });
 addEventListener('keydown', e => {
   if (e.repeat || (e.target && e.target.tagName === 'SELECT')) return;
@@ -1476,6 +1476,9 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   window.mpSetWeapon = id => {
     if (socket && socket.readyState === WebSocket.OPEN && WEAPONS[id]) socket.send(JSON.stringify({type:'weapon',weapon:id}));
   };
+  window.mpSetTestMode = enabled => {
+    if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'test-mode', enabled:!!enabled}));
+  };
   window.mpSetLoadout = () => {
     if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w,p:loadout.p}));
   };
@@ -1554,7 +1557,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     const bootMat = new THREE.MeshStandardMaterial({color:0x243746, roughness:1});
     for (const x of [-.2,.2]) { const boot = new THREE.Mesh(new THREE.SphereGeometry(.14, 8, 6), bootMat); boot.scale.set(1,.65,1.3); boot.position.set(x,.17,.04); potato.add(boot); }
     potato.userData.mpPlayerId = p.id; group.add(potato);
-    const label = makeLabel(p.name); group.add(label);
+    const label = makeLabel(p.name); label.userData.mpPlayerId = p.id; group.add(label);
     group.position.set(Number(p.x)||0, 0, Number(p.z)||0);
     group.rotation.y = Number(p.rotation)||0;
     scene.add(group);
@@ -1597,7 +1600,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         mats.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
       }
     });
-    remotes.delete(id); remoteMeshes.delete(id); if (mpTargetId === id) mpTargetId = null;
+    remotes.delete(id); remoteMeshes.delete(id); if (mpTargetId === id) window.mpClearTarget(false);
   }
   function connect() {
     if (!/^https?:$/.test(location.protocol)) {
@@ -1690,7 +1693,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         }
       }else if (msg.type === 'respawn') {
         updateRemote(msg.player);
-        if (msg.player.id === mpId) { setPlayerHealth(msg.player.hp); player.position.set(msg.player.x, 0, msg.player.z); resetDeath(); order.mode = 'none'; }
+        if (msg.player.id === mpId) { setPlayerHealth(msg.player.hp); player.position.set(msg.player.x, 0, msg.player.z); resetDeath(); order.mode = null; }
       } else if (msg.type === 'combat-resource') {
         if (Number.isFinite(Number(msg.energy))) energy = Math.max(0, Math.min(100, Number(msg.energy)));
         if (Number.isFinite(Number(msg.charges))) {
@@ -1739,7 +1742,8 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     toast('Цель выбрана · ' + (chosen?.name || 'игрок') + ' · ' + nearestDist.toFixed(1) + ' м');
   };
   addEventListener('keydown', ev => {
-    if (ev.target?.tagName === 'INPUT' || ev.target?.tagName === 'TEXTAREA' || ev.target?.tagName === 'SELECT' || ev.target?.isContentEditable) return;
+    const el = ev.target, typing = el?.tagName === 'TEXTAREA' || el?.isContentEditable || (el?.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'range'].includes(el.type));
+    if (typing || el?.tagName === 'SELECT') return;
     if (ev.code === 'Escape' && !ev.repeat && window.mpTargetId) {
       ev.preventDefault();
       window.mpClearTarget(true);
@@ -1768,7 +1772,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     }
     mpTargetId = targetId;
     window.mpTargetId = targetId;
-    toast('Цель захвачена: автоатака в радиусе, E — особая способность оружия.');
+    toast('Цель захвачена: автоатака в радиусе, Q/W/E — умения, Esc — снять цель.');
     ev.stopImmediatePropagation();
     ev.preventDefault();
   }, true);
@@ -1803,7 +1807,12 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       let dr = r.renderRot - r.group.rotation.y; while (dr > Math.PI) dr -= Math.PI * 2; while (dr < -Math.PI) dr += Math.PI * 2;
       r.group.rotation.y += dr * smooth;
     }
-    const selectedTarget = mpTargetId ? remotes.get(mpTargetId) : null;
+    let selectedTarget = mpTargetId ? remotes.get(mpTargetId) : null;
+    if (mpTargetId && (!selectedTarget || selectedTarget.dead)) {
+      window.mpClearTarget(false);
+      toast(selectedTarget ? 'Цель погибла — выбор снят' : 'Цель пропала — выбор снят');
+      selectedTarget = null;
+    }
     if (selectedTarget && !selectedTarget.dead) {
       window.mpTargetRing.active = true;
       window.mpTargetRing.x = selectedTarget.group.position.x;
