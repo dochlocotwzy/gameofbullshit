@@ -1318,7 +1318,7 @@ function renderHud() {
     h.n.classList.toggle('nomana', !TEST.free && energy < sp.en);
   }
   const ch = CHG(); H.pips.forEach((p, i) => p.classList.toggle('on', i < ch));
-  const b = [], sec = t => Math.ceil(t) + ' с';
+  const b = [], sec = t => Math.ceil(t) + ' с', mpS = window.mpSelfStatuses || {}, now = Date.now(), left = k => mpS[k]?.until > now ? (mpS[k].until - now) / 1000 : 0;
   if (buffs.ms.t > 0) b.push(`🏃 +${Math.round(buffs.ms.v * 100)}% скорость ${sec(buffs.ms.t)}`);
   if (buffs.iron.t > 0) b.push(`💪 Iron Will: −25.9% урона, +20% скорость ${sec(buffs.iron.t)}`);
   if (buffs.parry.t > 0) b.push('🛡️ Парирование: неуязвим');
@@ -1327,6 +1327,12 @@ function renderHud() {
   if (buffs.intr.t > 0) b.push(`✋ автоатаки +${Math.round(buffs.intr.v * 100)}% ${sec(buffs.intr.t)}`);
   if (buffs.blood.t > 0) b.push(`🩸 Bloodthirst ${sec(buffs.blood.t)}`);
   if (buffs.def.t > 0) b.push(`🧱 +68 защиты ${sec(buffs.def.t)}`);
+  if (left('haste') > 0 && buffs.ms.t <= 0) b.push(`🏃 +${Math.round((Number(mpS.haste.value) || 0) * 100)}% скорость ${sec(left('haste'))}`);
+  if (left('resist') > 0 && buffs.resist.t <= 0) b.push(`🛡️ Сопротивление ${Math.round((Number(mpS.resist.value) || 0) * 100)}% ${sec(left('resist'))}`);
+  if (left('attackBuff') > 0 && buffs.atk.t <= 0 && buffs.intr.t <= 0) b.push(`⚔️ +${Math.round((Number(mpS.attackBuff.value) || 0) * 100)}% урон автоатак ${sec(left('attackBuff'))}`);
+  if (left('bloodthirst') > 0 && buffs.blood.t <= 0) b.push(`🩸 Bloodthirst ${sec(left('bloodthirst'))}`);
+  if (left('defense') > 0 && buffs.def.t <= 0) b.push(`🧱 +${Number(mpS.defense.value) || 68} защиты ${sec(left('defense'))}`);
+  if (left('weak') > 0) b.push(`⬇️ Ослабление урона −${Math.round((Number(mpS.weak.value) || 0) * 100)}% ${sec(left('weak'))}`);
   if (ch) b.push(`⚔️ +${Math.round(ch * COMBAT.ASPD_PER_CHARGE * 100)}% скорость автоатак`);
   const bs = b.join('|'); if (bs !== H.buffStr) { H.buffStr = bs; H.buffs.innerHTML = ''; for (const t of b) { const sp = document.createElement('span'); sp.className = 'bf'; sp.textContent = t; H.buffs.appendChild(sp); } }
   while (S.ev.length && gameT - S.ev[0][0] > 5) S.ev.shift();
@@ -1636,13 +1642,14 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         if (attacker) { attacker.swingT = 1; attacker.abilityT = msg.kind === 'ability' ? 1 : 0; attacker.lastAbilitySlot = msg.slot || null; }
       } else if (msg.type === 'combat-status') {
         window.mpStatuses = window.mpStatuses || {};
+        if (msg.targetId === mpId) window.mpSelfStatuses = msg.statuses || {};
         window.mpStatuses[msg.targetId] = msg.statuses || {};
         const affected = remotes.get(msg.targetId);
         if (affected) affected.statuses = msg.statuses || {};
         const activeEntries = Object.entries(msg.statuses || {}).filter(([,v]) => v && v.until > Date.now());
         if (activeEntries.length) {
           const statusKey = activeEntries[activeEntries.length - 1][0];
-          const statusColor = ({bleed:0xb01830,slow:0x79c96b,root:0xffe27a,stun:0xff7a3a,air:0xffd45a,resist:0x6cc9ff,haste:0xffd36e,armorBreak:0xe7a35a,hpDown:0x9d80ff})[statusKey] || 0xffffff;
+          const statusColor = ({bleed:0xb01830,deepBleed:0xb01830,bloodthirst:0xb01830,slow:0x79c96b,root:0xffe27a,stun:0xff7a3a,air:0xffd45a,resist:0x6cc9ff,haste:0xffd36e,defense:0x6cc9ff,weak:0x9d80ff,armorBreak:0xe7a35a,hpDown:0x9d80ff})[statusKey] || 0xffffff;
           const unit = msg.targetId === mpId ? player : affected?.group;
           if (unit && typeof fxRing === 'function') fxRing(unit.position.x, unit.position.z, 1.25, statusColor, .65);
         }
