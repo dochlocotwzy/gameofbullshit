@@ -1300,11 +1300,6 @@ rebuildWeapons(); renderSlots();
 
 
 function updatePlayer(dt) {
-  if (window.mpConnected) {
-    // Multiplayer movement is server-authoritative. Do not force Idle here:
-    // it runs every frame and can interrupt any animation started by a cast.
-    return;
-  }
   if (deathState !== 'alive' || playerVitals.hp <= 0) { order.mode = null; gather.active = false; return; }
   const WK = CFG.WASD_MOVE;
   let ix = (down('ArrowRight', WK && 'KeyD') ? 1 : 0) - (down('ArrowLeft', WK && 'KeyA') ? 1 : 0), iz = (down('ArrowDown', WK && 'KeyS') ? 1 : 0) - (down('ArrowUp', WK && 'KeyW') ? 1 : 0);
@@ -1678,12 +1673,6 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 
   function mpFrame(now) {
     requestAnimationFrame(mpFrame);
-    if (window.mpConnected && player && playerVitals.hp > 0) {
-      player.position.x += (selfTargetX - player.position.x) * .42;
-      player.position.z += (selfTargetZ - player.position.z) * .42;
-      player.rotation.y += (selfTargetRot - player.rotation.y) * .42;
-    }
-
     for (const r of remotes.values()) {
       if (!r.dead && r.swingT > 0) { r.swingT = Math.max(0, r.swingT - .06); r.potato.rotation.x = Math.sin((1-r.swingT)*Math.PI) * .22; }
       else if (!r.dead) r.potato.rotation.x *= .75;
@@ -1707,13 +1696,9 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         lastAttack = now;
       }
     }
-    if (socket && socket.readyState === WebSocket.OPEN && now - lastInputSend > 50) {
+    if (socket && socket.readyState === WebSocket.OPEN && player && now - lastInputSend > 80) {
       lastInputSend = now;
-      const WK = CFG.WASD_MOVE;
-      const ix = (down('ArrowRight', WK && 'KeyD') ? 1 : 0) - (down('ArrowLeft', WK && 'KeyA') ? 1 : 0);
-      const iz = (down('ArrowDown', WK && 'KeyS') ? 1 : 0) - (down('ArrowUp', WK && 'KeyW') ? 1 : 0);
-      const c = Math.cos(camYaw), s = Math.sin(camYaw);
-      socket.send(JSON.stringify({type:'input', x:ix*c + iz*s, z:-ix*s + iz*c, running:down('ShiftLeft','ShiftRight')}));
+      socket.send(JSON.stringify({type:'state', x:player.position.x, z:player.position.z, rotation:player.rotation.y}));
     }
   }
   connect();
