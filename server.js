@@ -92,7 +92,7 @@ wss.on("connection", (ws) => {
     return ws.close(1013, "Server full");
   }
   const id = crypto.randomUUID();
-  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {} };
+  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword" };
   players.set(id, p);
   send(ws, { type: "welcome", id, players: snapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
@@ -116,6 +116,11 @@ wss.on("connection", (ws) => {
       p.input.z = Math.max(-1, Math.min(1, z));
       p.input.running = msg.running === true;
       p.moveTarget = null;
+      return;
+    }
+    if (msg.type === "weapon") {
+      const weapon = String(msg.weapon || "");
+      if (WEAPON_DAMAGE[weapon]) p.weapon = weapon;
       return;
     }
     if (msg.type === "stop") {
@@ -159,7 +164,7 @@ wss.on("connection", (ws) => {
     }
     if (msg.type === "ability-hit") {
       const now=Date.now(); if(p.hp<=0||now-p.lastAbility<250)return;
-      const target=players.get(String(msg.targetId||"")),slot=String(msg.slot||""),weapon=String(msg.weapon||"");
+      const target=players.get(String(msg.targetId||"")),slot=String(msg.slot||""),weapon=p.weapon||"broadsword";
       const abilityId=String(msg.abilityId||(slot==="e"?WEAPON_E[weapon]:"")),ability=ABILITIES[abilityId];
       if(!target||target.id===p.id||target.hp<=0||!ability||!ABILITY_IDS.has(abilityId))return;
       if(slot==="e"&&WEAPON_E[weapon]!==abilityId)return;
