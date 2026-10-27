@@ -62,7 +62,7 @@ function send(ws, payload) {
 }
 function snapshot() {
   return [...players.values()].map(p => ({
-    id: p.id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp
+    id: p.id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp, statuses: p.statuses || {}
   }));
 }
 function broadcast(payload, exceptId) {
@@ -163,8 +163,7 @@ wss.on("connection", (ws) => {
       const abilityId=String(msg.abilityId||(slot==="e"?WEAPON_E[weapon]:"")),ability=ABILITIES[abilityId];
       if(!target||target.id===p.id||target.hp<=0||!ability||!ABILITY_IDS.has(abilityId))return;
       if(slot==="e"&&WEAPON_E[weapon]!==abilityId)return;
-      if(slot==="q"&&!["strike","cleave","interrupt","splitting"].includes(abilityId))return;
-      if(slot==="w"&&!["cyclone","hamstring","parry","ironwill"].includes(abilityId))return;
+      if(!["q","w","e"].includes(slot))return;
       let dx=target.x-p.x,dz=target.z-p.z,distance=Math.hypot(dx,dz);
       const aimX=Number(msg.aimX),aimZ=Number(msg.aimZ);
       const isArea=Number.isFinite(aimX)&&Number.isFinite(aimZ)&&["cleave","cyclone","splitting","parry","spinning","bloodthirsty","carvingDash","soulless","majestic","infinity"].includes(abilityId);
@@ -208,8 +207,12 @@ const gameTick = setInterval(() => {
   const dt = TICK_MS / 1000;
   for (const p of players.values()) {
     if (p.hp <= 0) continue;
-    let dx = p.input.x, dz = p.input.z;
-    if (p.moveTarget) {
+    const now = Date.now();
+    if (!p.statuses) p.statuses = {};
+    for (const [key, status] of Object.entries(p.statuses)) if (!status || status.until <= now) delete p.statuses[key];
+    const rooted = ["root","stun","air"].some(key => p.statuses[key]);
+    let dx = rooted ? 0 : p.input.x, dz = rooted ? 0 : p.input.z;
+    if (p.moveTarget && !rooted) {
       dx = p.moveTarget.x - p.x;
       dz = p.moveTarget.z - p.z;
       const d = Math.hypot(dx,dz);
@@ -219,7 +222,8 @@ const gameTick = setInterval(() => {
     const len = Math.hypot(dx,dz);
     if (len > 1) { dx /= len; dz /= len; }
     if (len > 0) {
-      const speed = p.moveTarget ? MOVE_SPEED : (p.input.running ? RUN_SPEED : MOVE_SPEED);
+      const slow = p.statuses.slow ? Math.max(0.2, 1 - Number(p.statuses.slow.value || 0)) : 1;
+      const speed = (p.moveTarget ? MOVE_SPEED : (p.input.running ? RUN_SPEED : MOVE_SPEED)) * slow;
       p.x = Math.max(-WORLD_BOUND, Math.min(WORLD_BOUND, p.x + dx * speed * dt));
       p.z = Math.max(-WORLD_BOUND, Math.min(WORLD_BOUND, p.z + dz * speed * dt));
       p.rotation = Math.atan2(dx, dz);
