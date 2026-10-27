@@ -690,6 +690,8 @@ canvas.addEventListener('pointerdown', e => {
   if (e.button !== 0) return; canvas.setPointerCapture(e.pointerId); mouseDown = true; mouse.x = e.clientX; mouse.y = e.clientY;
   const dm = pickDummy(e.clientX, e.clientY);
   if (dm) { orderAttack(dm); return; }
+  const remote = window.__mpCombat && window.__mpCombat.pickTarget(e.clientX, e.clientY);
+  if (remote) { orderAttack(remote); return; }
   const r = pickResource(e.clientX, e.clientY);
   if (r) orderGather(r); else { const p = groundPoint(e.clientX, e.clientY); if (p) orderMove(p.x, p.z); }
 });
@@ -1011,7 +1013,11 @@ function pickDummy(cx, cy) {
   let b = null, bd = 1.3; for (const d of dummies) { const k = dist2(p.x, p.z, d.x, d.z); if (k < bd) { bd = k; b = d; } } return b;
 }
 function pickTarget() {
-  if (mouse.x >= 0) { const d = pickDummy(mouse.x, mouse.y); if (d) return d; }
+  if (mouse.x >= 0) {
+    const remote = window.__mpCombat && window.__mpCombat.pickTarget(mouse.x, mouse.y);
+    if (remote) return remote;
+    const d = pickDummy(mouse.x, mouse.y); if (d) return d;
+  }
   if (order.mode === 'attack' && order.dummy) return order.dummy;
   let b = null, bd = 30; for (const d of dummies) { const k = edgeDist(d); if (k < bd) { bd = k; b = d; } } return b;
 }
@@ -1025,7 +1031,16 @@ function trySpell(slot) {
   const sp = spellFor(slot); if (!sp || dash || lockT > 0) return;
   if (!TEST.free) { if (cd[slot] > 0) return toast('Перезарядка: ' + cd[slot].toFixed(1) + ' с'); if (energy < sp.en) return toast('Не хватает энергии'); }
   if (sp.target === 'enemy') {
-    const t = pickTarget(); if (!t) return toast('Нет цели: наведи курсор на манекен');
+    const t = pickTarget(); if (!t) return toast('Нет цели: наведи курсор на врага');
+    if (t.remote) {
+      const d = Math.hypot(t.x - pos.x, t.z - pos.z);
+      if (d > sp.range + .6) return toast('Враг слишком далеко');
+      if (!TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }
+      const dmgBySpell = { strike:249, interrupt:248, hamstring:192, mightyBlow:300, charge:320 };
+      window.__mpCombat.attack(t, dmgBySpell[loadout[slot] || (slot === 'e' ? WEAPONS[loadout.weapon].e : '')] || 220, sp.range);
+      faceXZ(t.x, t.z); swing('chop', .3); toast('Удар по игроку!');
+      return;
+    }
     if (edgeDist(t) > sp.range) { cancelOrder(); order.mode = 'cast'; order.slot = slot; order.dummy = t; return; }
     castSlot(slot, { t });
   } else castSlot(slot, { aim: aimPoint() });
@@ -1045,7 +1060,11 @@ function doAuto(t) {
   const w = WEAPONS[loadout.weapon], n = ++autoN; faceXZ(t.x, t.z);
   swing(n % 2 ? 'slash' : 'chop', .26);
   const base = w.auto * (1 + (buffs.atk.t > 0 ? 1 : 0) + (buffs.intr.t > 0 ? buffs.intr.v : 0));
-  later(.1, () => { dmg(t, base, 'auto'); afterAuto(t, n); });
+  if (t.remote) {
+    later(.1, () => { if (window.__mpCombat) window.__mpCombat.attack(t, base, weaponReach()); });
+  } else {
+    later(.1, () => { dmg(t, base, 'auto'); afterAuto(t, n); });
+  }
   autoCd = w.aint / atkSpeed();
 }
 
@@ -1324,12 +1343,13 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     const group = new THREE.Group();
     const material = new THREE.MeshStandardMaterial({color:0x5bb8ff, roughness:.8});
     const mesh = new THREE.Mesh(new THREE.CapsuleGeometry(.38, 1.05, 4, 8), material);
-    mesh.position.y = .9; mesh.castShadow = true; group.add(mesh);
+    mesh.position.y = .9; mesh.castShadow = true; mesh.userData.mpId = p.id; group.add(mesh);
     group.add(makeLabel(p.name));
     group.position.set(Number(p.x)||0, 0, Number(p.z)||0);
     group.rotation.y = Number(p.rotation)||0;
     scene.add(group);
-    remotes.set(p.id, {group, targetX:group.position.x, targetZ:group.position.z, targetRot:group.rotation.y, name:p.name||'Игрок', hp:p.hp||1000});
+    const target = { id:p.id, remote:true, x:group.position.x, z:group.position.z, r:.5, name:p.name||'Игрок', hp:p.hp ?? 1000 };
+    remotes.set(p.id, {group, targetX:group.position.x, targetZ:group.position.z, targetRot:group.rotation.y, name:p.name||'Игрок', hp:p.hp ?? 1000, target});
   }
   function updateRemote(p) {
     if (!p || p.id === mpId) return;
@@ -1337,7 +1357,8 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     const r = remotes.get(p.id);
     if (!r) return;
     r.targetX = Number(p.x)||0; r.targetZ = Number(p.z)||0;
-    r.targetRot = Number(p.rotation)||0; r.hp = Number(p.hp)||1000;
+    r.targetRot = Number(p.rotation)||0; r.hp = Number(p.hp ?? 1000);
+    r.target.x = r.targetX; r.target.z = r.targetZ; r.target.hp = r.hp;
   }
   function removeRemote(id) {
     const r = remotes.get(id);
@@ -1352,6 +1373,32 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     });
     remotes.delete(id);
   }
+  function pickRemoteAt(cx, cy) {
+    if (!remotes.size) return null;
+    pointerRay(cx, cy);
+    const roots = [...remotes.values()].map(r => r.group);
+    const hits = ray.intersectObjects(roots, true);
+    if (hits.length) {
+      let o = hits[0].object;
+      while (o && !o.userData.mpId) o = o.parent;
+      if (o && o.userData.mpId) return remotes.get(o.userData.mpId)?.target || null;
+    }
+    // Forgiving click target: pick the nearest visible player within 34 screen pixels.
+    let best = null, bestD = 34;
+    for (const r of remotes.values()) {
+      const v = new THREE.Vector3(r.group.position.x, 1.1, r.group.position.z).project(camera);
+      if (v.z >= 1) continue;
+      const sx = (v.x * .5 + .5) * innerWidth, sy = (-v.y * .5 + .5) * innerHeight;
+      const d = Math.hypot(sx - cx, sy - cy);
+      if (d < bestD) { bestD = d; best = r.target; }
+    }
+    return best;
+  }
+  function sendAttack(target, damage, range) {
+    if (!target || !socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({type:'attack', target:target.id, damage, range}));
+  }
+  window.__mpCombat = { pickTarget: pickRemoteAt, attack: sendAttack };
   function connect() {
     if (!/^https?:$/.test(location.protocol)) {
       mpStatus.textContent = 'Мультиплеер: откройте через Render';
@@ -1370,6 +1417,19 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         (msg.players || []).forEach(p => { if (p.id !== mpId) addRemote(p); });
       } else if (msg.type === 'joined' || msg.type === 'player') updateRemote(msg.player);
       else if (msg.type === 'left') removeRemote(msg.id);
+      else if (msg.type === 'combat') {
+        if (msg.target === mpId) {
+          setPlayerHealth(msg.hp);
+          if (msg.hp <= 0) { cancelOrder(); toast('Ты погиб! Возрождение через 5 секунд'); }
+          else toast('Получен урон: ' + msg.damage);
+        }
+        const r = remotes.get(msg.target);
+        if (r) { r.hp = msg.hp; r.target.hp = msg.hp; }
+      }
+      else if (msg.type === 'revivedSelf') {
+        setPlayerHealth(msg.hp); pos.set(Number(msg.x)||0, 0, Number(msg.z)||7); cancelOrder(); toast('Ты возродился!');
+      }
+      else if (msg.type === 'revived') updateRemote(msg.player);
       else if (msg.type === 'ping') mpStatus.textContent = 'Мультиплеер: онлайн · ' + msg.online + ' игрок(ов)';
       else if (msg.type === 'error') mpStatus.textContent = 'Мультиплеер: ' + msg.message;
     });
