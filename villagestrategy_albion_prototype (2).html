@@ -1310,7 +1310,7 @@ function updateHover() {
   const mpRing = window.mpTargetRing;
   const busy = (order.mode === 'attack' || order.mode === 'cast') && order.dummy ? order.dummy : null;
   const t = order.mode === 'gather' && order.res && !order.res.depleted ? order.res : busy || dm || r;
-  if (mpRing && mpRing.active) { ring.visible = true; ring.position.set(mpRing.x, .11, mpRing.z); ring.scale.setScalar(3.8); }
+  if (mpRing && mpRing.active) { ring.visible = true; ring.position.set(mpRing.x, .11, mpRing.z); ring.scale.setScalar(.95); }
   else if (t) { ring.visible = true; ring.position.set(t.x, .1, t.z); ring.scale.setScalar(t.r + .5); }
   else ring.visible = false;
   if (dm) { tipEl.style.display = 'block'; tipEl.style.left = mouse.x + 'px'; tipEl.style.top = mouse.y + 'px'; tipEl.textContent = `🎯 ${dm.name}: ЛКМ — атаковать манекен`; canvas.style.cursor = 'crosshair'; }
@@ -1358,7 +1358,30 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   window.mpTargetRing = { active:false, x:0, z:0 };
   window.mpTargetId = null;
   window.mpAbilityHit = (slot, weapon) => {
-    if (socket && socket.readyState === WebSocket.OPEN && mpTargetId) socket.send(JSON.stringify({type:'ability-hit', targetId:mpTargetId, slot, weapon}));
+    const target = remotes.get(mpTargetId);
+    if (!target || target.dead) return toast('Сначала выбери живую цель');
+    // Claymore E is a charge: lunge toward the target before the server hit resolves.
+    if (slot === 'e' && weapon === 'claymore') {
+      const dx = target.group.position.x - player.position.x;
+      const dz = target.group.position.z - player.position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > 1.25) {
+        const travel = Math.min(2.7, dist - 1.05);
+        const fromX = player.position.x, fromZ = player.position.z;
+        const toX = fromX + dx / dist * travel, toZ = fromZ + dz / dist * travel;
+        const started = performance.now();
+        const duration = 220;
+        const lunge = () => {
+          const k = Math.min(1, (performance.now() - started) / duration);
+          const eased = 1 - Math.pow(1-k, 3);
+          player.position.x = fromX + (toX-fromX)*eased;
+          player.position.z = fromZ + (toZ-fromZ)*eased;
+          if (k < 1) requestAnimationFrame(lunge);
+        };
+        requestAnimationFrame(lunge);
+      }
+    }
+    if (socket && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'ability-hit', targetId:mpTargetId, slot, weapon}));
   };
 
   function makeLabel(name) {
@@ -1469,13 +1492,13 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   canvas.addEventListener('pointerdown', ev => {
     if (ev.button !== 0) return;
     pointerRay(ev.clientX, ev.clientY);
-    const hits = ray.intersectObjects([...remoteMeshes.values()], false);
+    const hits = ray.intersectObjects([...remotes.values()].map(r => r.group), true);
     if (!hits.length) return;
-    const targetId = hits[0].object.userData.mpPlayerId;
+    const targetId = hits[0].object.userData.mpPlayerId || hits[0].object.parent?.userData.mpPlayerId || hits[0].object.parent?.parent?.userData.mpPlayerId;
     if (!targetId) return;
     mpTargetId = targetId;
     window.mpTargetId = targetId;
-    toast('Цель захвачена. Q/W/E — способности, автоатака — в радиусе.');
+    toast('Цель захвачена: автоатака в радиусе, E — особая способность оружия.');
     ev.stopImmediatePropagation();
     ev.preventDefault();
   }, true);
