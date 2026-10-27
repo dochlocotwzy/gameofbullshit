@@ -1500,6 +1500,10 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (!remotes.has(p.id)) addRemote(p);
     const r = remotes.get(p.id);
     if (!r) return;
+    const receivedAt = performance.now();
+    r.snapshots = r.snapshots || [];
+    r.snapshots.push({ t: receivedAt, x: Number(p.x)||0, z: Number(p.z)||0, rot: Number(p.rotation)||0 });
+    if (r.snapshots.length > 12) r.snapshots.splice(0, r.snapshots.length - 12);
     r.targetX = Number(p.x)||0; r.targetZ = Number(p.z)||0;
     r.targetRot = Number(p.rotation)||0; r.hp = Number.isFinite(Number(p.hp)) ? Number(p.hp) : r.hp;
     setRemoteDead(r, r.hp <= 0);
@@ -1693,13 +1697,27 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     requestAnimationFrame(mpFrame);
     const frameDt = lastMpFrame ? Math.min((now - lastMpFrame) / 1000, .1) : 1 / 60;
     lastMpFrame = now;
-    const smooth = 1 - Math.exp(-20 * frameDt);
+    const renderAt = now - 110;
+    const smooth = 1 - Math.exp(-12 * frameDt);
     for (const r of remotes.values()) {
       if (!r.dead && r.swingT > 0) { r.swingT = Math.max(0, r.swingT - .06); r.potato.rotation.x = Math.sin((1-r.swingT)*Math.PI) * .22; }
       else if (!r.dead) r.potato.rotation.x *= .75;
-      r.group.position.x += (r.targetX - r.group.position.x) * smooth;
-      r.group.position.z += (r.targetZ - r.group.position.z) * smooth;
-      r.group.rotation.y += (r.targetRot - r.group.rotation.y) * smooth;
+      const snaps = r.snapshots;
+      if (snaps && snaps.length >= 2) {
+        let a = snaps[0], b = snaps[snaps.length - 1];
+        for (let i = 1; i < snaps.length; i++) { if (snaps[i].t >= renderAt) { a = snaps[i - 1]; b = snaps[i]; break; } }
+        const span = b.t - a.t;
+        const t = span > 0 ? Math.max(0, Math.min(1, (renderAt - a.t) / span)) : 1;
+        r.renderX = a.x + (b.x - a.x) * t;
+        r.renderZ = a.z + (b.z - a.z) * t;
+        let dRot = b.rot - a.rot; while (dRot > Math.PI) dRot -= Math.PI * 2; while (dRot < -Math.PI) dRot += Math.PI * 2;
+        r.renderRot = a.rot + dRot * t;
+        while (snaps.length > 2 && snaps[1].t < renderAt - 250) snaps.shift();
+      } else { r.renderX = r.targetX; r.renderZ = r.targetZ; r.renderRot = r.targetRot; }
+      r.group.position.x += (r.renderX - r.group.position.x) * smooth;
+      r.group.position.z += (r.renderZ - r.group.position.z) * smooth;
+      let dr = r.renderRot - r.group.rotation.y; while (dr > Math.PI) dr -= Math.PI * 2; while (dr < -Math.PI) dr += Math.PI * 2;
+      r.group.rotation.y += dr * smooth;
     }
     const selectedTarget = mpTargetId ? remotes.get(mpTargetId) : null;
     if (selectedTarget && !selectedTarget.dead) {
