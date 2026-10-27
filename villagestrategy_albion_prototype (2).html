@@ -1049,20 +1049,32 @@ function castSlot(slot, ctx, options = {}) {
   if (!sp || dash || lockT > 0) return false;
   if (!TEST.free && (cd[slot] > 0 || energy < sp.en)) return false;
 
-  // Single cast pipeline for dummies and multiplayer targets: pay costs once,
-  // start cooldown once, execute the selected spell definition once.
+  // Shared resource/cooldown gate. In multiplayer PvP, gameplay effects are
+  // server-owned; never run the dummy-oriented spell script on a fake target.
   if (!TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }
+
+  if (options.multiplayerTargetId) {
+    const sent = typeof window.mpAbilityHit === 'function' &&
+      window.mpAbilityHit(slot, loadout.weapon, options.multiplayerTargetId);
+    if (!sent) {
+      // Do not charge the player for a command that could not be sent.
+      if (!TEST.free) { energy = Math.min(100, energy + sp.en); cd[slot] = 0; }
+      return false;
+    }
+    faceXZ(options.targetX, options.targetZ);
+    // Caster-side weapon motion only. The authoritative server event drives
+    // remote hit/impact presentation; no local fake target or fake damage.
+    const anim = slot === 'q' ? 'slash' : slot === 'w' ? 'spin' : 'chop';
+    swing(anim, slot === 'w' ? .42 : .32);
+    return true;
+  }
+
   try {
     sp.cast(ctx);
   } catch (error) {
     console.error('Spell cast failed:', sp.name, error);
+    if (!TEST.free) { energy = Math.min(100, energy + sp.en); cd[slot] = 0; }
     return false;
-  }
-
-  // Multiplayer damage is validated and applied by the server. The local
-  // spell definition is used for the same caster-side visuals/passives.
-  if (options.multiplayerTargetId && typeof window.mpAbilityHit === 'function') {
-    window.mpAbilityHit(slot, loadout.weapon, options.multiplayerTargetId);
   }
   return true;
 }
@@ -1078,13 +1090,11 @@ function trySpell(slot) {
     if (!TEST.free && energy < sp.en) return toast('Не хватает энергии');
 
     faceXZ(target.x, target.z);
-    const proxy = {
-      name: target.name, x: target.x, z: target.z, r: .5,
-      total: 0, hits: 0, max: 0, st: {}, dots: {}, flash: 0, shake: 0,
-      caster: null, hp: 1000, maxHp: 1000, alive: true,
-      multiplayerProxy: true
-    };
-    return castSlot(slot, { t: proxy }, { multiplayerTargetId: window.mpTargetId });
+    return castSlot(slot, null, {
+      multiplayerTargetId: window.mpTargetId,
+      targetX: target.x,
+      targetZ: target.z
+    });
   }
 
   if (!TEST.free && cd[slot] > 0) return toast('Перезарядка: ' + cd[slot].toFixed(1) + ' с');
