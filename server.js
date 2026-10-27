@@ -11,6 +11,8 @@ const MAX_PLAYERS = 40;
 const PLAYER_MAX_HP = 1000;
 const WEAPON_DAMAGE = { broadsword: 40, claymore: 58, dual: 44, clarent: 42, carving: 54, galatine: 46, kingmaker: 60, infinity: 44 };
 const ABILITY_MULTIPLIER = { q: 2.2, w: 2.8, e: 3.5 };
+const Q_ALLOWED = new Set(["strike","cleave"]);
+const W_ALLOWED = new Set(["cyclone","interrupt","splitting","hamstring","parry","ironwill"]);
 const WEAPON_E = { broadsword:"mightyBlow", claymore:"charge", dual:"spinning", clarent:"bloodthirsty", carving:"carvingDash", galatine:"soulless", kingmaker:"majestic", infinity:"infinity" };
 const ABILITIES = {
  strike:{cost:6,cooldown:3,damage:249,range:3.2,selfEffects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:3.5}]}, cleave:{cost:11,cooldown:3,damage:200,radius:6,selfEffects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:5}]},
@@ -92,7 +94,7 @@ wss.on("connection", (ws) => {
     return ws.close(1013, "Server full");
   }
   const id = crypto.randomUUID();
-  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword" };
+  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone"} };
   players.set(id, p);
   send(ws, { type: "welcome", id, players: snapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
@@ -121,6 +123,11 @@ wss.on("connection", (ws) => {
     if (msg.type === "weapon") {
       const weapon = String(msg.weapon || "");
       if (WEAPON_DAMAGE[weapon]) p.weapon = weapon;
+      return;
+    }
+    if (msg.type === "loadout") {
+      const q = String(msg.q || ""), w = String(msg.w || "");
+      if (Q_ALLOWED.has(q) && W_ALLOWED.has(w)) p.loadout = {q,w};
       return;
     }
     if (msg.type === "stop") {
@@ -165,8 +172,10 @@ wss.on("connection", (ws) => {
       const target=players.get(String(msg.targetId||"")),slot=String(msg.slot||""),weapon=p.weapon||"broadsword";
       const abilityId=String(msg.abilityId||(slot==="e"?WEAPON_E[weapon]:"")),ability=ABILITIES[abilityId];
       if(!target||target.id===p.id||target.hp<=0||!ability||!ABILITY_IDS.has(abilityId))return;
-      if(slot==="e"&&WEAPON_E[weapon]!==abilityId)return;
       if(!["q","w","e"].includes(slot))return;
+      if(slot==="e"&&WEAPON_E[weapon]!==abilityId)return;
+      if(slot==="q"&&p.loadout.q!==abilityId)return;
+      if(slot==="w"&&p.loadout.w!==abilityId)return;
       if((p.abilityCooldowns[abilityId]||0)>now){send(ws,{type:"combat",result:"cooldown",abilityId,until:p.abilityCooldowns[abilityId],energy:p.energy});return;}
       if(p.energy < ability.cost){send(ws,{type:"combat",result:"energy",abilityId,energy:p.energy});return;}
       let dx=target.x-p.x,dz=target.z-p.z,distance=Math.hypot(dx,dz);
