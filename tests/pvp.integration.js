@@ -72,6 +72,11 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     const rejected = await waitMessage(a, m => m.type === "combat" && m.result === "cooldown" && m.abilityId === "strike");
     assert.ok(rejected.until > Date.now(), "server enforces ability cooldown");
 
+    const hitsBeforeInvalidSlot = b.messages.filter(m => m.type === "combat-hit" && m.attackerId === aId).length;
+    a.send(JSON.stringify({ type: "ability-hit", targetId: bId, slot: "q", weapon: "kingmaker", abilityId: "hamstring", aimX: 0, aimZ: 7 }));
+    await sleep(350);
+    assert.equal(b.messages.filter(m => m.type === "combat-hit" && m.attackerId === aId).length, hitsBeforeInvalidSlot, "server rejects a mismatched ability slot and ignores client weapon claims");
+
     a.send(JSON.stringify({ type: "ability-hit", targetId: bId, slot: "w", weapon: "broadsword", abilityId: "hamstring", aimX: 0, aimZ: 7 }));
     const debuffHit = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "hamstring");
     assert.equal(debuffHit.damage, 192, "server applies the selected ability's damage");
