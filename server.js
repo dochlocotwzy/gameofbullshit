@@ -213,8 +213,9 @@ const gameTick = setInterval(() => {
     p.lastDotTick = p.lastDotTick || Date.now();
     if (Date.now() - p.lastDotTick >= 500) {
       const now = Date.now();
+      let statusExpired = false;
       for (const [key, st] of Object.entries(p.statuses || {})) {
-        if (!st || st.until <= now) { delete p.statuses[key]; continue; }
+        if (!st || st.until <= now) { delete p.statuses[key]; statusExpired = true; continue; }
         if (key === "bleed" && p.hp > 0) {
           const damage = Math.max(1, Math.round(Number(st.value || 60) * .5));
           p.hp = Math.max(0, p.hp - damage);
@@ -222,6 +223,7 @@ const gameTick = setInterval(() => {
           if (p.hp===0) scheduleRespawn(p);
         }
       }
+      if (statusExpired) broadcast({type:"combat-status",targetId:p.id,statuses:p.statuses});
       p.lastDotTick = now;
     }
     if (p.hp <= 0) continue;
