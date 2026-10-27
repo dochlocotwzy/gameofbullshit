@@ -1644,14 +1644,38 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   };
   addEventListener('keydown', ev => {
     if (ev.target?.tagName === 'INPUT' || ev.target?.tagName === 'TEXTAREA' || ev.target?.tagName === 'SELECT' || ev.target?.isContentEditable) return;
-    if (ev.code === 'Escape' && !ev.repeat) {
+    if (ev.code === 'Escape' && !ev.repeat && window.mpTargetId) {
       ev.preventDefault();
-      window.mpSelectNearestTarget();
+      window.mpClearTarget(true);
       return;
     }
   }, true);
 
-  // Target acquisition is keyboard-only; world clicks remain for movement.
+  // Clicking a player selects/changes the PvP target; clicking the ground keeps the current target.
+  canvas.addEventListener('pointerdown', ev => {
+    if (ev.button !== 0) return;
+    pointerRay(ev.clientX, ev.clientY);
+    const hits = ray.intersectObjects([...remotes.values()].map(r => r.group), true);
+    if (!hits.length) return;
+    let node = hits[0].object, targetId = null;
+    while (node && !targetId) {
+      targetId = node.userData?.mpPlayerId || null;
+      node = node.parent;
+    }
+    if (!targetId) return;
+    const picked = remotes.get(targetId);
+    if (!picked || picked.dead) {
+      toast('Нельзя выбрать мёртвого игрока');
+      ev.stopImmediatePropagation();
+      ev.preventDefault();
+      return;
+    }
+    mpTargetId = targetId;
+    window.mpTargetId = targetId;
+    toast('Цель захвачена: автоатака в радиусе, E — особая способность оружия.');
+    ev.stopImmediatePropagation();
+    ev.preventDefault();
+  }, true);
 
   function mpFrame(now) {
     requestAnimationFrame(mpFrame);
