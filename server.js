@@ -111,6 +111,11 @@ wss.on("connection", (ws) => {
       send(ws, { type: "welcome", id, players: snapshot() });
       return;
     }
+    if (msg.type === "latency-ping") {
+      const sentAt = Number(msg.sentAt);
+      if (Number.isFinite(sentAt)) send(ws, { type: "latency-pong", sentAt });
+      return;
+    }
     if (msg.type === "state") {
       if (p.hp <= 0) return;
       const x = Number(msg.x), z = Number(msg.z), rotation = Number(msg.rotation);
