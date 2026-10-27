@@ -253,12 +253,16 @@ const gameTick = setInterval(() => {
   const dt = TICK_MS / 1000;
   for (const p of players.values()) {
     p.energy = Math.min(100, (p.energy ?? 100) + 4 * dt);
-    p.lastDotTick = p.lastDotTick || Date.now();
-    if (Date.now() - p.lastDotTick >= 500) {
-      const now = Date.now();
-      let statusExpired = false;
-      for (const [key, st] of Object.entries(p.statuses || {})) {
-        if (!st || st.until <= now) { delete p.statuses[key]; statusExpired = true; continue; }
+    const now = Date.now();
+    if (!p.statuses) p.statuses = {};
+    let statusExpired = false;
+    for (const [key, status] of Object.entries(p.statuses)) {
+      if (!status || status.until <= now) { delete p.statuses[key]; statusExpired = true; }
+    }
+    if (statusExpired) broadcast({type:"combat-status",targetId:p.id,statuses:p.statuses});
+    p.lastDotTick = p.lastDotTick || now;
+    if (now - p.lastDotTick >= 500) {
+      for (const [key, st] of Object.entries(p.statuses)) {
         if (key === "bleed" && p.hp > 0) {
           const damage = Math.max(1, Math.round(Number(st.value || 60) * .5));
           p.hp = Math.max(0, p.hp - damage);
@@ -266,13 +270,9 @@ const gameTick = setInterval(() => {
           if (p.hp===0) scheduleRespawn(p);
         }
       }
-      if (statusExpired) broadcast({type:"combat-status",targetId:p.id,statuses:p.statuses});
       p.lastDotTick = now;
     }
     if (p.hp <= 0) continue;
-    const now = Date.now();
-    if (!p.statuses) p.statuses = {};
-    for (const [key, status] of Object.entries(p.statuses)) if (!status || status.until <= now) delete p.statuses[key];
     const rooted = ["root","stun","air"].some(key => p.statuses[key]);
     let dx = rooted ? 0 : p.input.x, dz = rooted ? 0 : p.input.z;
     if (p.moveTarget && !rooted) {
