@@ -977,7 +977,7 @@ const SPELLS = {
       dashTo(a.x, a.z, .5, () => { fxRing(pos.x, pos.z, 3.4, 0xffd45a, .45); const hs = inCircle(pos.x, pos.z, 3.2); hs.forEach(d => { dmg(d, 500, 'spell'); hitFx(d); }); if (hs.length) buffs.atk.t = 4; });
     } },
   bloodthirsty: { name: 'Bloodthirsty Blade', icon: '🩸', en: 14, cd: 20, target: 'self', approx: true,
-    desc: 'Широкий удар (конус, 5 м): 260 урона и кровотечение 60/с на 5 с. 6 с твои автоатаки на 30% быстрее и вызывают кровотечение. (Описание неточное: официальных данных не нашёл.)',
+    desc: 'Широкий удар (конус, 5 м): 260 урона и кровотечение 60/с на 5 с. 6 с автоатаки на 30% быстрее, наносят на 30% больше урона и вызывают кровотечение. (Описание неточное: официальных данных не нашёл.)',
     cast(c) {
       faceXZ(c.aim.x, c.aim.z); const [dx, dz] = dirYaw(), x = pos.x, z = pos.z; swing('slash', .3); buffs.blood.t = 6; fxRing(x, z, 5, 0xb01830, .35, Math.PI * .9, yaw);
       later(.12, () => inCone(x, z, dx, dz, 5, .8).forEach(d => { dmg(d, 260, 'spell'); addDot(d, 'blood', 60, 5); hitFx(d); }));
