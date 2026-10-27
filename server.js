@@ -175,7 +175,13 @@ wss.on("connection", (ws) => {
       const isArea=Number.isFinite(aimX)&&Number.isFinite(aimZ)&&["cleave","cyclone","splitting","parry","spinning","bloodthirsty","carvingDash","soulless","majestic","infinity"].includes(abilityId);
       const selfCentered = ["cleave","parry","bloodthirsty","majestic","infinity"].includes(abilityId);
       if(abilityId==="ironwill"){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;applyEffects(p,ability.selfEffects||[],p.id);broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:[p.id],x:p.x,z:p.z});p.lastAbility=now;send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]});return;}
-      if(ability.dash&&distance<=ability.range&&distance>1.35){const travel=Math.min(2.7,distance-1.05);p.x+=dx/distance*travel;p.z+=dz/distance*travel;distance=Math.hypot(target.x-p.x,target.z-p.z);}
+      if(ability.dash&&distance<=ability.range&&distance>1.35){
+        const travel=Math.min(distance-1.05,abilityId==="charge"?12:Math.max(2.7,distance-1.7));
+        p.rotation=Math.atan2(dx,dz);
+        p.x=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+dx/distance*travel));
+        p.z=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+dz/distance*travel));
+        distance=Math.hypot(target.x-p.x,target.z-p.z);
+      }
       if((abilityId==="spinning"||abilityId==="carvingDash")&&Number.isFinite(aimX)&&Number.isFinite(aimZ)){
         const maxTravel=abilityId==="spinning"?12:6,ax=aimX-p.x,az=aimZ-p.z,len=Math.hypot(ax,az);
         if(len>maxTravel+1)return;
