@@ -221,7 +221,7 @@ wss.on("connection", (ws) => {
         if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
       }
       if(victims.length && ability.selfEffects) applyEffects(p,ability.selfEffects,p.id);
-      broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:victims.map(v=>v.id),x:p.x,z:p.z,aimX:selfCentered?p.x:(Number.isFinite(aimX)?aimX:p.x),aimZ:selfCentered?p.z:(Number.isFinite(aimZ)?aimZ:p.z)});
+      broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:victims.map(v=>v.id),x:p.x,z:p.z,originX:castOriginX,originZ:castOriginZ,aimX:selfCentered?p.x:(Number.isFinite(aimX)?aimX:p.x),aimZ:selfCentered?p.z:(Number.isFinite(aimZ)?aimZ:p.z)});
       for(const victim of victims)broadcast({type:"player",player:publicPlayer(victim)});
     }
   });
