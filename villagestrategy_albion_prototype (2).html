@@ -1381,7 +1381,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         if (msg.attackerId === mpId) toast('Попадание: -' + msg.damage + ' HP');
       } else if (msg.type === 'respawn') {
         updateRemote(msg.player);
-        if (msg.player.id === mpId) setPlayerHealth(msg.player.hp);
+        if (msg.player.id === mpId) { setPlayerHealth(msg.player.hp); player.position.set(msg.player.x, 0, msg.player.z); order.mode = 'none'; }
       } else if (msg.type === 'ping') mpStatus.textContent = 'Мультиплеер: онлайн · ' + msg.online + ' игрок(ов)';
       else if (msg.type === 'error') mpStatus.textContent = 'Мультиплеер: ' + msg.message;
     });
