@@ -1526,10 +1526,14 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         window.mpStatuses[msg.targetId] = msg.statuses || {};
         const affected = remotes.get(msg.targetId);
         if (affected) affected.statuses = msg.statuses || {};
-        if (msg.targetId === mpId) {
-          const active = Object.entries(msg.statuses || {}).filter(([,v]) => v && v.until > Date.now()).map(([k]) => k);
-          if (active.length) toast('Эффекты: ' + active.join(', '));
+        const activeEntries = Object.entries(msg.statuses || {}).filter(([,v]) => v && v.until > Date.now());
+        if (activeEntries.length) {
+          const statusKey = activeEntries[activeEntries.length - 1][0];
+          const statusColor = ({bleed:0xb01830,slow:0x79c96b,root:0xffe27a,stun:0xff7a3a,air:0xffd45a,resist:0x6cc9ff,haste:0xffd36e,armorBreak:0xe7a35a,hpDown:0x9d80ff})[statusKey] || 0xffffff;
+          const unit = msg.targetId === mpId ? player : affected?.group;
+          if (unit && typeof fxRing === 'function') fxRing(unit.position.x, unit.position.z, 1.25, statusColor, .65);
         }
+        if (msg.targetId === mpId && activeEntries.length) toast('Эффекты: ' + activeEntries.map(([k]) => k).join(', '));
       } else if (msg.type === 'combat-effect') {
         const attacker = remotes.get(msg.attackerId);
         if (attacker) { attacker.swingT = 1; attacker.abilityT = 1; attacker.lastAbilitySlot = null; }
