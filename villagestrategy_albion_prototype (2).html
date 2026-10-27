@@ -1059,20 +1059,20 @@ function trySpell(slot) {
     if (!TEST.free && (cd[slot] > 0 || energy < sp.en)) return toast('Перезарядка или не хватает энергии');
     if (!TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }
     faceXZ(target.x, target.z);
-    // Keep the weapon's real spell animation and local passive/buff logic for
-    // enemy-targeted abilities, while server validates actual PvP damage.
+    // Always play a visible weapon animation immediately; some spell scripts
+    // only spawn effects when their original dummy-specific conditions match.
+    const anim = slot === 'q' ? 'slash' : slot === 'w' ? 'spin' : 'chop';
+    swing(anim, slot === 'w' ? .42 : .32);
     const proxy = {name:target.name, x:target.x, z:target.z, r:.5, total:0, hits:0, max:0,
-      st:{}, dots:{}, flash:0, shake:0, caster:null};
-    const isDash = /charge|mighty|leap|jump/i.test(sp.name || '');
-    if (sp.target === 'enemy' && !isDash) {
-      try { sp.cast({t:proxy}); }
-      catch (e) { swing(slot === 'q' ? 'slash' : slot === 'w' ? 'spin' : 'chop', .32); }
-    } else {
-      swing(slot === 'q' ? 'slash' : slot === 'w' ? 'spin' : 'chop', .32);
-      if (sp.target === 'self') {
-        // Preserve self-buff behavior from the actual weapon spell.
-        try { sp.cast({aim:{x:target.x,z:target.z}}); } catch (e) {}
-      }
+      st:{}, dots:{}, flash:0, shake:0, caster:null, hp:1000, maxHp:1000, alive:true};
+    // Execute the real spell script to retain its animations, charges, buffs
+    // and passive triggers locally. Server remains authoritative for PvP HP.
+    try {
+      if (sp.target === 'enemy') sp.cast({t:proxy});
+      else if (sp.target === 'self') sp.cast({aim:{x:target.x,z:target.z}});
+      else sp.cast({aim:clampAim({x:target.x,z:target.z}, sp.range || 4)});
+    } catch (e) {
+      console.warn('PvP spell visual/effect fallback:', e);
     }
     window.mpAbilityHit(slot, loadout.weapon);
     return;
