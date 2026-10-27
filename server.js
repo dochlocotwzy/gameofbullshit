@@ -77,7 +77,7 @@ function broadcast(payload, exceptId) {
 function publicPlayer(p) { return {id:p.id,name:p.name,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{},charges:p.charges||0,weapon:p.weapon||"broadsword"}; }
 function applyEffects(target,effects,sourceId) {
   if(!target.statuses)target.statuses={};
-  for(const e of effects){if(e.type==="charge"){target.charges=Math.min(3,(target.charges||0)+(e.amount||1));continue;}
+  for(const e of effects){if(e.type==="charge"){target.charges=Math.min(3,(target.charges||0)+(e.amount||1));target.chargeExpiresAt=Date.now()+6000;continue;}
     if(e.type==="interrupt"){target.statuses.casting={value:false,until:Date.now()+500};continue;}
     const key=e.type,old=target.statuses[key]||{};
     target.statuses[key]={value:e.value??e.dps??true,until:Date.now()+Math.round((e.duration||1)*1000),sourceId};
@@ -85,7 +85,7 @@ function applyEffects(target,effects,sourceId) {
   }
   broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
 }
-function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{target.hp=PLAYER_MAX_HP;target.x=0;target.z=7;target.statuses={};target.charges=0;target.autoCount=0;target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
+function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{target.hp=PLAYER_MAX_HP;target.x=0;target.z=7;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
 function safeName(value) {
   return String(value || "Player").replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 18) || "Player";
 }
@@ -96,7 +96,7 @@ wss.on("connection", (ws) => {
     return ws.close(1013, "Server full");
   }
   const id = crypto.randomUUID();
-  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0 };
+  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0 };
   players.set(id, p);
   send(ws, { type: "welcome", id, players: snapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
@@ -177,7 +177,7 @@ wss.on("connection", (ws) => {
       p.autoCount = (p.autoCount || 0) + 1;
       if (p.loadout?.p === "deepcuts" && p.autoCount % 4 === 0) target.statuses.deepBleed = {value:53,until:now+1500,sourceId:p.id};
       if (p.loadout?.p === "weakening") target.statuses.weak = {value:.04,until:now+2000,sourceId:p.id};
-      if (p.loadout?.p === "heroicfighting" && p.autoCount % 4 === 0) p.charges = Math.min(3,(p.charges||0)+1);
+      if (p.loadout?.p === "heroicfighting" && p.autoCount % 4 === 0) { p.charges = Math.min(3,(p.charges||0)+1); p.chargeExpiresAt = now + 6000; }
       if (p.loadout?.p === "increaseddef" && p.autoCount % 5 === 0) p.statuses.defense = {value:68,until:now+2000,sourceId:p.id};
       if (p.statuses?.bloodthirst && p.statuses.bloodthirst.until > now) target.statuses.bleed = {value:60,until:now+2000,sourceId:p.id};
       target.hp = Math.max(0, target.hp - dealt);
@@ -253,8 +253,8 @@ wss.on("connection", (ws) => {
       if(abilityId==="mightyBlow")castDamage=[269,432,649,918][Math.min(3,p.charges||0)];
       if(abilityId==="charge")castDamage=[390,560,780,1030][Math.min(3,p.charges||0)];
       if(abilityId==="carvingDash")castDamage=[260,340,430,540][Math.min(3,p.charges||0)];
-      if(abilityId==="cyclone"&&(p.charges||0)>0){castDamage=162;p.charges--;}
-      if(["mightyBlow","charge","carvingDash"].includes(abilityId))p.charges=0;
+      if(abilityId==="cyclone"&&(p.charges||0)>0){castDamage=162;p.charges--;if(p.charges<=0)p.chargeExpiresAt=0;}
+      if(["mightyBlow","charge","carvingDash"].includes(abilityId)){p.charges=0;p.chargeExpiresAt=0;}
       for(const victim of victims){
         for(let hit=0;hit<(ability.hits||1);hit++){const amount=hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:castDamage;const reduction=victim.statuses?.resist?.value||0;const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;const outgoingWeak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;const vulnerability=(victim.statuses?.armorBreak?1.25:1) ;const dealt=Math.max(0,Math.round(amount*(1-reduction)*(1-defenseReduction)*(1-outgoingWeak)*vulnerability));victim.hp=Math.max(0,victim.hp-dealt);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
         if(victim.hp>0)applyEffects(victim,ability.effects||[],p.id);
@@ -287,6 +287,7 @@ const gameTick = setInterval(() => {
     p.energy = Math.min(100, (p.energy ?? 100) + 4 * dt);
     const now = Date.now();
     if (!p.statuses) p.statuses = {};
+    if ((p.charges || 0) > 0 && p.chargeExpiresAt && p.chargeExpiresAt <= now) { p.charges = 0; p.chargeExpiresAt = 0; send(p.ws,{type:"combat-resource",energy:p.energy,charges:0,statuses:p.statuses}); }
     let statusExpired = false;
     for (const [key, status] of Object.entries(p.statuses)) {
       if (!status || status.until <= now) { delete p.statuses[key]; statusExpired = true; }
