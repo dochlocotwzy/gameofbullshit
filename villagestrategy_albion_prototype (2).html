@@ -1064,8 +1064,27 @@ function castSlot(slot, ctx, options = {}) {
     faceXZ(options.targetX, options.targetZ);
     // Caster-side weapon motion only. The authoritative server event drives
     // remote hit/impact presentation; no local fake target or fake damage.
-    const anim = slot === 'q' ? 'slash' : slot === 'w' ? 'spin' : 'chop';
-    swing(anim, slot === 'w' ? .42 : .32);
+    // Preserve weapon/ability-specific cast motion in PvP instead of the old
+    // generic slot animation. Claymore charge and dual-sword spinning are distinct.
+    const abilityKey = String(loadout[slot] || WEAPONS[weapon].e || abilityId || '');
+    const motion = ({
+      charge: ['chop', .42],
+      spinning: ['spin', .58],
+      soulless: ['chop', .48],
+      carvingDash: ['stab', .38],
+      splitting: ['chop', .42],
+      cleave: ['spin', .46],
+      cyclone: ['spin', .52],
+      bloodthirsty: ['slash', .36],
+      majestic: ['chop', .5],
+      infinity: ['slash', .3],
+      mightyBlow: ['chop', .34],
+      hamstring: ['slash', .32],
+      interrupt: ['stab', .34],
+      strike: ['slash', .3],
+      parry: ['stab', .32]
+    })[abilityKey] || (slot === 'q' ? ['slash', .32] : slot === 'w' ? ['spin', .42] : ['chop', .36]);
+    swing(motion[0], motion[1]);
     return true;
   }
 
