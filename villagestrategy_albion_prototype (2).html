@@ -1517,6 +1517,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     socket.addEventListener('message', event => {
       let msg; try { msg = JSON.parse(event.data); } catch { return; }
       if (msg.type === 'welcome') {
+        socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free}));
         mpId = msg.id;
         (msg.players || []).forEach(p => { if (p.id !== mpId) addRemote(p); });
       } else if (msg.type === 'joined' || msg.type === 'player') updateRemote(msg.player);
