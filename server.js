@@ -146,11 +146,13 @@ wss.on("connection", (ws) => {
         send(ws, { type: "combat", result: "out-of-range", targetId: target.id });
         return;
       }
-      const weapon = String(msg.weapon || "broadsword");
-      const damage = WEAPON_DAMAGE[weapon] || WEAPON_DAMAGE.broadsword;
+      const weapon = p.weapon || "broadsword";
+      const baseDamage = WEAPON_DAMAGE[weapon] || WEAPON_DAMAGE.broadsword;
+      const damage = Math.round(baseDamage * (p.statuses?.attackBuff ? 1 + (Number(p.statuses.attackBuff.value) || 0) : 1) * (target.statuses?.armorBreak ? 1.25 : 1) * (target.statuses?.hpDown ? 1 + (Number(target.statuses.hpDown.value) || 0) : 1));
+      const dealt = Math.round(damage * (1 - (target.statuses?.resist?.value || 0)));
       p.lastAttack = now;
-      target.hp = Math.max(0, target.hp - damage);
-      broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage, hp: target.hp, kind: "auto" });
+      target.hp = Math.max(0, target.hp - dealt);
+      broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: dealt, hp: target.hp, kind: "auto" });
       broadcast({ type: "player", player: { id: target.id, name: target.name, x: target.x, y: 0, z: target.z, rotation: target.rotation, hp: target.hp } });
       if (target.hp === 0 && !target.respawnTimer) {
         target.respawnTimer = setTimeout(() => {
