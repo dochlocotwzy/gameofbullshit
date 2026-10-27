@@ -1,0 +1,50 @@
+name: Syntax checks
+on:
+  push:
+    branches: [main, server-authoritative-game]
+  pull_request:
+    branches: [main]
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Check server JavaScript
+        run: node --check server.js
+      - name: Check inline game scripts
+        run: |
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          import subprocess, tempfile
+          class Scripts(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.current = None
+                  self.items = []
+              def handle_starttag(self, tag, attrs):
+                  if tag == "script":
+                      attrs = dict(attrs)
+                      self.current = None if attrs.get("src") else []
+              def handle_data(self, data):
+                  if self.current is not None:
+                      self.current.append(data)
+              def handle_endtag(self, tag):
+                  if tag == "script" and self.current is not None:
+                      self.items.append("".join(self.current))
+                      self.current = None
+          parser = Scripts()
+          parser.feed(Path("villagestrategy_albion_prototype (2).html").read_text())
+          scripts = [s for s in parser.items if s.strip()]
+          if not scripts:
+              raise SystemExit("No inline scripts found")
+          with tempfile.TemporaryDirectory() as tmp:
+              for i, script in enumerate(scripts):
+                  path = Path(tmp) / f"script-{i}.js"
+                  path.write_text(script)
+                  subprocess.run(["node", "--check", str(path)], check=True)
+          print(f"Syntax OK: {len(scripts)} inline script(s)")
+          PY
