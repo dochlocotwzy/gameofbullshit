@@ -1500,10 +1500,27 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       else if (msg.type === 'left') removeRemote(msg.id);
       else if (msg.type === 'combat-hit') {
         if (msg.targetId === mpId) { setPlayerHealth(msg.hp); if (msg.hp > 0) toast('Получен урон: ' + msg.damage); }
-        const r = remotes.get(msg.targetId); if (r) { r.hp = msg.hp; setRemoteDead(r, msg.hp <= 0); }
-        if (msg.attackerId === mpId) toast((msg.kind === 'ability' ? 'Способность попала' : 'Попадание') + ': -' + msg.damage + ' HP');
-        if (msg.attackerId) { const a = remotes.get(msg.attackerId); if (a && msg.targetId !== mpId) { a.swingT = 1; a.abilityT = msg.kind === 'ability' ? 1 : 0; a.lastAbilitySlot = msg.slot || null; } }\n        // Only the attacker plays the attack animation; being hit must not make the victim swing.
-      } else if (msg.type === 'respawn') {
+        const victim = remotes.get(msg.targetId);
+        if (victim) { victim.hp = msg.hp; setRemoteDead(victim, msg.hp <= 0); victim.hitT = 1; }
+        if (msg.attackerId === mpId) toast('Попадание: -' + msg.damage + ' HP');
+        const attacker = remotes.get(msg.attackerId);
+        if (attacker) { attacker.swingT = 1; attacker.abilityT = msg.kind === 'ability' ? 1 : 0; attacker.lastAbilitySlot = msg.slot || null; }
+      } else if (msg.type === 'combat-status') {
+        window.mpStatuses = window.mpStatuses || {};
+        window.mpStatuses[msg.targetId] = msg.statuses || {};
+        const affected = remotes.get(msg.targetId);
+        if (affected) affected.statuses = msg.statuses || {};
+        if (msg.targetId === mpId) {
+          const active = Object.entries(msg.statuses || {}).filter(([,v]) => v && v.until > Date.now()).map(([k]) => k);
+          if (active.length) toast('Эффекты: ' + active.join(', '));
+        }
+      } else if (msg.type === 'combat-effect') {
+        const attacker = remotes.get(msg.attackerId);
+        if (attacker) { attacker.swingT = 1; attacker.abilityT = 1; attacker.lastAbilitySlot = null; }
+        const radius = ({cleave:6,cyclone:2.6,parry:6,spinning:3.4,bloodthirsty:5,carvingDash:2.4,soulless:4.5,majestic:6,infinity:5})[msg.abilityId] || 2.5;
+        const color = ({charge:0xff7a3a,bloodthirsty:0xb01830,soulless:0xffe59a,infinity:0x58d6ff,ironwill:0xffd36e})[msg.abilityId] || 0x9be36a;
+        if (typeof fxRing === 'function') fxRing(Number(msg.aimX ?? msg.x) || 0, Number(msg.aimZ ?? msg.z) || 0, radius, color, .55);
+      }else if (msg.type === 'respawn') {
         updateRemote(msg.player);
         if (msg.player.id === mpId) { setPlayerHealth(msg.player.hp); player.position.set(msg.player.x, 0, msg.player.z); resetDeath(); order.mode = 'none'; }
       } else if (msg.type === 'ping') mpStatus.textContent = 'Мультиплеер: онлайн · ' + msg.online + ' игрок(ов)';
