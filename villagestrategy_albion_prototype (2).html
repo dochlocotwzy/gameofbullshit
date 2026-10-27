@@ -1397,7 +1397,9 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
 
   const mpName = 'Игрок-' + Math.floor(100 + Math.random() * 900);
   const remotes = new Map();
-  let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0, lastInputSend = 0;\n  window.mpConnected = false;\n  let selfTargetX = player.position.x, selfTargetZ = player.position.z, selfTargetRot = player.rotation.y;
+  let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0, lastInputSend = 0;
+  window.mpConnected = false;
+  let selfTargetX = player.position.x, selfTargetZ = player.position.z, selfTargetRot = player.rotation.y;
   const remoteMeshes = new Map();
   const MP_ATTACK_RANGE = 3.8;
   const MP_ATTACK_INTERVAL = 900;
@@ -1499,7 +1501,13 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       if (msg.type === 'welcome') {
         mpId = msg.id;
         (msg.players || []).forEach(p => { if (p.id !== mpId) addRemote(p); });
-      } else if (msg.type === 'joined' || msg.type === 'player') updateRemote(msg.player);\n      else if (msg.type === 'world-state') {\n        for (const p of (msg.players || [])) {\n          if (p.id === mpId) { selfTargetX = Number(p.x)||0; selfTargetZ = Number(p.z)||0; selfTargetRot = Number(p.rotation)||0; if (Number.isFinite(Number(p.hp))) setPlayerHealth(Number(p.hp)); }\n          else updateRemote(p);\n        }\n      }
+      } else if (msg.type === 'joined' || msg.type === 'player') updateRemote(msg.player);
+      else if (msg.type === 'world-state') {
+        for (const p of (msg.players || [])) {
+          if (p.id === mpId) { selfTargetX = Number(p.x)||0; selfTargetZ = Number(p.z)||0; selfTargetRot = Number(p.rotation)||0; if (Number.isFinite(Number(p.hp))) setPlayerHealth(Number(p.hp)); }
+          else updateRemote(p);
+        }
+      }
       else if (msg.type === 'left') removeRemote(msg.id);
       else if (msg.type === 'combat-hit') {
         if (msg.targetId === mpId) { setPlayerHealth(msg.hp); if (msg.hp > 0) toast('Получен урон: ' + msg.damage); }
