@@ -109,6 +109,12 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     assert.equal(spinningHit.damage, 500, "Spinning resolves its AoE at the server-authoritative 12m landing point");
 
     // Regression: Interrupt scales auto-attack damage with the Heroic Charges held at cast time.
+    // Spinning leaves B at 59 HP after the earlier Strike + Hamstring; finish it server-side before tests that require a fresh target.
+    a.send(JSON.stringify({ type: "test-mode", enabled: true }));
+    a.send(JSON.stringify({ type: "weapon", weapon: "kingmaker" }));
+    a.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "e", weapon: "kingmaker", abilityId: "majestic", aimX: 0, aimZ: 12 }));
+    const cleanupKill = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "majestic" && m.hp === 0);
+    assert.equal(cleanupKill.hp, 0, "test setup finishes the low-HP Spinning target before waiting for respawn");
     await waitMessage(b, m => m.type === "respawn" && m.player?.id === bId, 7000);
     a.messages.length = 0; b.messages.length = 0;
     a.send(JSON.stringify({ type: "test-mode", enabled: true }));
@@ -169,19 +175,84 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     a.send(JSON.stringify({ type: "weapon", weapon: "clarent" }));
     await sleep(100);
     a.messages.length = 0; b.messages.length = 0;
+    const bloodDotsBefore = b.messages.filter(m => m.type === "combat-hit" && m.targetId === bId && m.kind === "dot" && m.abilityId === "bloodthirsty").length;
+    const bloodCastAt = Date.now();
     a.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "e", weapon: "clarent", abilityId: "bloodthirsty", aimX: 0, aimZ: 7 }));
-    await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && m.statuses?.bleed?.value === 60);
+    const initialBleed = await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && m.statuses?.bleed?.value === 60);
+    const initialBleedUntil = initialBleed.statuses.bleed.until;
     const bloodBuff = await waitMessage(a, m => m.type === "combat-status" && m.targetId === aId && m.statuses?.bloodthirstAttackBuff?.value === 0.3);
     assert.ok(bloodBuff.statuses.bloodthirstAttackBuff.until > Date.now(), "Bloodthirsty bonus has a server expiry");
     await sleep(900);
-    a.messages.length = 0; b.messages.length = 0;
+    a.messages.length = 0;
     a.send(JSON.stringify({ type: "weapon", weapon: "broadsword" }));
     a.send(JSON.stringify({ type: "attack", targetId: bId }));
     const bloodAuto = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.kind === "auto");
     assert.equal(bloodAuto.damage, 52, "Bloodthirsty grants 30% damage to a 40-damage autoattack");
-    await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.kind === "dot" && m.abilityId === "bloodthirsty", 3000);
+    const bleedSnapshots = b.messages.filter(m => m.type === "combat-status" && m.targetId === bId && m.statuses?.bleed?.value === 60);
+    assert.ok(bleedSnapshots.at(-1).statuses.bleed.until >= initialBleedUntil, "Bloodthirsty autoattacks do not truncate the original 5-second bleed");
+    await sleep(Math.max(0, bloodCastAt + 6500 - Date.now()));
+    const bloodDots = b.messages.filter(m => m.type === "combat-hit" && m.targetId === bId && m.kind === "dot" && m.abilityId === "bloodthirsty").length - bloodDotsBefore;
+    assert.equal(bloodDots, 10, "a 5-second Bloodthirsty bleed resolves all ten 500ms ticks even after an autoattack refresh");
 
-    console.log("PvP integration OK: damage, cooldowns, status expiry, Spinning endpoint, Interrupt charge scaling/expiry, hpDown sync and Bloodthirsty bleed/auto damage");
+    // Passive regression coverage: Weakening reduces outgoing damage, Deep Cuts ticks,
+    // Increased Defense is broadcast to the other player, and Heroic Fighting charges sync/expire remotely.
+    a.send(JSON.stringify({ type: "loadout", q: "strike", w: "interrupt", p: "weakening" }));
+    await sleep(100);
+    a.messages.length = 0; b.messages.length = 0;
+    a.send(JSON.stringify({ type: "attack", targetId: bId }));
+    const weakeningAuto = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.kind === "auto");
+    assert.equal(weakeningAuto.damage, 40, "Weakening passive does not reduce its own attack");
+    const weakStatus = await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && m.statuses?.weak?.value === 0.04);
+    assert.ok(weakStatus.statuses.weak.until > Date.now(), "Weakening debuff has a server expiry");
+    a.messages.length = 0; b.messages.length = 0;
+    b.send(JSON.stringify({ type: "attack", targetId: aId }));
+    const weakenedAuto = await waitMessage(a, m => m.type === "combat-hit" && m.attackerId === bId && m.targetId === aId && m.kind === "auto");
+    assert.equal(weakenedAuto.damage, 38, "Weakening reduces the target's 40-damage autoattack by 4%");
+    await sleep(2100);
+
+    a.send(JSON.stringify({ type: "loadout", q: "strike", w: "interrupt", p: "deepcuts" }));
+    await sleep(100);
+    a.messages.length = 0; b.messages.length = 0;
+    a.send(JSON.stringify({ type: "attack", targetId: bId }));
+    const deepAuto = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.kind === "auto");
+    const deepStatus = await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && m.statuses?.deepBleed?.value === 53);
+    assert.ok(deepStatus.statuses.deepBleed.until > Date.now(), "Deep Cuts fourth auto applies a timed bleed");
+    const deepDot = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.kind === "dot" && m.abilityId === "deepcuts", 1500);
+    assert.ok(deepDot.damage > 0, "Deep Cuts bleed damage is resolved by the server");
+    await sleep(400);
+
+    a.send(JSON.stringify({ type: "loadout", q: "strike", w: "interrupt", p: "increaseddef" }));
+    await sleep(50);
+    a.messages.length = 0; b.messages.length = 0;
+    a.send(JSON.stringify({ type: "attack", targetId: bId }));
+    await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.kind === "auto");
+    const defenseStatus = await waitMessage(b, m => m.type === "combat-status" && m.targetId === aId && m.statuses?.defense?.value === 68);
+    assert.ok(defenseStatus.statuses.defense.until > Date.now(), "Increased Defense is broadcast to the opponent with an expiry");
+    a.messages.length = 0; b.messages.length = 0;
+    b.send(JSON.stringify({ type: "attack", targetId: aId }));
+    const defendedAuto = await waitMessage(a, m => m.type === "combat-hit" && m.attackerId === bId && m.targetId === aId && m.kind === "auto");
+    assert.equal(defendedAuto.damage, 30, "68 defense reduces a 40-damage autoattack to 30");
+
+    b.send(JSON.stringify({ type: "loadout", q: "strike", w: "parry", p: "heroicfighting" }));
+    for (let i = 0; i < 2; i++) {
+      await sleep(900);
+      a.messages.length = 0; b.messages.length = 0;
+      b.send(JSON.stringify({ type: "attack", targetId: aId }));
+      await waitMessage(a, m => m.type === "combat-hit" && m.attackerId === bId && m.targetId === aId && m.kind === "auto");
+    }
+    const localCharge = await waitMessage(b, m => m.type === "combat-resource" && m.charges === 1 && m.chargeExpiresAt > Date.now());
+    const remoteCharge = await waitMessage(a, m => m.type === "player" && m.player?.id === bId && m.player?.charges === 1 && m.player?.chargeExpiresAt > Date.now());
+    assert.ok(localCharge.chargeExpiresAt <= Date.now() + 6000, "Heroic Fighting charge has a six-second server expiry");
+    assert.ok(remoteCharge.player.chargeExpiresAt <= Date.now() + 6000, "Heroic Fighting charge timer is synced to the opponent");
+    a.messages.length = 0; b.messages.length = 0;
+    const [localChargeExpired, remoteChargeExpired] = await Promise.all([
+      waitMessage(b, m => m.type === "combat-resource" && Number(m.charges) === 0 && Number(m.chargeExpiresAt) === 0, 7000),
+      waitMessage(a, m => m.type === "player" && m.player?.id === bId && Number(m.player?.charges) === 0 && Number(m.player?.chargeExpiresAt) === 0, 7000)
+    ]);
+    assert.equal(localChargeExpired.charges, 0, "server clears the local Heroic Fighting charge on expiry");
+    assert.equal(remoteChargeExpired.player.charges, 0, "server broadcasts charge expiry to other clients");
+
+    console.log("PvP integration OK: damage, cooldowns, status expiry, Spinning endpoint, passive procs, DoT ticks/expiry, remote status sync and charge timers");
   } catch (error) {
     console.error(error);
     process.exitCode = 1;
