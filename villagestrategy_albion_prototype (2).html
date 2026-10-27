@@ -1531,6 +1531,12 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         const slot = ['q','w','e'].find(s => (s === 'e' ? WEAPONS[loadout.weapon].e : loadout[s]) === msg.abilityId);
         if (slot && Number.isFinite(Number(msg.cooldownUntil))) cd[slot] = Math.max(cd[slot], (Number(msg.cooldownUntil) - Date.now()) / 1000);
       } else if (msg.type === 'combat') {
+        if (Number.isFinite(Number(msg.energy))) energy = Math.max(0, Math.min(100, Number(msg.energy)));
+        const rejectedSlot = ['q','w','e'].find(s => (s === 'e' ? WEAPONS[loadout.weapon].e : loadout[s]) === msg.abilityId);
+        if (rejectedSlot) {
+          if (msg.result === 'cooldown' && Number.isFinite(Number(msg.until))) cd[rejectedSlot] = Math.max(0, (Number(msg.until) - Date.now()) / 1000);
+          else cd[rejectedSlot] = 0;
+        }
         if (msg.result === 'out-of-range') toast('Слишком далеко для способности');
         else if (msg.result === 'cooldown') toast('Способность на перезарядке');
         else if (msg.result === 'energy') toast('Не хватает энергии');
