@@ -59,7 +59,7 @@ wss.on("connection", (ws) => {
     return ws.close(1013, "Server full");
   }
   const id = crypto.randomUUID();
-  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: 1000, lastUpdate: 0 };
+  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: 1000, lastUpdate: 0, lastAttack: 0, deadUntil: 0 };
   players.set(id, p);
   send(ws, { type: "welcome", id, players: snapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
@@ -75,6 +75,31 @@ wss.on("connection", (ws) => {
       send(ws, { type: "welcome", id, players: snapshot() });
       return;
     }
+    if (msg.type === "attack") {
+      const now = Date.now();
+      if (p.hp <= 0 || now < p.deadUntil || now - p.lastAttack < 450) return;
+      const target = players.get(String(msg.target || ""));
+      if (!target || target.id === p.id || target.hp <= 0 || now < target.deadUntil) return;
+      const distance = Math.hypot(target.x - p.x, target.z - p.z);
+      const range = Math.max(1, Math.min(6, Number(msg.range) || 3.2));
+      if (distance > range + 0.6) return;
+      const damage = Math.max(1, Math.min(350, Math.round(Number(msg.damage) || 80)));
+      p.lastAttack = now;
+      target.hp = Math.max(0, target.hp - damage);
+      if (target.hp === 0) target.deadUntil = now + 5000;
+      const hit = { type: "combat", attacker: p.id, target: target.id, damage, hp: target.hp, deadUntil: target.deadUntil };
+      send(target.ws, hit);
+      broadcast(hit, target.id);
+      if (target.hp === 0) {
+        setTimeout(() => {
+          if (players.get(target.id) !== target || target.hp > 0) return;
+          target.hp = 1000; target.deadUntil = 0; target.x = 0; target.z = 7;
+          send(target.ws, { type: "revivedSelf", hp: 1000, x: 0, z: 7 });
+          broadcast({ type: "revived", player: { id: target.id, name: target.name, x: 0, y: 0, z: 7, rotation: target.rotation, hp: 1000 } }, target.id);
+        }, 5000);
+      }
+      return;
+    }
     if (msg.type === "state") {
       const now = Date.now();
       if (now - p.lastUpdate < 40) return;
@@ -85,7 +110,7 @@ wss.on("connection", (ws) => {
       p.x = Math.max(-180, Math.min(180, x));
       p.z = Math.max(-180, Math.min(180, z));
       p.rotation = rotation;
-      if (Number.isFinite(Number(msg.hp))) p.hp = Math.max(0, Math.min(1000, Number(msg.hp)));
+      // Health is server-authoritative; clients cannot overwrite it.
       broadcast({ type: "player", player: { id: p.id, name: p.name, x: p.x, y: 0, z: p.z, rotation: p.rotation, hp: p.hp } }, p.id);
     }
   });
