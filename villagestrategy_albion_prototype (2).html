@@ -1495,13 +1495,13 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   // Space selects the nearest living multiplayer opponent. This is independent of mouse picking.
   window.mpSelectNearestTarget = () => {
     if (!player) return;
-    let nearestId = null, nearestDist = Infinity;
+    let nearestId = null, nearestDist = 20;
     for (const [id, remote] of remotes) {
       if (!remote || remote.dead || !remote.group || remote.group.visible === false) continue;
       const d = Math.hypot(player.position.x - remote.group.position.x, player.position.z - remote.group.position.z);
-      if (d < nearestDist) { nearestDist = d; nearestId = id; }
+      if (d <= nearestDist) { nearestDist = d; nearestId = id; }
     }
-    if (!nearestId) { toast('Рядом нет живых игроков'); return; }
+    if (!nearestId) { toast('Нет живых целей в радиусе 20 м'); return; }
     mpTargetId = nearestId;
     window.mpTargetId = nearestId;
     const chosen = remotes.get(nearestId);
@@ -1518,9 +1518,21 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (ev.button !== 0) return;
     pointerRay(ev.clientX, ev.clientY);
     const hits = ray.intersectObjects([...remotes.values()].map(r => r.group), true);
-    if (!hits.length) return;
+    if (!hits.length) {
+      // Clicking the ground or anything other than a player clears PvP target;
+      // let the normal world-click handler process movement/resource orders.
+      mpTargetId = null;
+      window.mpTargetId = null;
+      if (window.mpTargetRing) window.mpTargetRing.active = false;
+      return;
+    }
     const targetId = hits[0].object.userData.mpPlayerId || hits[0].object.parent?.userData.mpPlayerId || hits[0].object.parent?.parent?.userData.mpPlayerId;
-    if (!targetId) return;
+    if (!targetId) {
+      mpTargetId = null;
+      window.mpTargetId = null;
+      if (window.mpTargetRing) window.mpTargetRing.active = false;
+      return;
+    }
     mpTargetId = targetId;
     window.mpTargetId = targetId;
     toast('Цель захвачена: автоатака в радиусе, E — особая способность оружия.');
