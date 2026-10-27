@@ -79,8 +79,9 @@ function applyEffects(target,effects,sourceId) {
   if(!target.statuses)target.statuses={};
   for(const e of effects){if(e.type==="charge"){target.charges=Math.min(3,(target.charges||0)+(e.amount||1));target.chargeExpiresAt=Date.now()+6000;continue;}
     if(e.type==="interrupt"){target.statuses.casting={value:false,until:Date.now()+500};continue;}
-    const key=e.type,old=target.statuses[key]||{};
-    target.statuses[key]={value:e.value??e.dps??true,until:Date.now()+Math.round((e.duration||1)*1000),sourceId};
+    const key=e.type,old=target.statuses[key]||{},appliedAt=Date.now();
+    target.statuses[key]={value:e.value??e.dps??true,until:appliedAt+Math.round((e.duration||1)*1000),sourceId};
+    if(key==="bleed"||key==="deepBleed")target.statuses[key].nextTickAt=appliedAt+500;
     if(key==="hpDown")target.hp=Math.min(target.hp,Math.round(PLAYER_MAX_HP*(1-Math.max(0,Math.min(.9,Number(e.value)||0)))));
   }
   broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
@@ -176,11 +177,20 @@ wss.on("connection", (ws) => {
       const dealt = Math.max(0, Math.round(damage * (1 - (target.statuses?.resist?.value || 0)) * (1 - defenseReduction)));
       p.lastAttack = now;
       p.autoCount = (p.autoCount || 0) + 1;
-      if (p.loadout?.p === "deepcuts" && p.autoCount % 4 === 0) target.statuses.deepBleed = {value:53,until:now+1500,sourceId:p.id};
+      if (p.loadout?.p === "deepcuts" && p.autoCount % 4 === 0) target.statuses.deepBleed = {value:53,until:now+1500,nextTickAt:now+500,sourceId:p.id};
       if (p.loadout?.p === "weakening") target.statuses.weak = {value:.04,until:now+2000,sourceId:p.id};
-      if (p.loadout?.p === "heroicfighting" && p.autoCount % 4 === 0) { p.charges = Math.min(3,(p.charges||0)+1); p.chargeExpiresAt = now + 6000; }
-      if (p.loadout?.p === "increaseddef" && p.autoCount % 5 === 0) p.statuses.defense = {value:68,until:now+2000,sourceId:p.id};
-      if (p.statuses?.bloodthirst && p.statuses.bloodthirst.until > now) target.statuses.bleed = {value:60,until:now+2000,sourceId:p.id};
+      if (p.loadout?.p === "heroicfighting" && p.autoCount % 4 === 0) { p.charges = Math.min(3,(p.charges||0)+1); p.chargeExpiresAt = now + 6000; broadcast({type:"player",player:publicPlayer(p)},p.id); }
+      if (p.loadout?.p === "increaseddef" && p.autoCount % 5 === 0) { p.statuses.defense = {value:68,until:now+2000,sourceId:p.id}; broadcast({type:"combat-status",targetId:p.id,statuses:p.statuses}); }
+      if (p.statuses?.bloodthirst && p.statuses.bloodthirst.until > now) {
+        const existingBleed = target.statuses.bleed;
+        const existingActive = existingBleed && existingBleed.until > now;
+        target.statuses.bleed = {
+          value: 60,
+          until: Math.max(existingActive ? existingBleed.until : 0, now + 2000),
+          nextTickAt: existingActive && Number.isFinite(existingBleed.nextTickAt) ? existingBleed.nextTickAt : now + 500,
+          sourceId: p.id
+        };
+      }
       target.hp = Math.max(0, target.hp - dealt);
       broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
       send(ws,{type:"combat-resource",energy:p.energy,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
@@ -345,24 +355,27 @@ const gameTick = setInterval(() => {
     p.energy = Math.min(100, (p.energy ?? 100) + 4 * dt);
     const now = Date.now();
     if (!p.statuses) p.statuses = {};
-    if ((p.charges || 0) > 0 && p.chargeExpiresAt && p.chargeExpiresAt <= now) { p.charges = 0; p.chargeExpiresAt = 0; send(p.ws,{type:"combat-resource",energy:p.energy,charges:0,chargeExpiresAt:0,statuses:p.statuses}); }
+    if ((p.charges || 0) > 0 && p.chargeExpiresAt && p.chargeExpiresAt <= now) {
+      p.charges = 0; p.chargeExpiresAt = 0;
+      send(p.ws,{type:"combat-resource",energy:p.energy,charges:0,chargeExpiresAt:0,statuses:p.statuses});
+      broadcast({type:"player",player:publicPlayer(p)},p.id);
+    }
     let statusExpired = false;
     for (const [key, status] of Object.entries(p.statuses)) {
-      if (!status || status.until <= now) { delete p.statuses[key]; statusExpired = true; }
-    }
-    if (statusExpired) broadcast({type:"combat-status",targetId:p.id,statuses:p.statuses});
-    p.lastDotTick = p.lastDotTick || now;
-    if (now - p.lastDotTick >= 500) {
-      for (const [key, st] of Object.entries(p.statuses)) {
-        if ((key === "bleed" || key === "deepBleed") && p.hp > 0) {
-          const damage = Math.max(1, Math.round(Number(st.value || 60) * .5));
+      if (!status) { delete p.statuses[key]; statusExpired = true; continue; }
+      if ((key === "bleed" || key === "deepBleed") && p.hp > 0) {
+        if (!Number.isFinite(status.nextTickAt)) status.nextTickAt = now + 500;
+        while (status.nextTickAt <= now && status.nextTickAt <= status.until && p.hp > 0) {
+          const damage = Math.max(1, Math.round(Number(status.value || 60) * .5));
           p.hp = Math.max(0, p.hp - damage);
-          broadcast({type:"combat-hit",attackerId:st.sourceId,targetId:p.id,damage,hp:p.hp,kind:"dot",abilityId:key === "deepBleed" ? "deepcuts" : "bloodthirsty"});
-          if (p.hp===0) scheduleRespawn(p);
+          broadcast({type:"combat-hit",attackerId:status.sourceId,targetId:p.id,damage,hp:p.hp,kind:"dot",abilityId:key === "deepBleed" ? "deepcuts" : "bloodthirsty"});
+          status.nextTickAt += 500;
+          if (p.hp === 0) scheduleRespawn(p);
         }
       }
-      p.lastDotTick = now;
+      if (status.until <= now) { delete p.statuses[key]; statusExpired = true; }
     }
+    if (statusExpired) broadcast({type:"combat-status",targetId:p.id,statuses:p.statuses});
   }
 }, TICK_MS);
 server.on("close", () => { clearInterval(heartbeat); clearInterval(gameTick); });
