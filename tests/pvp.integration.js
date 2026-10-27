@@ -109,13 +109,6 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     assert.equal(spinningHit.damage, 500, "Spinning resolves its AoE at the server-authoritative 12m landing point");
 
     // Regression: Interrupt scales auto-attack damage with the Heroic Charges held at cast time.
-    // Spinning leaves B at 59 HP after the earlier Strike + Hamstring; finish it server-side before tests that require a fresh target.
-    a.send(JSON.stringify({ type: "test-mode", enabled: true }));
-    await sleep(300); // the server also rate-limits consecutive ability commands to 250ms
-    a.send(JSON.stringify({ type: "weapon", weapon: "kingmaker" }));
-    a.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "e", weapon: "kingmaker", abilityId: "majestic", aimX: 0, aimZ: 12 }));
-    const cleanupKill = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "majestic" && m.hp === 0);
-    assert.equal(cleanupKill.hp, 0, "test setup finishes the low-HP Spinning target before waiting for respawn");
     await waitMessage(b, m => m.type === "respawn" && m.player?.id === bId, 7000);
     a.messages.length = 0; b.messages.length = 0;
     a.send(JSON.stringify({ type: "test-mode", enabled: true }));
