@@ -80,6 +80,7 @@ function applyEffects(target,effects,sourceId) {
     if(e.type==="interrupt"){target.statuses.casting={value:false,until:Date.now()+500};continue;}
     const key=e.type,old=target.statuses[key]||{};
     target.statuses[key]={value:e.value??e.dps??true,until:Date.now()+Math.round((e.duration||1)*1000),sourceId};
+    if(key==="hpDown")target.hp=Math.min(target.hp,Math.round(PLAYER_MAX_HP*(1-Math.max(0,Math.min(.9,Number(e.value)||0)))));
   }
   broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
 }
@@ -225,7 +226,7 @@ wss.on("connection", (ws) => {
       if(abilityId==="cyclone"&&(p.charges||0)>0){castDamage=162;p.charges--;}
       if(["mightyBlow","charge","carvingDash"].includes(abilityId))p.charges=0;
       for(const victim of victims){
-        for(let hit=0;hit<(ability.hits||1);hit++){const amount=hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:castDamage;const reduction=victim.statuses?.resist?.value||0;const vulnerability=(victim.statuses?.armorBreak?1.25:1)*(victim.statuses?.hpDown?1+(Number(victim.statuses.hpDown.value)||0):1);const dealt=Math.round(amount*(1-reduction)*vulnerability);victim.hp=Math.max(0,victim.hp-dealt);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
+        for(let hit=0;hit<(ability.hits||1);hit++){const amount=hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:castDamage;const reduction=victim.statuses?.resist?.value||0;const vulnerability=(victim.statuses?.armorBreak?1.25:1) ;const dealt=Math.round(amount*(1-reduction)*vulnerability);victim.hp=Math.max(0,victim.hp-dealt);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
         applyEffects(victim,ability.effects||[],p.id);
         if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
       }
