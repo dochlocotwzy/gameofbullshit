@@ -73,7 +73,7 @@ function broadcast(payload, exceptId) {
     if (p.id !== exceptId && p.ws.readyState === WebSocket.OPEN) p.ws.send(message);
   }
 }
-function publicPlayer(p) { return {id:p.id,name:p.name,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{}}; }
+function publicPlayer(p) { return {id:p.id,name:p.name,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{},charges:p.charges||0,weapon:p.weapon||"broadsword"}; }
 function applyEffects(target,effects,sourceId) {
   if(!target.statuses)target.statuses={};
   for(const e of effects){if(e.type==="charge"){target.charges=Math.min(3,(target.charges||0)+(e.amount||1));continue;}
@@ -202,6 +202,8 @@ wss.on("connection", (ws) => {
         p.x=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+dx/distance*travel));
         p.z=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+dz/distance*travel));
         distance=Math.hypot(target.x-p.x,target.z-p.z);
+        // Replicate server-authoritative dash immediately so clients render the jump, not only the impact.
+        broadcast({type:"player",player:publicPlayer(p)});
       }
       if((abilityId==="spinning"||abilityId==="carvingDash"||abilityId==="cyclone")&&Number.isFinite(aimX)&&Number.isFinite(aimZ)){
         const maxTravel=abilityId==="spinning"?12:abilityId==="carvingDash"?6:7,ax=aimX-p.x,az=aimZ-p.z,len=Math.hypot(ax,az);
@@ -245,7 +247,8 @@ wss.on("connection", (ws) => {
         const selfEffects=abilityId==="cleave"?ability.selfEffects.map(e=>e.type==="charge"?{...e,amount:victims.length>=3?2:1}:e):ability.selfEffects;
         applyEffects(p,selfEffects,p.id);
       }
-      broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:victims.map(v=>v.id),x:p.x,z:p.z,originX:castOriginX,originZ:castOriginZ,aimX:selfCentered?p.x:(Number.isFinite(aimX)?aimX:p.x),aimZ:selfCentered?p.z:(Number.isFinite(aimZ)?aimZ:p.z)});
+      broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:victims.map(v=>v.id),x:p.x,z:p.z,originX:castOriginX,originZ:castOriginZ,aimX:selfCentered?p.x:(Number.isFinite(aimX)?aimX:p.x),aimZ:selfCentered?p.z:(Number.isFinite(aimZ)?aimZ:p.z),rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||"broadsword"});
+      broadcast({type:"player",player:publicPlayer(p)});
       for(const victim of victims)broadcast({type:"player",player:publicPlayer(victim)});
     }
   });
