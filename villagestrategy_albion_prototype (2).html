@@ -1681,7 +1681,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     requestAnimationFrame(mpFrame);
     const frameDt = lastMpFrame ? Math.min((now - lastMpFrame) / 1000, .1) : 1 / 60;
     lastMpFrame = now;
-    const smooth = 1 - Math.exp(-12 * frameDt);
+    const smooth = 1 - Math.exp(-20 * frameDt);
     for (const r of remotes.values()) {
       if (!r.dead && r.swingT > 0) { r.swingT = Math.max(0, r.swingT - .06); r.potato.rotation.x = Math.sin((1-r.swingT)*Math.PI) * .22; }
       else if (!r.dead) r.potato.rotation.x *= .75;
