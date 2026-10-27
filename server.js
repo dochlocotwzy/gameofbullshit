@@ -164,7 +164,7 @@ wss.on("connection", (ws) => {
       if(!target||target.id===p.id||target.hp<=0||!ability||!ABILITY_IDS.has(abilityId))return;
       if(slot==="e"&&WEAPON_E[weapon]!==abilityId)return;
       if(!["q","w","e"].includes(slot))return;
-      if((p.abilityCooldowns[abilityId]||0)>now){send(ws,{type:"combat",result:"cooldown",abilityId,until:p.abilityCooldowns[abilityId]});return;}
+      if((p.abilityCooldowns[abilityId]||0)>now){send(ws,{type:"combat",result:"cooldown",abilityId,until:p.abilityCooldowns[abilityId],energy:p.energy});return;}
       if(p.energy < ability.cost){send(ws,{type:"combat",result:"energy",abilityId,energy:p.energy});return;}
       let dx=target.x-p.x,dz=target.z-p.z,distance=Math.hypot(dx,dz);
       const aimX=Number(msg.aimX),aimZ=Number(msg.aimZ);
@@ -190,8 +190,8 @@ wss.on("connection", (ws) => {
         const vx=tx-ox,vz=tz-oz,l=Math.hypot(vx,vz)||1,ux=vx/l,uz=vz/l,len=ability.line;
         victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&(()=>{const rx=t.x-ox,rz=t.z-oz,a=rx*ux+rz*uz,side=Math.abs(rx*uz-rz*ux);return a>=0&&a<=len&&side<=1.5;})());
       }
-      else {if(distance>(ability.range||4)){send(ws,{type:"combat",result:"out-of-range",targetId:target.id});return;}victims=[target];}
-      if(!victims.length){send(ws,{type:"combat",result:"no-target",targetId:target.id});return;}
+      else {if(distance>(ability.range||4)){send(ws,{type:"combat",result:"out-of-range",targetId:target.id,abilityId,energy:p.energy});return;}victims=[target];}
+      if(!victims.length){send(ws,{type:"combat",result:"no-target",targetId:target.id,abilityId,energy:p.energy});return;}
       p.lastAbility=now;p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;
       send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]});
       for(const victim of victims){
