@@ -1644,54 +1644,14 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   };
   addEventListener('keydown', ev => {
     if (ev.target?.tagName === 'INPUT' || ev.target?.tagName === 'TEXTAREA' || ev.target?.tagName === 'SELECT' || ev.target?.isContentEditable) return;
-    if (ev.code === 'Escape') {
-      if (window.mpTargetId) {
-        ev.preventDefault();
-        window.mpClearTarget(true);
-      }
+    if (ev.code === 'Escape' && !ev.repeat) {
+      ev.preventDefault();
+      window.mpSelectNearestTarget();
       return;
     }
-    if (ev.code !== 'Space' || ev.repeat) return;
-    ev.preventDefault();
-    window.mpSelectNearestTarget();
   }, true);
 
-  // Select another player by clicking their character.
-  canvas.addEventListener('pointerdown', ev => {
-    if (ev.button !== 0) return;
-    pointerRay(ev.clientX, ev.clientY);
-    const hits = ray.intersectObjects([...remotes.values()].map(r => r.group), true);
-    if (!hits.length) {
-      // Clicking the ground or anything other than a player clears PvP target;
-      // let the normal world-click handler process movement/resource orders.
-      mpTargetId = null;
-      window.mpTargetId = null;
-      if (window.mpTargetRing) window.mpTargetRing.active = false;
-      return;
-    }
-    // Ray hits may land on nested meshes (visor, backpack, boots, label, etc.).
-    // Walk the full scene graph rather than assuming a fixed parent depth.
-    let node = hits[0].object, targetId = null;
-    while (node && !targetId) {
-      targetId = node.userData?.mpPlayerId || null;
-      node = node.parent;
-    }
-    if (!targetId) {
-      window.mpClearTarget();
-      return;
-    }
-    const picked = remotes.get(targetId);
-    if (!picked || picked.dead) {
-      window.mpClearTarget();
-      toast('Нельзя выбрать мёртвого игрока');
-      return;
-    }
-    mpTargetId = targetId;
-    window.mpTargetId = targetId;
-    toast('Цель захвачена: автоатака в радиусе, E — особая способность оружия.');
-    ev.stopImmediatePropagation();
-    ev.preventDefault();
-  }, true);
+  // Target acquisition is keyboard-only; world clicks remain for movement.
 
   function mpFrame(now) {
     requestAnimationFrame(mpFrame);
