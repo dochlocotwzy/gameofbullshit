@@ -13,15 +13,15 @@ const WEAPON_DAMAGE = { broadsword: 40, claymore: 58, dual: 44, clarent: 42, car
 const ABILITY_MULTIPLIER = { q: 2.2, w: 2.8, e: 3.5 };
 const WEAPON_E = { broadsword:"mightyBlow", claymore:"charge", dual:"spinning", clarent:"bloodthirsty", carving:"carvingDash", galatine:"soulless", kingmaker:"majestic", infinity:"infinity" };
 const ABILITIES = {
- strike:{damage:249,range:3.2,effects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:3.5}]}, cleave:{damage:200,radius:6,effects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:5}]},
- cyclone:{damage:120,radius:2.4,hits:3,range:7}, interrupt:{damage:248,range:3.2,effects:[{type:"interrupt"}]},
- splitting:{damage:432,line:14,effects:[{type:"root",duration:1.25}]}, hamstring:{damage:192,range:3.2,effects:[{type:"slow",value:.38,duration:8}]},
- parry:{damage:80,radius:6,effects:[{type:"silence",duration:.8}]}, ironwill:{self:true,effects:[{type:"haste",value:.2,duration:4},{type:"resist",value:.259,duration:4}]},
- mightyBlow:{damage:269,range:10,dash:1.7,effects:[{type:"interrupt"},{type:"resist",value:.7,duration:3}]}, charge:{damage:390,range:13,dash:1.7,effects:[{type:"stun",duration:.8}]},
- spinning:{damage:500,radius:3.2,range:12,effects:[{type:"haste",value:.5,duration:4},{type:"attackBuff",value:1,duration:4}]},
- bloodthirsty:{damage:260,radius:5,effects:[{type:"bleed",dps:60,duration:5}]}, carvingDash:{damage:260,line:6.5,range:6,effects:[{type:"armorBreak",duration:5}]},
- soulless:{damage:150,radius:4.5,range:14,hits:3,effects:[{type:"hpDown",value:.15,duration:6}]}, majestic:{damage:330,radius:6,hits:2,secondDamage:480,effects:[{type:"air",duration:.9}]},
- infinity:{damage:210,radius:5,hits:3,secondDamage:380,effects:[{type:"slow",value:.3,duration:2}]}
+ strike:{cost:6,cooldown:3,damage:249,range:3.2,effects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:3.5}]}, cleave:{cost:11,cooldown:3,damage:200,radius:6,effects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:5}]},
+ cyclone:{cost:24,cooldown:10,damage:120,radius:2.4,hits:3,range:7}, interrupt:{cost:32,cooldown:10,damage:248,range:3.2,effects:[{type:"interrupt"}]},
+ splitting:{cost:38,cooldown:15,damage:432,line:14,effects:[{type:"root",duration:1.25}]}, hamstring:{cost:32,cooldown:10,damage:192,range:3.2,effects:[{type:"slow",value:.38,duration:8}]},
+ parry:{cost:9,cooldown:15,damage:80,radius:6,effects:[{type:"silence",duration:.8}]}, ironwill:{cost:29,cooldown:20,self:true,effects:[{type:"haste",value:.2,duration:4},{type:"resist",value:.259,duration:4}]},
+ mightyBlow:{cost:35,cooldown:10,damage:269,range:10,dash:1.7,effects:[{type:"interrupt"},{type:"resist",value:.7,duration:3}]}, charge:{cost:16,cooldown:20,damage:390,range:13,dash:1.7,effects:[{type:"stun",duration:.8}]},
+ spinning:{cost:20,cooldown:20,damage:500,radius:3.2,range:12,effects:[{type:"haste",value:.5,duration:4},{type:"attackBuff",value:1,duration:4}]},
+ bloodthirsty:{cost:14,cooldown:20,damage:260,radius:5,effects:[{type:"bleed",dps:60,duration:5}]}, carvingDash:{cost:20,cooldown:14,damage:260,line:6.5,range:6,effects:[{type:"armorBreak",duration:5}]},
+ soulless:{cost:28,cooldown:20,damage:150,radius:4.5,range:14,hits:3,effects:[{type:"hpDown",value:.15,duration:6}]}, majestic:{cost:30,cooldown:25,damage:330,radius:6,hits:2,secondDamage:480,effects:[{type:"air",duration:.9}]},
+ infinity:{cost:25,cooldown:18,damage:210,radius:5,hits:3,secondDamage:380,effects:[{type:"slow",value:.3,duration:2}]}
 };
 const ABILITY_IDS = new Set(["strike","cleave","cyclone","interrupt","splitting","hamstring","parry","ironwill",...Object.values(WEAPON_E)]);
 const ATTACK_RANGE = 3.8;
@@ -92,7 +92,7 @@ wss.on("connection", (ws) => {
     return ws.close(1013, "Server full");
   }
   const id = crypto.randomUUID();
-  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, statuses: {}, charges: 0 };
+  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {} };
   players.set(id, p);
   send(ws, { type: "welcome", id, players: snapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
@@ -158,23 +158,26 @@ wss.on("connection", (ws) => {
       return;
     }
     if (msg.type === "ability-hit") {
-      const now=Date.now(); if(p.hp<=0||now-p.lastAbility<500)return;
+      const now=Date.now(); if(p.hp<=0||now-p.lastAbility<250)return;
       const target=players.get(String(msg.targetId||"")),slot=String(msg.slot||""),weapon=String(msg.weapon||"");
       const abilityId=String(msg.abilityId||(slot==="e"?WEAPON_E[weapon]:"")),ability=ABILITIES[abilityId];
       if(!target||target.id===p.id||target.hp<=0||!ability||!ABILITY_IDS.has(abilityId))return;
       if(slot==="e"&&WEAPON_E[weapon]!==abilityId)return;
       if(!["q","w","e"].includes(slot))return;
+      if((p.abilityCooldowns[abilityId]||0)>now){send(ws,{type:"combat",result:"cooldown",abilityId,until:p.abilityCooldowns[abilityId]});return;}
+      if(p.energy < ability.cost){send(ws,{type:"combat",result:"energy",abilityId,energy:p.energy});return;}
       let dx=target.x-p.x,dz=target.z-p.z,distance=Math.hypot(dx,dz);
       const aimX=Number(msg.aimX),aimZ=Number(msg.aimZ);
       const isArea=Number.isFinite(aimX)&&Number.isFinite(aimZ)&&["cleave","cyclone","splitting","parry","spinning","bloodthirsty","carvingDash","soulless","majestic","infinity"].includes(abilityId);
-      if(abilityId==="ironwill"){applyEffects(p,ability.effects,p.id);broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:[p.id],x:p.x,z:p.z});p.lastAbility=now;return;}
+      if(abilityId==="ironwill"){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;applyEffects(p,ability.effects,p.id);broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:[p.id],x:p.x,z:p.z});p.lastAbility=now;send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]});return;}
       if(ability.dash&&distance<=ability.range&&distance>1.35){const travel=Math.min(2.7,distance-1.05);p.x+=dx/distance*travel;p.z+=dz/distance*travel;distance=Math.hypot(target.x-p.x,target.z-p.z);}
       let victims=[];
       if(ability.radius&&isArea){const ax=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimX)),az=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,aimZ));if(Math.hypot(ax-p.x,az-p.z)>(ability.range||7)+1)return;victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&Math.hypot(t.x-ax,t.z-az)<=ability.radius);}
       else if(ability.line){const len=ability.line,l=distance||1,ux=dx/l,uz=dz/l;victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&(()=>{const rx=t.x-p.x,rz=t.z-p.z,a=rx*ux+rz*uz,side=Math.abs(rx*uz-rz*ux);return a>=0&&a<=len&&side<=1.5;})());}
       else {if(distance>(ability.range||4)){send(ws,{type:"combat",result:"out-of-range",targetId:target.id});return;}victims=[target];}
       if(!victims.length){send(ws,{type:"combat",result:"no-target",targetId:target.id});return;}
-      p.lastAbility=now;
+      p.lastAbility=now;p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;
+      send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]});
       for(const victim of victims){
         let damage=ability.damage;
         if(abilityId==="mightyBlow")damage=[269,432,649,918][Math.min(3,p.charges||0)];
@@ -206,6 +209,21 @@ const heartbeat = setInterval(() => {
 const gameTick = setInterval(() => {
   const dt = TICK_MS / 1000;
   for (const p of players.values()) {
+    p.energy = Math.min(100, (p.energy ?? 100) + 4 * dt);
+    p.lastDotTick = p.lastDotTick || Date.now();
+    if (Date.now() - p.lastDotTick >= 500) {
+      const now = Date.now();
+      for (const [key, st] of Object.entries(p.statuses || {})) {
+        if (!st || st.until <= now) { delete p.statuses[key]; continue; }
+        if (key === "bleed" && p.hp > 0) {
+          const damage = Math.max(1, Math.round(Number(st.value || 60) * .5));
+          p.hp = Math.max(0, p.hp - damage);
+          broadcast({type:"combat-hit",attackerId:st.sourceId,targetId:p.id,damage,hp:p.hp,kind:"dot",abilityId:"bloodthirsty"});
+          if (p.hp===0) scheduleRespawn(p);
+        }
+      }
+      p.lastDotTick = now;
+    }
     if (p.hp <= 0) continue;
     const now = Date.now();
     if (!p.statuses) p.statuses = {};
@@ -223,7 +241,8 @@ const gameTick = setInterval(() => {
     if (len > 1) { dx /= len; dz /= len; }
     if (len > 0) {
       const slow = p.statuses.slow ? Math.max(0.2, 1 - Number(p.statuses.slow.value || 0)) : 1;
-      const speed = (p.moveTarget ? MOVE_SPEED : (p.input.running ? RUN_SPEED : MOVE_SPEED)) * slow;
+      const haste = p.statuses.haste ? 1 + Number(p.statuses.haste.value || 0) : 1;
+      const speed = (p.moveTarget ? MOVE_SPEED : (p.input.running ? RUN_SPEED : MOVE_SPEED)) * slow * haste;
       p.x = Math.max(-WORLD_BOUND, Math.min(WORLD_BOUND, p.x + dx * speed * dt));
       p.z = Math.max(-WORLD_BOUND, Math.min(WORLD_BOUND, p.z + dz * speed * dt));
       p.rotation = Math.atan2(dx, dz);
