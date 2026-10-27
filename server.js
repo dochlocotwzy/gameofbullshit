@@ -94,6 +94,10 @@ wss.on("connection", (ws) => {
       p.moveTarget = null;
       return;
     }
+    if (msg.type === "stop") {
+      p.input.x = 0; p.input.z = 0; p.moveTarget = null;
+      return;
+    }
     if (msg.type === "move-target") {
       if (p.hp <= 0) return;
       const x = Number(msg.x), z = Number(msg.z);
