@@ -1278,6 +1278,7 @@ function fillSelect(sel, items, cur) { sel.innerHTML = ''; for (const [id, n] of
 const saveLoadout = () => { try { localStorage.setItem('vs_loadout', JSON.stringify(loadout)); } catch (e) { } };
 function setWeapon(id) {
   if (!WEAPONS[id]) return; loadout.weapon = id; $('#selWeapon').value = id; takeCharges(); cd.q = cd.w = cd.e = 0; swingS = null;
+  if (window.mpConnected && typeof window.mpSetWeapon === 'function') window.mpSetWeapon(id);
   rebuildWeapons(); renderSlots(); saveLoadout(); toast(WEAPONS[id].name + (WEAPONS[id].hands === 2 ? ' (двуручный)' : ' (одноручный)'));
 }
 fillSelect($('#selWeapon'), WEAPON_ORDER.map((k, i) => [k, `${i + 1}. ${WEAPONS[k].name}`]), loadout.weapon);
@@ -1399,6 +1400,9 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   const remotes = new Map();
   let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0, lastInputSend = 0;
   window.mpConnected = false;
+  window.mpSetWeapon = id => {
+    if (socket && socket.readyState === WebSocket.OPEN && WEAPONS[id]) socket.send(JSON.stringify({type:'weapon',weapon:id}));
+  };
   let selfTargetX = player.position.x, selfTargetZ = player.position.z, selfTargetRot = player.rotation.y;
   const remoteMeshes = new Map();
   const MP_ATTACK_RANGE = 3.8;
@@ -1495,6 +1499,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       window.mpConnected = true;
       mpStatus.textContent = 'Мультиплеер: подключён · ' + mpName;
       socket.send(JSON.stringify({type:'hello', name:mpName}));
+      socket.send(JSON.stringify({type:'weapon',weapon:loadout.weapon}));
     });
     socket.addEventListener('message', event => {
       let msg; try { msg = JSON.parse(event.data); } catch { return; }
