@@ -1574,6 +1574,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         else if (msg.result === 'cooldown') toast('Способность на перезарядке');
         else if (msg.result === 'energy') toast('Не хватает энергии');
         else if (msg.result === 'no-target') toast('Нет цели в области действия');
+        else if (msg.result === 'disabled') toast('Нельзя использовать способности под контролем');
       } else if (msg.type === 'ping') mpStatus.textContent = 'Мультиплеер: онлайн · ' + msg.online + ' игрок(ов)';
       else if (msg.type === 'error') mpStatus.textContent = 'Мультиплеер: ' + msg.message;
     });
