@@ -121,6 +121,12 @@ wss.on("connection", (ws) => {
       const x = Number(msg.x), z = Number(msg.z), rotation = Number(msg.rotation);
       if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(rotation)) return;
       if (Math.abs(x) > WORLD_BOUND || Math.abs(z) > WORLD_BOUND) return;
+      // Root is server-authoritative: accept facing updates, but reject movement until it expires.
+      if (p.statuses?.root && p.statuses.root.until > Date.now()) {
+        p.rotation = rotation;
+        broadcast({ type: "player", player: publicPlayer(p) }, p.id);
+        return;
+      }
       p.x = x; p.z = z; p.rotation = rotation;
       broadcast({ type: "player", player: publicPlayer(p) }, p.id);
       return;
