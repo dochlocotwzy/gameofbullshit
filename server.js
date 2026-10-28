@@ -643,7 +643,7 @@ wss.on("connection", (ws) => {
       if (isCombatInvulnerable(target, now, false)) return;
       const attackId = crypto.randomUUID(), startX = p.x, startZ = p.z;
       p.pendingAttack = { id: attackId, targetId: target.id, startX, startZ, timer: null };
-      broadcast({ type: "combat-windup", attackerId: p.id, targetId: target.id, attackId, weapon: p.weapon || "broadsword", duration: 320 });
+      broadcast({ type: "combat-windup", attackerId: p.id, targetId: target.id, attackId, weapon: p.weapon || "broadsword", duration: 180 });
       p.pendingAttack.timer = setTimeout(() => {
         if (!p.pendingAttack || p.pendingAttack.id !== attackId) return;
         p.pendingAttack = null;
@@ -693,7 +693,7 @@ wss.on("connection", (ws) => {
       broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: actualDealt, hp: target.hp, kind: "auto" });
       broadcast({ type: "player", player: publicPlayer(target) });
       if (target.hp === 0) scheduleRespawn(target);
-      }, 320);
+      }, 180);
       return;
     }
     if (msg.type === "ability-hit") {
