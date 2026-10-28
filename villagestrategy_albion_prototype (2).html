@@ -1047,18 +1047,17 @@ function pickTarget() {
 function castSlot(slot, ctx, options = {}) {
   const sp = spellFor(slot);
   if (!sp || dash || lockT > 0) return false;
-  if (!TEST.free && (cd[slot] > 0 || energy < sp.en)) return false;
+  if (!options.multiplayerCast && !TEST.free && (cd[slot] > 0 || energy < sp.en)) return false;
 
   // Shared resource/cooldown gate. In multiplayer PvP, gameplay effects are
   // server-owned; never run the dummy-oriented spell script on a fake target.
-  if (!TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }
+  if (!options.multiplayerCast && !TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }
 
   if (options.multiplayerCast) {
     const sent = typeof window.mpAbilityHit === 'function' &&
       window.mpAbilityHit(slot, loadout.weapon, options.multiplayerTargetId, options.abilityId || (slot === 'e' ? WEAPONS[loadout.weapon].e : loadout[slot]));
     if (!sent) {
-      // Do not charge the player for a command that could not be sent.
-      if (!TEST.free) { energy = Math.min(100, energy + sp.en); cd[slot] = 0; }
+      // Multiplayer energy and cooldown are server-owned; no local resource changes need undoing.
       return false;
     }
     if (Number.isFinite(options.targetX) && Number.isFinite(options.targetZ)) faceXZ(options.targetX, options.targetZ);
@@ -1145,8 +1144,7 @@ function trySpell(slot) {
     // Otherwise PvP casts remain server-authoritative, including targetless ground/AoE abilities.
     if (!localDummyTarget && !localGroundCast) {
       if (needsTarget && (!window.mpTargetId || !target)) return toast('Сначала выбери живую цель');
-      if (!TEST.free && cd[slot] > 0) return toast('Перезарядка: ' + cd[slot].toFixed(1) + ' с');
-      if (!TEST.free && energy < sp.en) return toast('Не хватает энергии');
+      // Do not trust local cooldown/energy mirrors in PvP. Send the request and let the server accept or reject it.
       if (needsTarget) faceXZ(target.x, target.z);
       else if (sp.target === 'ground') faceXZ(aim.x, aim.z);
       return castSlot(slot, null, {
@@ -1693,7 +1691,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         const color = ({charge:0xff7a3a,mightyBlow:0xffb347,bloodthirsty:0xb01830,soulless:0xffe59a,infinity:0x58d6ff,ironwill:0xffd36e,splitting:0xffe27a,hamstring:0x79c96b,spinning:0xffd45a})[msg.abilityId] || 0x9be36a;
         const ex = Number(msg.aimX ?? msg.x) || 0, ez = Number(msg.aimZ ?? msg.z) || 0;
         if (typeof fxRing === 'function') {
-          if (msg.phase !== 'cast' || msg.attackerId === mpId) fxRing(ex, ez, radius, color, .55);
+          if (msg.abilityId !== 'splitting' && (msg.phase !== 'cast' || msg.attackerId === mpId)) fxRing(ex, ez, radius, color, .55);
           for (const id of (msg.targetIds || [])) {
             const hit = id === mpId ? player : remotes.get(id)?.group;
             if (hit && msg.abilityId !== 'ironwill') {
@@ -1705,7 +1703,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
           if (['splitting','carvingDash','charge','mightyBlow','soulless','cyclone'].includes(msg.abilityId)) {
             const sx = Number(msg.originX ?? msg.x) || 0, sz = Number(msg.originZ ?? msg.z) || 0;
             const dx = ex - sx, dz = ez - sz, len = Math.hypot(dx,dz);
-            if (len > .2) fxLine(sx, sz, dx/len, dz/len, Math.min(len, 14), msg.abilityId === 'soulless' ? 1.8 : 1.1, color, .45);
+            if (len > .2) fxLine(sx, sz, dx/len, dz/len, Math.min(len, 14), msg.abilityId === 'soulless' ? 1.8 : msg.abilityId === 'splitting' ? 1.5 : 1.1, color, .45);
           }
         }
       }else if (msg.type === 'respawn') {
@@ -1801,7 +1799,13 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     lastMpFrame = now;
     const renderAt = now - 110;
     const smooth = 1 - Math.exp(-12 * frameDt);
+    const selfAir = window.mpSelfStatuses?.air;
+    const selfAirLeft = selfAir && selfAir.until > Date.now() ? (selfAir.until - Date.now()) / 1000 : 0;
+    if (player) player.position.y = selfAirLeft > 0 ? Math.sin(Math.PI * (1 - selfAirLeft / Math.max(.01, Number(selfAir.value === true ? .9 : .9)))) * 1.05 : 0;
     for (const r of remotes.values()) {
+      const air = r.statuses?.air;
+      const airLeft = air && air.until > Date.now() ? (air.until - Date.now()) / 1000 : 0;
+      r.group.position.y = airLeft > 0 ? Math.sin(Math.PI * (1 - airLeft / .9)) * 1.05 : 0;
       if (!r.dead && r.swingT > 0) {
         r.swingT = Math.max(0, r.swingT - .06);
         const k = 1 - r.swingT;
