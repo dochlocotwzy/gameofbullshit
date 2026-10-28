@@ -309,7 +309,8 @@ wss.on("connection", (ws) => {
           if(victim.hp>0)applyEffects(victim,ability.effects||[],p.id);
           if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
           else setTimeout(()=>{
-            if(victim.hp<=0)return;
+            // The second swing is a separate impact: only hit targets still inside the original cast circle.
+            if(victim.hp<=0 || Math.hypot(victim.x-castOriginX,victim.z-castOriginZ)>(ability.radius||0))return;
             const reduction2=victim.statuses?.resist?.value||0;
             const defense2=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
             const defenseReduction2=defense2>0?Math.min(.5,defense2/(defense2+200)):0;
