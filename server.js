@@ -200,7 +200,11 @@ function publicResource(node) {
   return { id: node.id, kind: node.kind, x: node.x, z: node.z, scale: node.scale, variant: node.variant, depleted: node.depleted, respawnAt: node.respawnAt };
 }
 function resourceWorldSnapshot(viewer) { return worldResources.filter(node => !viewer || isInVision(viewer,node.x,node.z)).map(publicResource); }
-function broadcastResource(node) { broadcast({ type: "resource-node", node: publicResource(node) }); }
+function broadcastResource(node) {
+  const payload = { type: "resource-node", node: publicResource(node) };
+  // Resource state is authoritative on the server, but never reveal hidden node coordinates through updates.
+  for (const viewer of players.values()) if (isInVision(viewer, node.x, node.z)) send(viewer.ws, payload);
+}
 const ECONOMY_ITEMS = new Set(Object.keys(ITEM_DEFINITIONS).filter(itemId => itemId !== "sword"));
 const ECONOMY_RECIPES = {
   plank: { name: "Доски", inputs: { wood: 2 }, output: { plank: 1 }, seconds: 3, station: "sawmill" },
