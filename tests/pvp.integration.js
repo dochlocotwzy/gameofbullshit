@@ -52,7 +52,7 @@ assert.ok(!clientHtml.includes("createLocalResourceFallback();"), "client never 
 assert.ok(clientHtml.includes("const wasDepleted = !!r.depleted;"), "resource visuals distinguish respawn transitions from repeated snapshots");
 assert.ok(clientHtml.includes("if (wasDepleted) {"), "resource growth animation starts only when a depleted node respawns");
 assert.ok(!clientHtml.includes("const lowGeos = [buildPineLow()"), "decorative non-harvestable background trees are not generated");
-assert.ok(clientHtml.includes("Medieval landscape detailing:"), "ground texture includes layered natural terrain detail");
+assert.ok(clientHtml.includes("Replace the old bright, almost uniform green carpet with a layered medieval field palette."), "ground texture uses layered natural terrain detail");
 assert.ok(clientHtml.includes("Replace the old bright, almost uniform green carpet"), "ground texture uses a redesigned medieval field palette");
 assert.ok(clientHtml.includes("Broad, irregular ground cover patches"), "ground texture includes clearly visible large-scale color variation");
 assert.ok(serverSource.includes('ship: { name: "Корабль", inputs: { plank: 20, iron_ingot: 4 }, output: { ship: 1 }, seconds: 45, station: "shipyard" }'), "ship construction consumes refined materials at a shipyard");
