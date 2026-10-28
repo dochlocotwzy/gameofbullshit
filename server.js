@@ -244,8 +244,8 @@ wss.on("connection", (ws) => {
     if (!msg || typeof msg.type !== "string") return;
     if (msg.type === "hello") {
       p.name = safeName(msg.name);
-      broadcast({ type: "player", player: { id: p.id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, p.id);
-      send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot() });
+      broadcast({ type: "player", player: publicPlayer(p) }, p.id);
+      send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(), resources: resourceWorldSnapshot(), factories:worldFactories.map(publicFactory) });
       return;
     }
     if (msg.type === "latency-ping") {
