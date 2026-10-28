@@ -27,6 +27,10 @@ assert.ok(serverSource.includes('if (msg.type === "economy-run")'), "factory pro
 assert.ok(serverSource.includes("startFactoryJob(p, factory)"), "factories chain production while inputs remain");
 assert.ok(serverSource.includes("recipe.station"), "manual crafting requires the matching production station");
 assert.ok(clientHtml.includes('id="economy-panel"'), "client exposes the inventory and production UI");
+assert.ok(clientHtml.includes('data-econ-tab="items"'), "economy UI separates inventory into compact tabs");
+assert.ok(clientHtml.includes("ev.code==='KeyI'"), "inventory can be toggled with I");
+assert.ok(clientHtml.includes("e.code==='KeyF'"), "F invokes contextual resource interaction");
+assert.ok(clientHtml.includes("ev.code==='Escape'"), "Escape closes the inventory panel");
 assert.ok(clientHtml.includes("data-econ=\"build\""), "client can request factory construction");
 assert.ok(clientHtml.includes("data-econ=\"craft\""), "client can request crafting");
 assert.ok(serverSource.includes("combat-cancelled"), "server cancels auto-attacks interrupted before impact");
