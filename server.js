@@ -148,16 +148,49 @@ function isParryInvulnerable(target, now = Date.now()) {
 }
 function applyEffects(target,effects,sourceId) {
   if(!target.statuses)target.statuses={};
-  if (target.pendingAttack && effects.some(e => e.type === "stun" || e.type === "air")) {
-    const cancelledAttack = target.pendingAttack;
-    target.pendingAttack = null;
+  const now=Date.now();
+  if(target.pendingAttack&&effects.some(e=>["stun","air"].includes(e.type))){
+    const cancelledAttack=target.pendingAttack;target.pendingAttack=null;
     broadcast({type:"combat-cancelled",attackerId:target.id,targetId:cancelledAttack.targetId,attackId:cancelledAttack.id});
   }
-  for(const e of effects){if(e.type==="charge"){target.charges=Math.min(3,(target.charges||0)+(e.amount||1));target.chargeExpiresAt=Date.now()+6000;continue;}
-    if(e.type==="interrupt"){target.statuses.casting={value:false,until:Date.now()+500};continue;}
-    const key=e.type,old=target.statuses[key]||{},appliedAt=Date.now();
-    target.statuses[key]={value:e.value??e.dps??true,until:appliedAt+Math.round((e.duration||1)*1000),sourceId};
-    if(key==="bleed"||key==="deepBleed")target.statuses[key].nextTickAt=appliedAt+500;
+  for(const e of effects||[]){
+    if(!e||!e.type)continue;
+    if(e.type==="charge"){target.charges=Math.min(3,(target.charges||0)+(e.amount||1));target.chargeExpiresAt=now+6000;continue;}
+    if(e.type==="energy"){target.energy=Math.min(100,(Number(target.energy)||0)+(Number(e.amount)||0));continue;}
+    if(e.type==="interrupt"){target.statuses.casting={value:false,until:now+500,sourceId};continue;}
+    if(e.type==="knockback"||e.type==="pull"){
+      const source=players.get(String(sourceId||""));if(!source||target.id===source.id)continue;
+      let dx=target.x-source.x,dz=target.z-source.z,d=Math.hypot(dx,dz)||1;
+      if(e.type==="pull"||e.toCaster){dx=-dx;dz=-dz;}
+      else if(!e.away){dx/=d;dz/=d;}else{dx/=d;dz/=d;}
+      const distance=Math.max(0,Number(e.distance)||0),travel=Math.min(distance,Number(e.speed)>0?distance:distance);
+      const land=safeLandPosition(target.x,target.z,Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,target.x+dx*travel)),Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,target.z+dz*travel)));
+      target.x=land.x;target.z=land.z;target.positionLockUntil=now+350;
+      broadcast({type:"player",player:publicPlayer(target)});continue;
+    }
+    if(e.type==="stackBleed"){
+      const key=String(e.key||"axeBleed"),old=target.statuses[key],stacks=old&&old.until>now?Math.min(Number(e.maxStacks)||3,(Number(old.stacks)||1)+1):1;
+      target.statuses[key]={value:Number(e.dps)||14,stacks,until:now+Math.round((Number(e.duration)||6)*1000),nextTickAt:old&&old.until>now&&old.nextTickAt?old.nextTickAt:now+500,sourceId};
+      if(stacks>=(Number(e.maxStacks)||3)&&e.atMaxStacks){const block=e.atMaxStacks;target.statuses.healBlock={value:Number(block.value)||0,until:now+Math.round((Number(block.duration)||5)*1000),sourceId};}
+      continue;
+    }
+    if(e.type==="moveBleed"){
+      target.statuses.moveBleed={value:Number(e.tick)||67,interval:Math.max(.1,Number(e.interval)||.5),lastX:target.x,lastZ:target.z,nextTickAt:now+Math.max(.1,Number(e.interval)||.5)*1000,until:now+Math.round((Number(e.duration)||8)*1000),sourceId};continue;
+    }
+    if(e.type==="healOverTime"){
+      target.statuses.healOverTime={value:Number(e.amount)||0,interval:Math.max(.2,Number(e.interval)||1),nextTickAt:now+Math.max(.2,Number(e.interval)||1)*1000,until:now+Math.round((Number(e.duration)||5)*1000),sourceId};continue;
+    }
+    if(e.type==="shield"){
+      const old=target.statuses.shield, amount=Math.max(0,Number(e.value)||0);
+      target.statuses.shield={value:Math.max(old&&old.until>now?Number(old.value)||0:0,amount),until:now+Math.round((Number(e.duration)||1)*1000),sourceId};continue;
+    }
+    if(e.type==="dispelBuffs"){
+      for(const key of ["haste","resist","shield","attackBuff","damageBuff","attackSpeed","healOverTime","lifesteal"])delete target.statuses[key];
+      continue;
+    }
+    const key=e.type,old=target.statuses[key]||{};
+    target.statuses[key]={value:e.value??e.dps??true,until:now+Math.round((e.duration||1)*1000),sourceId};
+    if(key==="bleed"||key==="deepBleed")target.statuses[key].nextTickAt=now+500;
     if(key==="hpDown")target.hp=Math.min(target.hp,Math.round(PLAYER_MAX_HP*(1-Math.max(0,Math.min(.9,Number(e.value)||0)))));
   }
   broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
@@ -778,16 +811,28 @@ const gameTick = setInterval(() => {
     let statusExpired = false;
     for (const [key, status] of Object.entries(p.statuses)) {
       if (!status) { delete p.statuses[key]; statusExpired = true; continue; }
-      if ((key === "bleed" || key === "deepBleed") && p.hp > 0) {
+      if ((key === "bleed" || key === "deepBleed" || key === "axeBleed" || key === "moveBleed") && p.hp > 0) {
+        if (key === "moveBleed") {
+          const moved = Math.hypot(p.x-(status.lastX??p.x),p.z-(status.lastZ??p.z)) > 0.03;
+          status.lastX=p.x;status.lastZ=p.z;
+          if (!moved) status.nextTickAt=now+Math.max(100,Number(status.interval||0.5)*1000);
+        }
         if (!Number.isFinite(status.nextTickAt)) status.nextTickAt = now + 500;
         while (status.nextTickAt <= now && status.nextTickAt <= status.until && p.hp > 0) {
           if (!isParryInvulnerable(p, now)) {
-            const damage = Math.max(1, Math.round(Number(status.value || 60) * .5));
+            const damage = Math.max(1, Math.round(key === "axeBleed" ? Number(status.value||14)*(Number(status.stacks)||1)*0.5 : key === "moveBleed" ? Number(status.value||67) : Number(status.value||60)*0.5));
             p.hp = Math.max(0, p.hp - damage);
             broadcast({type:"combat-hit",attackerId:status.sourceId,targetId:p.id,damage,hp:p.hp,kind:"dot",abilityId:key === "deepBleed" ? "deepcuts" : "bloodthirsty"});
             if (p.hp === 0) scheduleRespawn(p);
           }
           status.nextTickAt += 500;
+        }
+      }
+      if (key === "healOverTime" && p.hp > 0) {
+        if (!Number.isFinite(status.nextTickAt)) status.nextTickAt=now+Math.max(200,Number(status.interval||1)*1000);
+        while(status.nextTickAt<=now&&status.nextTickAt<=status.until&&p.hp>0){
+          if(!(p.statuses.healBlock&&p.statuses.healBlock.until>now))p.hp=Math.min(PLAYER_MAX_HP,p.hp+Math.max(0,Number(status.value)||0));
+          status.nextTickAt+=Math.max(200,Number(status.interval||1)*1000);
         }
       }
       if (status.until <= now) { delete p.statuses[key]; statusExpired = true; }
