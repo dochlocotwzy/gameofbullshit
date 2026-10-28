@@ -299,6 +299,7 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
         broadcast({type:"player",player:publicPlayer(victim)});
         if(actualDealt>0&&p.statuses?.lifesteal&&p.statuses.lifesteal.until>Date.now())p.hp=Math.min(PLAYER_MAX_HP,p.hp+Math.round(actualDealt*(Number(p.statuses.lifesteal.value)||0)));
       }
+      if(hitVictims.length)for(const effect of selfEffects.filter(e=>e.type==="auraStack"))applyEffects(p,[effect],p.id);
       if(ability.zone?.effects)for(const victim of hitVictims)if(victim.hp>0)applyEffects(victim,ability.zone.effects,p.id);
       broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:hitVictims.map(v=>v.id),x:center.x,z:center.z,originX:origin.x,originZ:origin.z,aimX:aim?.x??center.x,aimZ:aim?.z??center.z,rotation:p.rotation,weapon:p.weapon});
     },Math.max(0,Number(hit.delay)||0)*1000);
