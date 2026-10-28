@@ -246,7 +246,17 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
   if(!selfCast&&ability.target==="ground"&&!aim&&!ability.dash&&ability.shape?.origin==="aim"){send(ws,{type:"combat",result:"invalid-aim",abilityId,energy:p.energy});return;}
   p.lastAbility=now;if(!p.testMode){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;}
   if(selfEffects.length)applyEffects(p,selfEffects,p.id);
-  const hits=Array.isArray(ability.hits)&&ability.hits.length?ability.hits:[{delay:0,damage:0,effects:ability.effects||[]}];
+  let hits=Array.isArray(ability.hits)&&ability.hits.length?ability.hits:[{delay:0,damage:0,effects:ability.effects||[]}];
+  if(ability.pulses&&Number(ability.pulses.count)>0){
+    const pulse=ability.pulses;
+    hits=Array.from({length:Math.min(20,Math.max(1,Number(pulse.count)||1))},(_,i)=>({delay:i*(Number(pulse.interval)||0.5),damage:Number(pulse.damage)||0,effects:ability.effects||[],pulseBuff:pulse.selfBuffPerPulse}));
+  } else if(ability.channel&&Number(ability.channel.ticks)>0){
+    const base=hits.length===1?hits[0]:{damage:0,effects:ability.effects||[]};
+    hits=Array.from({length:Math.min(20,Math.max(1,Number(ability.channel.ticks)||1))},(_,i)=>({...base,delay:i*(Number(ability.channel.interval)||1)}));
+  } else if(ability.chain&&Number(ability.chain)>1){
+    const base=hits[0]||{damage:0,effects:ability.effects||[]};
+    hits=Array.from({length:Math.min(10,Number(ability.chain))},(_,i)=>({...base,delay:(Number(base.delay)||0)+i*0.35}));
+  }
   for(const hit of hits){
     setTimeout(()=>{
       if(p.hp<=0)return;
@@ -264,6 +274,7 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
         victim.hp=Math.max(0,victim.hp-actualDealt);
         broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:actualDealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hits.indexOf(hit)});
         if(victim.hp>0)applyEffects(victim,hit.effects||ability.effects||[],p.id);
+        if(hit.pulseBuff&&victim.hp>0)applyEffects(p,[hit.pulseBuff],p.id);
         if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
         broadcast({type:"player",player:publicPlayer(victim)});
         if(actualDealt>0&&p.statuses?.lifesteal&&p.statuses.lifesteal.until>Date.now())p.hp=Math.min(PLAYER_MAX_HP,p.hp+Math.round(actualDealt*(Number(p.statuses.lifesteal.value)||0)));
@@ -271,6 +282,22 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
       if(ability.zone?.effects)for(const victim of hitVictims)if(victim.hp>0)applyEffects(victim,ability.zone.effects,p.id);
       broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:hitVictims.map(v=>v.id),x:center.x,z:center.z,originX:origin.x,originZ:origin.z,aimX:aim?.x??center.x,aimZ:aim?.z??center.z,rotation:p.rotation,weapon:p.weapon});
     },Math.max(0,Number(hit.delay)||0)*1000);
+  }
+  if(ability.dash?.landing){
+    const landing=ability.dash.landing, landingDelay=Math.max(0,Number(ability.dash.dur)||0.35)*1000;
+    setTimeout(()=>{
+      if(p.hp<=0)return;
+      const radius=Math.max(0,Number(landing.radius)||0), landingVictims=[...players.values()].filter(v=>v.hp>0&&v.id!==p.id&&v.team!==p.team&&Math.hypot(v.x-p.x,v.z-p.z)<=radius+0.35);
+      const bonus=1+Math.max(0,landingVictims.length-1)*(Number(ability.multiTargetBonus)||0);
+      for(const victim of landingVictims){
+        if(Number(landing.damage)>0){const dealt= Math.max(0,Math.round(Number(landing.damage)*bonus));const actual=absorbShield(victim,dealt);victim.hp=Math.max(0,victim.hp-actual);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:actual,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:"landing"});}
+        if(victim.hp>0)applyEffects(victim,landing.effects||[],p.id);
+        if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
+        broadcast({type:"player",player:publicPlayer(victim)});
+      }
+      if(landing.innerEffects)for(const victim of landingVictims)if(victim.hp>0&&Math.hypot(victim.x-p.x,victim.z-p.z)<=Number(landing.innerEffects.radius||0))applyEffects(victim,landing.innerEffects.effects||[],p.id);
+      broadcast({type:"combat-effect",phase:"landing",attackerId:p.id,abilityId,targetIds:landingVictims.map(v=>v.id),x:p.x,z:p.z,originX:origin.x,originZ:origin.z,aimX:aim?.x??p.x,aimZ:aim?.z??p.z,rotation:p.rotation,weapon:p.weapon});
+    },landingDelay);
   }
   if(ability.zone?.selfEffects)applyEffects(p,ability.zone.selfEffects,p.id);
   send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
