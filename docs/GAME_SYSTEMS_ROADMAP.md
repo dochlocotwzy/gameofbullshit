@@ -83,6 +83,15 @@ Important: the market is global across teams, not separate per-team shops. The a
 4. Keep progression data separate from the individual weapon's base definition.
 5. Integrate new weapon files from the user/Claude only when supplied; do not pre-emptively rewrite them.
 
+## Interface and interaction conventions
+
+- `I` opens/closes a compact inventory window; inventory, crafting, and factories are separate tabs rather than one oversized panel.
+- `Esc` closes the current panel.
+- `F` is the contextual interaction key. It should act on the nearest valid world object within range and show a clear prompt (for example, a forge, storage, resource node, or travelling merchant).
+- Do not pretend a UI-only factory is a world object. Add factory `F` interaction only once a placed building has a world representation and server-validated range/permissions.
+- Reuse a consistent visual system for inventory, crafting, storage, merchant, and factory menus; keep mobile layout compact.
+- UI visibility and interaction are client conveniences only; server validates every action, range, ownership, and permissions where relevant.
+
 ## Proposed implementation order
 
 1. Add this roadmap and establish the configurable team-cap/item/weapon data foundations.
