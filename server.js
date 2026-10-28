@@ -123,6 +123,7 @@ function economySnapshot(p) {
   return { items: { ...(e.items || {}) }, factories: (e.factories || []).map(f => ({ id:f.id, type:f.type, name:FACTORY_TYPES[f.type]?.name || f.type, recipe:f.recipe, running:!!f.running, progress:Math.max(0,Math.min(1, f.duration ? (Date.now()-f.startedAt)/f.duration : 0)), remainingMs:f.running ? Math.max(0,f.startedAt+f.duration-Date.now()) : 0 })) };
 }
 function sendEconomy(p, message = "Склад обновлён.") {
+  if (p.economy) p.economy.lastUiUpdate = Date.now();
   send(p.ws, { type:"economy-state", economy:economySnapshot(p), message });
 }
 function hasItems(items, cost) { return Object.entries(cost).every(([k,v]) => (items[k] || 0) >= v); }
@@ -501,6 +502,7 @@ const gameTick = setInterval(() => {
         if (recipe && startFactoryJob(p, factory)) economyChanged = true;
       }
       if (economyChanged) sendEconomy(p, "Производство завершено.");
+      else if (p.economy.factories.some(f => f.running) && now - (p.economy.lastUiUpdate || 0) >= 1000) sendEconomy(p, "");
     }
     if (!p.statuses) p.statuses = {};
     if ((p.charges || 0) > 0 && p.chargeExpiresAt && p.chargeExpiresAt <= now) {
