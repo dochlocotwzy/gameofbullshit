@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>VillageStrategy — Albion-style prototype (бой: мечи)</title>
+<title>VillageStrategy — команды и экономика</title>
 <style>
   html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0f1612;color:#f3efe3;font-family:system-ui,"Segoe UI",sans-serif;user-select:none}
   #game{display:block;width:100%;height:100%;touch-action:none}
@@ -163,7 +163,7 @@ import { mergeGeometries } from 'https://cdn.jsdelivr.net/npm/three@0.166.1/exam
 
 /* =====================  НАСТРОЙКИ (можно крутить)  ===================== */
 const CFG = {
-  WORLD: 120, HALF: 60, BOUND: 55,
+  WORLD: 276, HALF: 138, BOUND: 126.5,
   MODEL_SCALE: 1.25,
   MODEL_YAW: Math.PI,   // ← поворот модели. Исправляет «лунную походку». Если вдруг смотрит назад — поставь 0
   WALK: 3.0, RUN: 5.4,  // скорость, ед/сек
@@ -199,14 +199,14 @@ renderer.toneMappingExposure = 1.05;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xa9cfe0);
-scene.fog = new THREE.Fog(0xa9cfe0, 85, 175);
-const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.5, 320);
+scene.fog = new THREE.Fog(0xa9cfe0, 195, 400);
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.5, 800);
 
 scene.add(new THREE.HemisphereLight(0xdff0ff, 0x6a7a45, 1.7));
 const sun = new THREE.DirectionalLight(0xfff0d0, 2.9);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1536, 1536);
-Object.assign(sun.shadow.camera, { left: -32, right: 32, top: 32, bottom: -32, near: 1, far: 100 });
+Object.assign(sun.shadow.camera, { left: -75, right: 75, top: 75, bottom: -75, near: 1, far: 260 });
 sun.shadow.bias = -0.0005; sun.shadow.normalBias = 0.04;
 scene.add(sun, sun.target);
 
@@ -275,8 +275,9 @@ const M = {
 /* =====================  коллизии и дороги  ===================== */
 const circles = [], boxes = [], paths = [];
 // This centreline is shared with the server-side river/resource validation.
-const riverCenter = [[0,-55],[3,-42],[0,-28],[-4,-18],[-7,0],[-4,18],[0,28],[3,42],[0,55]];
-const riverBridges = [[0,-28],[-7,0],[0,28]];
+const MAP_SCALE = 2.3;
+const riverCenter = [[0,-55],[3,-42],[0,-28],[-4,-18],[-7,0],[-4,18],[0,28],[3,42],[0,55]].map(([x,z])=>[x*MAP_SCALE,z*MAP_SCALE]);
+const riverBridges = [[0,-28],[-7,0],[0,28]].map(([x,z])=>[x*MAP_SCALE,z*MAP_SCALE]);
 function closestRiverPoint(x, z) {
   let best = { x: 0, z: 0, distance: Infinity, nx: 1, nz: 0, dx: 0, dz: 0 };
   for (let i = 0; i < riverCenter.length - 1; i++) {
@@ -293,10 +294,10 @@ function closestRiverPoint(x, z) {
   return best;
 }
 function isBridgeCrossing(x, z) {
-  return riverBridges.some(([bx, bz]) => Math.abs(x - bx) <= 4.15 && Math.abs(z - bz) <= 2.15);
+  return riverBridges.some(([bx, bz]) => Math.abs(x - bx) <= 4.15 * MAP_SCALE && Math.abs(z - bz) <= 2.15 * MAP_SCALE);
 }
 function isRiverBlocked(x, z) {
-  return !isBridgeCrossing(x, z) && closestRiverPoint(x, z).distance < 3.45;
+  return !isBridgeCrossing(x, z) && closestRiverPoint(x, z).distance < 3.45 * MAP_SCALE;
 }
 const addCircle = (x, z, r) => { const c = { x, z, r }; circles.push(c); return c; };
 const addBox = (x, z, hx, hz) => boxes.push({ x0: x - hx, x1: x + hx, z0: z - hz, z1: z + hz });
@@ -319,8 +320,8 @@ function resolve(pos, pr) {
     let dx = river.dx, dz = river.dz, d = Math.hypot(dx, dz);
     if (d < 1e-4) { dx = river.nx; dz = river.nz; d = 1; }
     const side = dx * river.nx + dz * river.nz < 0 ? -1 : 1;
-    pos.x = river.x + river.nx * side * (3.45 + pr + .02);
-    pos.z = river.z + river.nz * side * (3.45 + pr + .02);
+    pos.x = river.x + river.nx * side * (3.45 * MAP_SCALE + pr + .02);
+    pos.z = river.z + river.nz * side * (3.45 * MAP_SCALE + pr + .02);
   }
   const d = Math.hypot(pos.x, pos.z); if (d > CFG.BOUND) { pos.x *= CFG.BOUND / d; pos.z *= CFG.BOUND / d; }
 }
@@ -651,6 +652,15 @@ function bakeStatic(roots) {
 const villageStart = scene.children.length;
 makeVillage();
 bakeStatic(scene.children.slice(villageStart));
+// Expand every map prop and its collision footprint together; character scale stays unchanged.
+for (const child of scene.children) {
+  if (child.isLight) { child.position.x *= MAP_SCALE; child.position.z *= MAP_SCALE; continue; }
+  child.position.x *= MAP_SCALE; child.position.z *= MAP_SCALE;
+  child.scale.x *= MAP_SCALE; child.scale.z *= MAP_SCALE;
+}
+for (const c of circles) { c.x *= MAP_SCALE; c.z *= MAP_SCALE; c.r *= MAP_SCALE; }
+for (const b of boxes) { b.x0 *= MAP_SCALE; b.x1 *= MAP_SCALE; b.z0 *= MAP_SCALE; b.z1 *= MAP_SCALE; }
+for (const path of paths) for (const point of path) { point[0] *= MAP_SCALE; point[1] *= MAP_SCALE; }
 
 /* =====================  ресурсы  ===================== */
 const RES = {
@@ -660,7 +670,7 @@ const RES = {
 };
 const resources = [], resMeshes = [];
 function freeSpot(x, z, r) {
-  if (Math.hypot(x, z) > CFG.BOUND - 3 || Math.hypot(x, z) < 12) return false;
+  if (Math.hypot(x, z) > CFG.BOUND - 3 || Math.hypot(x, z) < 12 * MAP_SCALE) return false;
   // Do not place resource nodes in the river or on its sandy banks.
   if (closestRiverPoint(x, z).distance < 5.5) return false;
   if (distToPaths(x, z) < 2.8 + r) return false;
@@ -728,7 +738,7 @@ function applyResourceNode(node) {
   };
   const lowGeos = [buildPineLow(), buildPineLow(), buildOakLow(0x4f8f3c, 0x5b9c42), buildOakLow(0x7a9a38, 0x8aab3f)];
   const SECT = 8, per = Array.from({ length: SECT }, () => lowGeos.map(() => []));
-  for (let i = 0; i < 130; i++) { const a = rand() * 6.283, d = rr(54, 74), sct = Math.min(SECT - 1, Math.floor(a / 6.283 * SECT)); per[sct][(rand() * lowGeos.length) | 0].push([Math.cos(a) * d, Math.sin(a) * d]); }
+  for (let i = 0; i < 130; i++) { const a = rand() * 6.283, d = rr(40, 120), sct = Math.min(SECT - 1, Math.floor(a / 6.283 * SECT)); per[sct][(rand() * lowGeos.length) | 0].push([Math.cos(a) * d, Math.sin(a) * d]); }
   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), ps = new THREE.Vector3();
   for (const sector of per) sector.forEach((list, gi) => {
     if (!list.length) return;
@@ -762,7 +772,7 @@ function applyResourceNode(node) {
 /* =====================  инвентарь, всплывающие надписи, частицы  ===================== */
 const inv = { wood: 0, stone: 0, ore: 0 };
 const ECON_LABELS = { wood:["🪵","Древесина"], stone:["🪨","Камень"], ore:["⛏️","Руда"], plank:["🪚","Доски"], iron_ingot:["🔩","Железные слитки"], sword:["⚔️","Мечи"], ship:["⛵","Корабли"] };
-let economyState = { items:{wood:0,stone:0,ore:0,plank:0,iron_ingot:0,sword:0}, factories:[] };
+let economyState = { items:{wood:0,stone:0,ore:0,plank:0,iron_ingot:0,ship:0}, factories:[] };
 const pendingHarvests = new Map();
 const econPanel = $('#economy-panel');
 function econSend(payload) {
@@ -790,14 +800,12 @@ function renderEconomyState(data) {
   const recipes = [
     {id:'plank',name:'Доски',icon:'🪚',inputs:'2 древесины',output:'1 доска',station:'Лесопилка'},
     {id:'iron_ingot',name:'Железный слиток',icon:'🔩',inputs:'2 руды + 1 древесина',output:'1 слиток',station:'Плавильня'},
-    {id:'sword',name:'Меч',icon:'⚔️',inputs:'3 доски + 2 слитка',output:'1 меч',station:'Кузница'},
     {id:'ship',name:'Корабль',icon:'⛵',inputs:'20 досок + 4 слитка',output:'1 корабль',station:'Верфь'}
   ];
   $('#econ-recipes').innerHTML = recipes.map(r=>`<div class="econ-card"><b>${r.icon} ${r.name}</b><small>Расход: ${r.inputs}<br>Выход: ${r.output}<br>Станция: ${r.station}</small><button data-econ="craft" data-id="${r.id}">Создать</button></div>`).join('');
   const buildings = [
     {id:'sawmill',name:'Лесопилка',cost:'8 древесины + 4 камня',recipe:'Производит доски'},
     {id:'smelter',name:'Плавильня',cost:'6 древесины + 8 камня',recipe:'Производит железные слитки'},
-    {id:'forge',name:'Кузница',cost:'4 доски + 2 слитка + 5 камня',recipe:'Производит мечи'},
     {id:'shipyard',name:'Верфь',cost:'20 древесины + 12 камня + 8 досок',recipe:'Строит корабли'}
   ];
   $('#econ-buildings').innerHTML = buildings.map(b=>`<div class="econ-card"><b>🏭 ${b.name}</b><small>${b.recipe}<br>Строительство: ${b.cost}</small><button data-econ="build" data-id="${b.id}">Построить</button></div>`).join('');
@@ -889,7 +897,7 @@ function resetDeath() {
 function damagePlayer(amount) { setPlayerHealth(playerVitals.hp - Math.max(0, Number(amount) || 0)); }
 function healPlayer(amount) { setPlayerHealth(playerVitals.hp + Math.max(0, Number(amount) || 0)); }
 setPlayerHealth(PLAYER_MAX_HP);
-const pos = player.position; pos.set(0, 0, 7);
+const pos = player.position; pos.set(-31 * MAP_SCALE, 0, -7 * MAP_SCALE);
 let mixer = null, actions = {}, active = null, hasAnim = false;
 const loader = new GLTFLoader();
 const MODEL_URLS = ['https://threejs.org/examples/models/gltf/Soldier.glb', 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r166/examples/models/gltf/Soldier.glb'];
@@ -1937,6 +1945,9 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       } else if (msg.type === 'welcome') {
         socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free}));
         mpId = msg.id;
+        if (msg.player && Number.isFinite(Number(msg.player.x)) && Number.isFinite(Number(msg.player.z))) player.position.set(Number(msg.player.x), 0, Number(msg.player.z));
+        window.mpTeam = msg.team || msg.player?.team || null;
+        if (window.mpTeam) mpStatus.textContent = 'Команда: ' + (window.mpTeam === 'blue' ? 'Синие' : 'Красные') + ' · ' + mpName;
         socket.send(JSON.stringify({type:'economy-get'}));
         syncResourceWorld(msg.resources);
         (msg.players || []).forEach(p => { if (p.id !== mpId) addRemote(p); });
