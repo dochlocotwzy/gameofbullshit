@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const WebSocket = require("ws");
+const { ITEM_DEFINITIONS } = require("./game-data/catalog");
 
 const PORT = Number(process.env.PORT) || 10000;
 const HOST = "0.0.0.0";
@@ -107,7 +108,7 @@ function spawnPosition(index) {
   return { x: Math.round(Math.cos(angle) * radius * 100) / 100, z: Math.round((7 + Math.sin(angle) * radius) * 100) / 100 };
 }
 function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{const spawn=spawnPosition(target.spawnIndex);target.hp=PLAYER_MAX_HP;target.x=spawn.x;target.z=spawn.z;target.rotation=0;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.moveTarget=null;target.input={x:0,z:0,running:false};target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
-const ECONOMY_ITEMS = new Set(["wood","stone","ore","plank","iron_ingot","sword"]);
+const ECONOMY_ITEMS = new Set(Object.keys(ITEM_DEFINITIONS));
 const ECONOMY_RECIPES = {
   plank: { name: "Доски", inputs: { wood: 2 }, output: { plank: 1 }, seconds: 3, station: "sawmill" },
   iron_ingot: { name: "Железный слиток", inputs: { ore: 2, wood: 1 }, output: { iron_ingot: 1 }, seconds: 5, station: "smelter" },
@@ -150,7 +151,7 @@ wss.on("connection", (ws) => {
   let spawnIndex = 0;
   while (occupiedSpawnIndices.has(spawnIndex)) spawnIndex++;
   const spawn = spawnPosition(spawnIndex);
-  const p = { id, ws, spawnIndex, economy: { items: { wood:0, stone:0, ore:0, plank:0, iron_ingot:0, sword:0 }, factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
+  const p = { id, ws, spawnIndex, economy: { items: Object.fromEntries([...ECONOMY_ITEMS].map(itemId => [itemId, 0])), factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
   players.set(id, p);
   send(ws, { type: "welcome", id, players: snapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
