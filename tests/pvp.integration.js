@@ -15,6 +15,11 @@ assert.ok(catalogSource.includes("statModifiers"), "item metadata supports equip
 assert.ok(serverSource.includes('const ALLOW_TEST_MODE = process.env.ALLOW_TEST_MODE === "true";'), "server free-cast mode is disabled unless explicitly enabled for tests");
 assert.ok(serverSource.includes("const RESOURCE_RESPAWN_MS = 30 * 60 * 1000;"), "shared resources respawn after thirty minutes");
 assert.ok(serverSource.includes("const RESOURCE_COUNTS = { wood: 62, stone: 24, ore: 12 };"), "server generates fixed world counts for each resource type");
+assert.ok(serverSource.includes('ship: { name: "Корабль", inputs: { plank: 20, iron_ingot: 4 }, output: { ship: 1 }, seconds: 45, station: "shipyard" }'), "ship construction consumes refined materials at a shipyard");
+assert.ok(serverSource.includes('shipyard: { name: "Верфь", cost: { wood: 20, stone: 12, plank: 8 }, recipe: "ship" }'), "shipyard has a server-validated construction cost");
+assert.ok(clientHtml.includes("addPortDock(-49, -1); addPortDock(49, 1)"), "map has docks at both river mouths");
+assert.ok(clientHtml.includes("addPrototypeBoat(1.5, -42.5, 0)"), "map includes prototype ship visuals");
+assert.ok(clientHtml.includes("{id:'shipyard',name:'Верфь'") && clientHtml.includes("{id:'ship',name:'Корабль'"), "economy UI exposes shipyard construction and ship production");
 assert.ok(serverSource.includes("Math.hypot(p.x - node.x, p.z - node.z) > 3.6"), "resource gathering validates server-side proximity");
 assert.ok(serverSource.includes('type: "resource-node"'), "resource depletion and respawn are broadcast");
 assert.ok(clientHtml.includes("nodeId:r.id"), "client sends the selected resource node ID");
