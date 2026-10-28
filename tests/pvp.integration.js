@@ -46,7 +46,9 @@ assert.ok(clientHtml.includes("function buildWeaponModel("), "client renders axe
 assert.ok(clientHtml.includes("castAlbionDummySpell"), "new branch abilities have a generic local dummy-cast path");
 assert.ok(serverSource.includes('const ALLOW_TEST_MODE = process.env.ALLOW_TEST_MODE === "true";'), "server free-cast mode is disabled unless explicitly enabled for tests");
 assert.ok(serverSource.includes("const RESOURCE_RESPAWN_MS = 30 * 60 * 1000;"), "shared resources respawn after thirty minutes");
-assert.ok(serverSource.includes("const RESOURCE_COUNTS = { wood: 62, stone: 24, ore: 12 };"), "server generates fixed world counts for each resource type");
+assert.ok(serverSource.includes("const RESOURCE_COUNTS = { wood: 124, stone: 48, ore: 24 };"), "server generates fixed, mirrored world counts for each resource type");
+assert.ok(serverSource.includes("const leftX = -x;") && serverSource.includes("const rightX = x;"), "resource nodes are generated in mirrored pairs across the map");
+assert.ok(!clientHtml.includes("createLocalResourceFallback();"), "client never creates an independent resource world");
 assert.ok(clientHtml.includes("const wasDepleted = !!r.depleted;"), "resource visuals distinguish respawn transitions from repeated snapshots");
 assert.ok(clientHtml.includes("if (wasDepleted) {"), "resource growth animation starts only when a depleted node respawns");
 assert.ok(!clientHtml.includes("const lowGeos = [buildPineLow()"), "decorative non-harvestable background trees are not generated");
@@ -180,7 +182,7 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     assert.ok(aId && bId && aId !== bId, "server assigns distinct player IDs");
     assert.ok(Array.isArray(wa.resources) && wa.resources.length > 0 && wa.resources.length <= 98, "server sends only resource nodes currently inside the player's vision");
     assert.ok(Array.isArray(wb.resources) && wb.resources.length <= 98, "each player receives their own vision-filtered resource set");
-    assert.ok(serverSource.includes("const RESOURCE_COUNTS = { wood: 62, stone: 24, ore: 12 };"), "server owns the full 98-node world regardless of each client's visible subset");
+    assert.ok(serverSource.includes("const RESOURCE_COUNTS = { wood: 124, stone: 48, ore: 24 };"), "server owns the full 196-node world regardless of each client's visible subset");
     a.messages.length = 0; b.messages.length = 0;
     a.send(JSON.stringify({type:"economy-get"}));
     const initialEconomy = await waitMessage(a, m => m.type === "economy-state");
