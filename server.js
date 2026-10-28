@@ -122,9 +122,9 @@ function economySnapshot(p) {
   const e = p.economy || { items: {}, factories: [] };
   return { items: { ...(e.items || {}) }, factories: (e.factories || []).map(f => ({ id:f.id, type:f.type, name:FACTORY_TYPES[f.type]?.name || f.type, recipe:f.recipe, running:!!f.running, progress:Math.max(0,Math.min(1, f.duration ? (Date.now()-f.startedAt)/f.duration : 0)), remainingMs:f.running ? Math.max(0,f.startedAt+f.duration-Date.now()) : 0 })) };
 }
-function sendEconomy(p, message = "Склад обновлён.") {
+function sendEconomy(p, message = "Склад обновлён.", extra = {}) {
   if (p.economy) p.economy.lastUiUpdate = Date.now();
-  send(p.ws, { type:"economy-state", economy:economySnapshot(p), message });
+  send(p.ws, { type:"economy-state", economy:economySnapshot(p), message, ...extra });
 }
 function hasItems(items, cost) { return Object.entries(cost).every(([k,v]) => (items[k] || 0) >= v); }
 function takeItems(items, cost) { for (const [k,v] of Object.entries(cost)) items[k] -= v; }
@@ -173,15 +173,15 @@ wss.on("connection", (ws) => {
     }
     if (msg.type === "economy-get") { sendEconomy(p, ""); return; }
     if (msg.type === "economy-gather") {
-      const kind = String(msg.resource || "");
+      const kind = String(msg.resource || ""), requestId = String(msg.requestId || "").slice(0, 80);
       const yieldByKind = { wood: { yield:3, cooldown:3000 }, stone:{yield:2,cooldown:3500}, ore:{yield:2,cooldown:4500} };
       const def = yieldByKind[kind], now = Date.now();
-      if (!def || p.hp <= 0 || Math.abs(p.x) > WORLD_BOUND || Math.abs(p.z) > WORLD_BOUND) { sendEconomy(p, "Нельзя добыть этот ресурс."); return; }
+      if (!def || p.hp <= 0 || Math.abs(p.x) > WORLD_BOUND || Math.abs(p.z) > WORLD_BOUND) { sendEconomy(p, "Нельзя добыть этот ресурс.", {action:"gather",requestId,ok:false}); return; }
       const last = p.economy.lastGatherAt[kind] || 0;
-      if (now - last < def.cooldown - 250) { sendEconomy(p, "Слишком быстро — добыча ещё не завершена."); return; }
+      if (now - last < def.cooldown - 250) { sendEconomy(p, "Слишком быстро — добыча ещё не завершена.", {action:"gather",requestId,ok:false}); return; }
       p.economy.lastGatherAt[kind] = now;
       p.economy.items[kind] = (p.economy.items[kind] || 0) + def.yield;
-      sendEconomy(p, `+${def.yield} ${kind === "wood" ? "древесины" : kind === "stone" ? "камня" : "руды"}`);
+      sendEconomy(p, `+${def.yield} ${kind === "wood" ? "древесины" : kind === "stone" ? "камня" : "руды"}`, {action:"gather",requestId,ok:true,resource:kind});
       return;
     }
     if (msg.type === "economy-craft") {
