@@ -142,7 +142,9 @@ function spawnPosition(index) {
   const slot = index - 2;
   const angle = (slot % 8) * (Math.PI / 4);
   const radius = 4 + Math.floor(slot / 8) * 3;
-  return { x: Math.round(Math.cos(angle) * radius * 100) / 100, z: Math.round((7 + Math.sin(angle) * radius) * 100) / 100 };
+  const candidate = { x: Math.round(Math.cos(angle) * radius * 100) / 100, z: Math.round((7 + Math.sin(angle) * radius) * 100) / 100 };
+  // Higher player counts must not respawn on the river either.
+  return isRiverBlocked(candidate.x, candidate.z) ? safeLandPosition(0, 7, candidate.x, candidate.z) : candidate;
 }
 function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{const spawn=spawnPosition(target.spawnIndex);target.hp=PLAYER_MAX_HP;target.x=spawn.x;target.z=spawn.z;target.rotation=0;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.moveTarget=null;target.input={x:0,z:0,running:false};target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
 const RESOURCE_RESPAWN_MS = 30 * 60 * 1000;
