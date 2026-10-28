@@ -1543,6 +1543,17 @@ function localDummyWouldBeHit(abilityId, aim) {
   }
   return false;
 }
+function multiplayerAreaAbilityIds() {
+  const ids = new Set(['cleave','cyclone','splitting','parry','spinning','bloodthirsty','carvingDash','soulless','majestic','infinity']);
+  if (typeof ALBION_PACK !== 'undefined' && ALBION_PACK?.branches) {
+    for (const branch of Object.values(ALBION_PACK.branches)) {
+      for (const [id, spell] of Object.entries(branch.spells || {})) {
+        if (spell?.shape?.type && !['single','self'].includes(spell.shape.type)) ids.add(id);
+      }
+    }
+  }
+  return ids;
+}
 function trySpell(slot) {
   const sp = spellFor(slot);
   if (!sp || dash || lockT > 0) return;
@@ -1555,7 +1566,7 @@ function trySpell(slot) {
     const abilityId = slot === 'e' ? WEAPONS[loadout.weapon].e : loadout[slot];
     // Several abilities are marked "enemy" in their tooltip metadata but are
     // actually ground/area casts in PvP. Do not block them on target selection.
-    const groundAoE = new Set(['cleave','cyclone','splitting','parry','spinning','bloodthirsty','carvingDash','soulless','majestic','infinity']);
+    const groundAoE = multiplayerAreaAbilityIds();
     const needsTarget = sp.target === 'enemy' && !groundAoE.has(String(abilityId));
     const target = window.mpGetTarget && window.mpGetTarget();
     const localDummyTarget = needsTarget && (!window.mpTargetId || !target) ? pickTarget() : null;
@@ -1978,7 +1989,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   window.mpAbilityHit = (slot, weapon, requestedTargetId = mpTargetId, abilityId = (slot === 'e' ? WEAPONS[weapon]?.e : loadout[slot])) => {
     const targetId = String(requestedTargetId || '');
     const target = targetId ? remotes.get(targetId) : null;
-    const groundAoE = new Set(['cleave','cyclone','splitting','parry','spinning','bloodthirsty','carvingDash','soulless','majestic','infinity']);
+    const groundAoE = multiplayerAreaAbilityIds();
     const selfCast = new Set(['ironwill']);
     const needsTarget = !groundAoE.has(String(abilityId)) && !selfCast.has(String(abilityId));
     if (needsTarget && (!target || target.dead)) { toast('Сначала выбери живую цель'); return false; }
