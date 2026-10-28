@@ -715,7 +715,7 @@ function syncFactoryVisual(f) {
     const cloth = new THREE.Mesh(new THREE.BoxGeometry(1.05,.62,.08), new THREE.MeshStandardMaterial({color:teamColor,roughness:.7})); cloth.position.set(-2.75,3.05,2.2); group.add(cloth);
     group.position.set(Number(f.x),0,Number(f.z)); group.userData.factoryId=Number(f.id); scene.add(group);
     const collider=addCircle(Number(f.x),Number(f.z),4.7);
-    entry={group,collider,data:f,bodyMat}; factoryVisuals.set(Number(f.id),entry);
+    entry={group,collider,data:f,bodyMat,ownedMaterials:[bodyMat,roof.material,cloth.material]}; factoryVisuals.set(Number(f.id),entry);
   } else {
     entry.data={...entry.data,...f}; entry.group.position.set(Number(f.x),0,Number(f.z));
     entry.bodyMat.color.setHex(f.type==='smelter'?0x5a6268:f.type==='shipyard'?0x7a5a37:0x8b7654);
@@ -724,7 +724,7 @@ function syncFactoryVisual(f) {
   entry.group.traverse(o=>{o.userData.factoryId=Number(f.id);});
 }
 function syncFactoryWorld(list) { if(!Array.isArray(list))return; const ids=new Set(list.map(f=>Number(f.id))); for(const f of list)syncFactoryVisual(f); for(const id of [...factoryVisuals.keys()])if(!ids.has(id))removeFactoryVisual(id); }
-function removeFactoryVisual(id) { const entry=factoryVisuals.get(Number(id)); if(!entry)return; scene.remove(entry.group); const i=circles.indexOf(entry.collider); if(i>=0)circles.splice(i,1); entry.group.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material&&!Array.isArray(o.material))o.material.dispose();}); factoryVisuals.delete(Number(id)); }
+function removeFactoryVisual(id) { const entry=factoryVisuals.get(Number(id)); if(!entry)return; scene.remove(entry.group); const i=circles.indexOf(entry.collider); if(i>=0)circles.splice(i,1); entry.group.traverse(o=>{if(o.geometry)o.geometry.dispose();}); for(const material of entry.ownedMaterials||[])material.dispose(); factoryVisuals.delete(Number(id)); }
 function nearestFactory(range=7.5, ownOnly=false) { let best=null,dist=range; for(const [id,f] of factoryVisuals){const d=Math.hypot(pos.x-f.group.position.x,pos.z-f.group.position.z);if(d<=dist&&(!ownOnly||f.data.ownerId===window.mpId)){best=f;dist=d;}} return best; }
 function openFactoryMenu(entry) { if(!entry)return; if(entry.data.buildingUntil>Date.now()){if(window.mpToast)window.mpToast('Фабрика ещё строится');return;} econPanel.classList.add('open');setEconomyTab('factories');econSend({type:'economy-open-factory',factoryId:Number(entry.data.id)}); }
 window.mpOpenFactory = id => openFactoryMenu(factoryVisuals.get(Number(id)));
@@ -2000,7 +2000,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         mpId = msg.id;
         if (msg.player && Number.isFinite(Number(msg.player.x)) && Number.isFinite(Number(msg.player.z))) player.position.set(Number(msg.player.x), 0, Number(msg.player.z));
         window.mpId = msg.id; window.mpTeam = msg.team || msg.player?.team || null;
-        syncFactoryWorld(msg.factories || []);
+        if (Array.isArray(msg.factories)) syncFactoryWorld(msg.factories);
         if (window.mpTeam) mpStatus.textContent = 'Команда: ' + (window.mpTeam === 'blue' ? 'Синие' : 'Красные') + ' · ' + mpName;
         socket.send(JSON.stringify({type:'economy-get'}));
         syncResourceWorld(msg.resources);
