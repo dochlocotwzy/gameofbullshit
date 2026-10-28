@@ -874,13 +874,13 @@ function renderEconomyState(data) {
     {id:'charcoal',name:'Древесный уголь',icon:'⚫',inputs:'3 древесины',output:'2 угля',station:'Плавильня',stationId:'smelter'},
     {id:'iron_ingot',name:'Железный слиток',icon:'🔩',inputs:'2 руды + 1 древесина',output:'1 слиток',station:'Плавильня',stationId:'smelter'},
     {id:'steel_ingot',name:'Стальной слиток',icon:'⚙️',inputs:'2 железных слитка + 2 угля',output:'1 стальной слиток',station:'Плавильня',stationId:'smelter'},
-    {id:'ship',name:'Корабль',icon:'⛵',inputs:'20 досок + 4 железных + 2 стальных слитка',output:'1 корабль',station:'Верфь',stationId:'shipyard'}
+    {id:'ship',name:'Корабль',icon:'⛵',inputs:'20 досок + 4 железных слитка',output:'1 корабль',station:'Верфь',stationId:'shipyard'}
   ];
   $('#econ-recipes').innerHTML = recipes.map(r=>{const enabled=!!activeFactory&&activeFactory.type===r.stationId&&!activeFactory.running&&Number(activeFactory.buildingUntil||0)<=Date.now();return `<div class="econ-card"><b>${r.icon} ${r.name}</b><small>Расход: ${r.inputs}<br>Выход: ${r.output}<br>Станция: ${r.station}</small><button data-econ="craft" data-id="${r.id}" ${enabled?'':'disabled'}>Запустить производство</button></div>`;}).join('');
   const buildings = [
     {id:'sawmill',name:'Лесопилка',cost:'8 древесины + 4 камня',recipe:'Производит доски'},
     {id:'smelter',name:'Плавильня',cost:'6 древесины + 8 камня',recipe:'Производит железные слитки'},
-    {id:'shipyard',name:'Верфь',cost:'20 древесины + 12 камня + 8 досок + 4 стальных слитка',recipe:'Строит корабли'}
+    {id:'shipyard',name:'Верфь',cost:'20 древесины + 12 камня + 8 досок',recipe:'Строит корабли'}
   ];
   $('#econ-buildings').innerHTML = buildings.map(b=>`<div class="econ-card"><b>🏭 ${b.name}</b><small>${b.recipe}<br>Строительство: ${b.cost}</small><button data-econ="build" data-id="${b.id}">Построить</button></div>`).join('');
   const traderItems = Object.entries({wood:2,stone:3,ore:5,plank:5,charcoal:4,stone_block:7,iron_ingot:12,steel_ingot:28,tool_kit:18,ship:120});
