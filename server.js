@@ -390,13 +390,17 @@ function broadcastResource(node) {
 const ECONOMY_ITEMS = new Set(Object.keys(ITEM_DEFINITIONS).filter(itemId => itemId !== "sword"));
 const ECONOMY_RECIPES = {
   plank: { name: "Доски", inputs: { wood: 2 }, output: { plank: 1 }, seconds: 3, station: "sawmill" },
+  charcoal: { name: "Древесный уголь", inputs: { wood: 3 }, output: { charcoal: 2 }, seconds: 4, station: "smelter" },
+  stone_block: { name: "Каменный блок", inputs: { stone: 3 }, output: { stone_block: 1 }, seconds: 4, station: "sawmill" },
   iron_ingot: { name: "Железный слиток", inputs: { ore: 2, wood: 1 }, output: { iron_ingot: 1 }, seconds: 5, station: "smelter" },
-  ship: { name: "Корабль", inputs: { plank: 20, iron_ingot: 4 }, output: { ship: 1 }, seconds: 45, station: "shipyard" }
+  steel_ingot: { name: "Стальной слиток", inputs: { iron_ingot: 2, charcoal: 2 }, output: { steel_ingot: 1 }, seconds: 8, station: "smelter" },
+  tool_kit: { name: "Набор инструментов", inputs: { plank: 2, iron_ingot: 1 }, output: { tool_kit: 1 }, seconds: 6, station: "sawmill" },
+  ship: { name: "Корабль", inputs: { plank: 20, iron_ingot: 4, steel_ingot: 2 }, output: { ship: 1 }, seconds: 45, station: "shipyard" }
 };
 const FACTORY_TYPES = {
   sawmill: { name: "Лесопилка", cost: { wood: 8, stone: 4 }, recipe: "plank" },
   smelter: { name: "Плавильня", cost: { wood: 6, stone: 8 }, recipe: "iron_ingot" },
-  shipyard: { name: "Верфь", cost: { wood: 20, stone: 12, plank: 8 }, recipe: "ship" }
+  shipyard: { name: "Верфь", cost: { wood: 20, stone: 12, plank: 8, steel_ingot: 4 }, recipe: "ship" }
 };
 function publicFactory(f) { return { id:f.id, type:f.type, name:FACTORY_TYPES[f.type]?.name || f.type, recipe:f.recipe, x:f.x, z:f.z, ownerId:f.ownerId, ownerName:f.ownerName, team:f.team, hp:f.hp, buildingUntil:f.buildingUntil || 0, buildingDuration:f.buildingDuration || 5000, running:!!f.running }; }
 function factoryWorldSnapshot(viewer) { return worldFactories.filter(f => !viewer || isInVision(viewer,f.x,f.z)).map(publicFactory); }
@@ -448,7 +452,7 @@ wss.on("connection", (ws) => {
   let spawnIndex = 0;
   while (occupiedSpawnIndices.has(spawnIndex)) spawnIndex++;
   const spawn = spawnPosition(spawnIndex);
-  const p = { id, ws, spawnIndex, team, economy: { items: Object.fromEntries([...ECONOMY_ITEMS].map(itemId => [itemId, 0])), factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, lastVisionSyncAt:0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
+  const p = { id, ws, spawnIndex, team, economy: { items: Object.fromEntries([...ECONOMY_ITEMS].map(itemId => [itemId, itemId === "gold" ? 100 : 0])), factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, lastVisionSyncAt:0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
   players.set(id, p);
   send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(p), resources: resourceWorldSnapshot(p), factories:factoryWorldSnapshot(p) });
   broadcast({ type: "joined", player: publicPlayer(p) }, id);
@@ -486,6 +490,22 @@ wss.on("connection", (ws) => {
       p.economy.items[kind] = (p.economy.items[kind] || 0) + RESOURCE_YIELDS[kind];
       broadcastResource(node);
       sendEconomy(p, `+${RESOURCE_YIELDS[kind]} ${kind === "wood" ? "древесины" : kind === "stone" ? "камня" : "руды"}`, {action:"gather",requestId,ok:true,resource:kind,nodeId,respawnAt:node.respawnAt});
+      return;
+    }
+    if (msg.type === "economy-trade") {
+      const item = String(msg.item || ""), side = String(msg.side || ""), amount = Math.floor(Number(msg.amount) || 0);
+      const prices = { wood:2, stone:3, ore:5, plank:5, charcoal:4, stone_block:7, iron_ingot:12, steel_ingot:28, tool_kit:18, ship:120 };
+      if (!ECONOMY_ITEMS.has(item) || item === "gold" || !Number.isFinite(amount) || amount < 1 || amount > 99 || !prices[item] || !["buy","sell"].includes(side)) { sendEconomy(p,"Эта сделка недоступна."); return; }
+      const items=p.economy.items, unitPrice=prices[item], total=unitPrice*amount;
+      if (side === "buy") {
+        if ((items.gold||0) < total) { sendEconomy(p, "Не хватает золота для покупки."); return; }
+        items.gold-=total; items[item]=(items[item]||0)+amount;
+        sendEconomy(p, `Торговец продал: ${amount} × ${ITEM_DEFINITIONS[item]?.name || item} за ${total} золота.`, {trade:{side,item,amount,total}});
+      } else {
+        if ((items[item]||0) < amount) { sendEconomy(p, "На складе недостаточно товара для продажи."); return; }
+        items[item]-=amount; items.gold=(items.gold||0)+Math.floor(total*0.7);
+        sendEconomy(p, `Продано торговцу: ${amount} × ${ITEM_DEFINITIONS[item]?.name || item}.`, {trade:{side,item,amount,total:Math.floor(total*0.7)}});
+      }
       return;
     }
     if (msg.type === "economy-craft") {
