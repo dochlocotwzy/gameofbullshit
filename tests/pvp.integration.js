@@ -317,6 +317,14 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     const splittingFx = await waitMessage(b, m => m.type === "combat-effect" && m.abilityId === "splitting", 2000);
     assert.ok(Math.abs(splittingFx.aimZ - 14) < .1, "Splitting Slash visual line extends to its full 14m range");
     await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && !m.statuses?.root, 3000);
+    // Restore the target to a known full-HP state before the next independent combat scenario.
+    b.send(JSON.stringify({ type: "state", x: 0, z: 3, rotation: Math.PI }));
+    await waitMessage(a, m => m.type === "player" && m.player?.id === bId && m.player?.z === 3);
+    for (let i = 0; i < 3; i++) {
+      a.send(JSON.stringify({ type: "ability-hit", targetId: bId, slot: "q", abilityId: "strike", aimX: 0, aimZ: 3 }));
+      await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "strike", 2000);
+    }
+    await waitMessage(b, m => m.type === "respawn" && m.player?.id === bId, 7000);
 
     a.messages.length = 0; b.messages.length = 0;
     a.send(JSON.stringify({ type: "test-mode", enabled: true }));
