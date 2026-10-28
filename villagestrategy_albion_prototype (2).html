@@ -364,6 +364,23 @@ function buildGroundTexture() {
   const g = c.getContext('2d'), X = x => (x + CFG.HALF) * S, Z = z => (z + CFG.HALF) * S;
   g.fillStyle = '#5f8f3d'; g.fillRect(0, 0, N, N);
   noiseDots(g, N, 1100, ['#4f8034', '#699a43', '#74a64a', '#477734', '#5f9140', '#7aa84d'], 12, 60, .22);
+  // Medieval landscape detailing: irregular meadow clearings, worn earth, damp lowlands,
+  // and scattered limestone/gravel patches. Keep the detail subtle so gameplay remains legible.
+  for (let i = 0; i < 420; i++) {
+    const x = rr(5, N - 5), y = rr(5, N - 5), rx = rr(5, 24) * S, ry = rr(4, 16) * S;
+    g.save(); g.translate(x, y); g.rotate(rand() * Math.PI);
+    g.globalAlpha = rr(.035, .12);
+    g.fillStyle = pick(['#2f542b', '#8ca65a', '#b1a06d', '#6b7750', '#9b8b68']);
+    g.beginPath(); g.ellipse(0, 0, Math.max(2, rx), Math.max(2, ry), 0, 0, Math.PI * 2); g.fill(); g.restore();
+  }
+  // Fine stone flecks and moss create a hand-worked, natural terrain rather than a flat green plane.
+  for (let i = 0; i < 12500; i++) {
+    const x = rand() * N, y = rand() * N;
+    g.globalAlpha = rr(.06, .19);
+    g.fillStyle = pick(['#c0b18b', '#d1c49b', '#314f2b', '#7f9d4e', '#6b6347']);
+    const w = rr(.7, 2.6); g.fillRect(x, y, w, w * rr(.5, 1.5));
+  }
+  g.globalAlpha = 1;
   g.lineWidth = 1.4;
   for (let i = 0; i < 26000; i++) { const x = rand() * N, y = rand() * N; g.globalAlpha = .25 + rand() * .2; g.strokeStyle = pick(['#86b857', '#3f6f2c', '#9bc566', '#4a7d33']); g.beginPath(); g.moveTo(x, y); g.lineTo(x + rr(-3, 3), y - rr(4, 10)); g.stroke(); }
   g.globalAlpha = 1;
@@ -732,9 +749,24 @@ window.mpDamageFactory = id => { if(window.mpEconomySend)window.mpEconomySend({t
 function updateFactoryAnimations() { const now=Date.now(); for(const entry of factoryVisuals.values()){const duration=Math.max(1,Number(entry.data.buildingDuration)||5000),until=Number(entry.data.buildingUntil)||0;const progress=until>now?1-Math.max(0,until-now)/duration:1;entry.group.scale.y=.12+.88*Math.max(0,Math.min(1,progress));} requestAnimationFrame(updateFactoryAnimations); }
 requestAnimationFrame(updateFactoryAnimations);
 function setResourceVisual(r, depleted) {
+  const wasDepleted = !!r.depleted;
   r.depleted = !!depleted;
-  if (r.depleted) { if (r.type === 'tree') { r.mesh.geometry = stumpGeo; r.collider.r = .35 * r.s; } else { r.mesh.visible = false; r.collider.r = 0; } }
-  else { r.mesh.geometry = r.geo; r.mesh.visible = true; r.collider.r = r.cr; r.pop = 0; }
+  if (r.depleted) {
+    if (r.type === 'tree') { r.mesh.geometry = stumpGeo; r.collider.r = .35 * r.s; }
+    else { r.mesh.visible = false; r.collider.r = 0; }
+  } else {
+    r.mesh.geometry = r.geo;
+    r.mesh.visible = true;
+    r.collider.r = r.cr;
+    // Snapshots arrive several times per second. Only animate a real respawn,
+    // never restart the grow animation for an unchanged living node.
+    if (wasDepleted) {
+      r.pop = 0;
+      r.mesh.scale.setScalar(r.s * .2);
+    } else if (!(r.pop < 1)) {
+      r.mesh.scale.setScalar(r.s);
+    }
+  }
 }
 function syncResourceWorld(nodes) {
   if (!Array.isArray(nodes)) return;
@@ -770,31 +802,8 @@ function applyResourceNode(node) {
   r.respawnAt = node.respawnAt ? gameT + Math.max(0, (Number(node.respawnAt) - Date.now()) / 1000) : 0;
   setResourceVisual(r, node.depleted);
 }
-// фоновый лес по краю: лёгкие модели, разбиты на секторы (невидимые сектора не рисуются), без теней
-{
-  const buildPineLow = () => {
-    const t = new THREE.CylinderGeometry(.25, .32, 1.6, 5); t.translate(0, .8, 0);
-    const c1 = new THREE.ConeGeometry(1.7, 3.0, 6); c1.translate(0, 2.9, 0);
-    const c2 = new THREE.ConeGeometry(1.1, 2.6, 6); c2.translate(0, 4.9, 0);
-    return mergeGeometries([colorize(t, 0x5a3c25, .05), colorize(c1, 0x2d6a3c, .1), colorize(c2, 0x33723f, .1)]);
-  };
-  const buildOakLow = (k1, k2) => {
-    const t = new THREE.CylinderGeometry(.3, .4, 2.2, 5); t.translate(0, 1.1, 0);
-    const c1 = new THREE.IcosahedronGeometry(1.8, 0); c1.scale(1, .85, 1); c1.translate(0, 3.6, 0);
-    const c2 = new THREE.IcosahedronGeometry(1.2, 0); c2.translate(.9, 3.0, .4);
-    return mergeGeometries([colorize(t, 0x5d3f27, .05), colorize(c1, k1, .1), colorize(c2, k2, .1)]);
-  };
-  const lowGeos = [buildPineLow(), buildPineLow(), buildOakLow(0x4f8f3c, 0x5b9c42), buildOakLow(0x7a9a38, 0x8aab3f)];
-  const SECT = 8, per = Array.from({ length: SECT }, () => lowGeos.map(() => []));
-  for (let i = 0; i < 130; i++) { const a = rand() * 6.283, d = rr(40, 120), sct = Math.min(SECT - 1, Math.floor(a / 6.283 * SECT)); per[sct][(rand() * lowGeos.length) | 0].push([Math.cos(a) * d, Math.sin(a) * d]); }
-  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), ps = new THREE.Vector3();
-  for (const sector of per) sector.forEach((list, gi) => {
-    if (!list.length) return;
-    const im = new THREE.InstancedMesh(lowGeos[gi], M.prop, list.length);
-    list.forEach((p, i) => { e.set(0, rand() * 6.28, 0); q.setFromEuler(e); const s = rr(1.0, 1.7); sc.set(s, s * rr(.9, 1.2), s); ps.set(p[0], 0, p[1]); m4.compose(ps, q, sc); im.setMatrixAt(i, m4); });
-    scene.add(im);
-  });
-}
+// Убраны декоративные деревья без ресурсных ID и коллизий: вся древесина мира теперь представлена
+// добываемыми серверными узлами. Фоновая растительность остаётся только низкой травой.
 // трава
 {
   const pos = [], col = [], base = new THREE.Color(0x3f6e2a), tip = new THREE.Color(0xa6d45c);
