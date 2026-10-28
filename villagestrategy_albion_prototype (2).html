@@ -360,12 +360,53 @@ function buildGroundTexture() {
     sh.uniforms.detailMap = { value: detailTex };
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform sampler2D detailMap;')
-      .replace('#include <map_fragment>', '#include <map_fragment>\n diffuseColor.rgb *= (0.3 + texture2D(detailMap, vMapUv * 60.0).rgb * 1.4);');
+      .replace('#include <map_fragment>', '#include <map_fragment>\n float islandAngle = atan(vMapUv.y - 0.5, vMapUv.x - 0.5);\n float islandRadius = length((vMapUv - vec2(0.5)) * 2.0);\n float coastLimit = 0.90 + 0.014 * sin(islandAngle * 3.0 + 0.4) + 0.009 * sin(islandAngle * 7.0);\n if (islandRadius > coastLimit) discard;\n float beach = smoothstep(coastLimit - 0.07, coastLimit - 0.012, islandRadius);\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.48, 0.39, 0.25), beach * 0.85);\n diffuseColor.rgb *= (0.3 + texture2D(detailMap, vMapUv * 60.0).rgb * 1.4);');
   };
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(CFG.WORLD, CFG.WORLD), gm);
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
-  const outer = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), new THREE.MeshStandardMaterial({ color: 0x3f6a2e, roughness: 1 }));
+  // Water surrounds the irregular island silhouette; the ground shader cuts away the square corners.
+  const outer = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), new THREE.MeshStandardMaterial({ color: 0x1b5977, roughness: .28, metalness: .05 }));
   outer.rotation.x = -Math.PI / 2; outer.position.y = -0.06; scene.add(outer);
+
+  // First-pass central river with sandy banks and two visible crossings.
+  const riverCenter = [[0,-55],[2,-42],[4,-28],[2,-17],[-3,-7],[-7,0],[-4,10],[0,20],[4,33],[3,45],[0,55]];
+  function addRiverRibbon(halfWidth, material, y) {
+    const left = [], right = [];
+    for (let i = 0; i < riverCenter.length; i++) {
+      const prev = riverCenter[Math.max(0, i - 1)], next = riverCenter[Math.min(riverCenter.length - 1, i + 1)];
+      const tx = next[0] - prev[0], tz = next[1] - prev[1], len = Math.hypot(tx, tz) || 1;
+      const nx = -tz / len, nz = tx / len, p = riverCenter[i];
+      left.push([p[0] + nx * halfWidth, p[1] + nz * halfWidth]);
+      right.push([p[0] - nx * halfWidth, p[1] - nz * halfWidth]);
+    }
+    const shape = new THREE.Shape();
+    shape.moveTo(left[0][0], -left[0][1]);
+    for (let i = 1; i < left.length; i++) shape.lineTo(left[i][0], -left[i][1]);
+    for (let i = right.length - 1; i >= 0; i--) shape.lineTo(right[i][0], -right[i][1]);
+    shape.closePath();
+    const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape, 24), material);
+    mesh.rotation.x = -Math.PI / 2; mesh.position.y = y; mesh.receiveShadow = true; scene.add(mesh);
+  }
+  addRiverRibbon(4.9, new THREE.MeshStandardMaterial({ color: 0xb7a071, roughness: 1 }), 0.018);
+  addRiverRibbon(3.0, new THREE.MeshStandardMaterial({ color: 0x2e789a, roughness: .22, metalness: .05, transparent: true, opacity: .96, side: THREE.DoubleSide }), 0.035);
+  function addRiverBridge(x, z) {
+    const group = new THREE.Group();
+    const deckMat = new THREE.MeshStandardMaterial({ color: 0x80603c, roughness: .9 });
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x4d3927, roughness: 1 });
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(8.2, .28, 3.8), deckMat); deck.position.y = .22; deck.castShadow = deck.receiveShadow = true; group.add(deck);
+    for (let n = 0; n < 9; n++) {
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(.78, .035, 3.65), new THREE.MeshStandardMaterial({ color: n % 2 ? 0x987348 : 0x8b6842, roughness: 1 }));
+      plank.position.set(-3.7 + n * .92, .38, 0); group.add(plank);
+    }
+    for (const side of [-1, 1]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(8.2, .22, .14), railMat); rail.position.set(0, .58, side * 1.72); group.add(rail);
+      for (let n = 0; n < 5; n++) { const post = new THREE.Mesh(new THREE.BoxGeometry(.14, .52, .14), railMat); post.position.set(-3.8 + n * 1.9, .48, side * 1.72); group.add(post); }
+    }
+    group.position.set(x, 0, z); scene.add(group);
+  }
+  addRiverBridge(2.6, -30);
+  addRiverBridge(3.5, 36);
+
   // пруд
   const water = new THREE.Mesh(new THREE.CircleGeometry(6.4, 48), new THREE.MeshStandardMaterial({ color: 0x3b87a8, roughness: .2, transparent: true, opacity: .88 }));
   water.rotation.x = -Math.PI / 2; water.position.set(PX, .04, PZ); scene.add(water);
