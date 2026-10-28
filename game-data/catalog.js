@@ -20,7 +20,8 @@ const ITEM_DEFINITIONS = Object.freeze({
   ore: { id: "ore", name: "Руда", category: "resource", tier: "T1", stackable: true, maxStack: 999, weight: 0.3, tradable: true },
   plank: { id: "plank", name: "Доски", category: "refined_resource", tier: "T1", stackable: true, maxStack: 999, weight: 0.25, tradable: true },
   iron_ingot: { id: "iron_ingot", name: "Железный слиток", category: "refined_resource", tier: "T1", stackable: true, maxStack: 999, weight: 0.3, tradable: true },
-  sword: { id: "sword", name: "Меч", category: "weapon", tier: "T1", stackable: false, maxStack: 1, weight: 2.5, equipmentSlot: "main_hand", weaponFamily: "sword", tradable: true, statModifiers: { damageMultiplier: 1 } }
+  sword: { id: "sword", name: "Меч", category: "weapon", tier: "T1", stackable: false, maxStack: 1, weight: 2.5, equipmentSlot: "main_hand", weaponFamily: "sword", tradable: true, statModifiers: { damageMultiplier: 1 } },
+  ship: { id: "ship", name: "Корабль", category: "vehicle", tier: "T1", stackable: false, maxStack: 1, weight: 100, tradable: true }
 });
 
 // Weapon families are identifiers, not balance implementations. Each can later
