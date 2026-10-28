@@ -146,6 +146,9 @@ function chooseTeam() { let blue=0,red=0; for(const player of players.values()){
 function isParryInvulnerable(target, now = Date.now()) {
   return !!(target?.statuses?.parryLock && target.statuses.parryLock.until > now);
 }
+function isCombatInvulnerable(target, now = Date.now(), spell = false) {
+  return isParryInvulnerable(target,now) || !!(target?.statuses?.invuln && target.statuses.invuln.until>now) || (spell && !!(target?.statuses?.spellImmune && target.statuses.spellImmune.until>now));
+}
 function absorbShield(target, amount) {
   const now=Date.now(), shield=target?.statuses?.shield;
   if(!shield||shield.until<=now||Number(shield.value)<=0)return Math.max(0,amount);
@@ -263,7 +266,7 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
       const hitVictims=hit.shape?resolve(hit.shape,target):victims.filter(v=>v.hp>0);
       const bonus=1+Math.max(0,hitVictims.length-1)*(Number(ability.multiTargetBonus)||0);
       for(const victim of hitVictims){
-        if(victim.hp<=0||isParryInvulnerable(victim))continue;
+        if(victim.hp<=0||isCombatInvulnerable(victim,Date.now(),true))continue;
         const reduction=victim.statuses?.resist&&victim.statuses.resist.until>Date.now()?Math.max(0,Math.min(.9,Number(victim.statuses.resist.value)||0)):0;
         const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
         const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;
@@ -607,7 +610,7 @@ wss.on("connection", (ws) => {
         send(ws, { type: "combat", result: "out-of-range", targetId: target.id });
         return;
       }
-      if (isParryInvulnerable(target, now)) return;
+      if (isCombatInvulnerable(target, now, false)) return;
       const attackId = crypto.randomUUID(), startX = p.x, startZ = p.z;
       p.pendingAttack = { id: attackId, targetId: target.id, startX, startZ, timer: null };
       broadcast({ type: "combat-windup", attackerId: p.id, targetId: target.id, attackId, weapon: p.weapon || "broadsword", duration: 320 });
@@ -777,7 +780,7 @@ wss.on("connection", (ws) => {
           if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
           else setTimeout(()=>{
             // The second swing is a separate impact: only hit targets still inside the original cast circle.
-            if(victim.hp<=0 || isParryInvulnerable(victim) || Math.hypot(victim.x-castOriginX,victim.z-castOriginZ)>(ability.radius||0))return;
+            if(victim.hp<=0 || isCombatInvulnerable(victim,Date.now(),true) || Math.hypot(victim.x-castOriginX,victim.z-castOriginZ)>(ability.radius||0))return;
             const reduction2=victim.statuses?.resist?.value||0;
             const defense2=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
             const defenseReduction2=defense2>0?Math.min(.5,defense2/(defense2+200)):0;
