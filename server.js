@@ -769,10 +769,10 @@ wss.on("connection", (ws) => {
           const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
           const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;
           const outgoingWeak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;
-          const vulnerability=victim.statuses?.armorBreak?1.25:1;
+          const vulnerability=victim.statuses?.armorBreak&&victim.statuses.armorBreak.until>Date.now()?(1+Math.max(0,Number(victim.statuses.armorBreak.value)||0)):1;
           const firstDamage=Math.max(0,Math.round(castDamage*(1-reduction)*(1-defenseReduction)*(1-outgoingWeak)*vulnerability));
-          victim.hp=Math.max(0,victim.hp-firstDamage);
-          broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:firstDamage,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:0});
+          const firstActual=absorbShield(victim,firstDamage);victim.hp=Math.max(0,victim.hp-firstActual);
+          broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:firstActual,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:0});
           if(victim.hp>0)applyEffects(victim,ability.effects||[],p.id);
           if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
           else setTimeout(()=>{
@@ -782,10 +782,10 @@ wss.on("connection", (ws) => {
             const defense2=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
             const defenseReduction2=defense2>0?Math.min(.5,defense2/(defense2+200)):0;
             const outgoingWeak2=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;
-            const vulnerability2=victim.statuses?.armorBreak?1.25:1;
+            const vulnerability2=victim.statuses?.armorBreak&&victim.statuses.armorBreak.until>Date.now()?(1+Math.max(0,Number(victim.statuses.armorBreak.value)||0)):1;
             const secondDamage=Math.max(0,Math.round((ability.secondDamage||480)*(1-reduction2)*(1-defenseReduction2)*(1-outgoingWeak2)*vulnerability2));
-            victim.hp=Math.max(0,victim.hp-secondDamage);
-            broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:secondDamage,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:1});
+            const secondActual=absorbShield(victim,secondDamage);victim.hp=Math.max(0,victim.hp-secondActual);
+            broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:secondActual,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:1});
             if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
             broadcast({type:"combat-effect",phase:"impact",attackerId:p.id,abilityId,targetIds:[victim.id],x:castOriginX,z:castOriginZ,originX:castOriginX,originZ:castOriginZ,aimX:castOriginX,aimZ:castOriginZ,rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||"kingmaker",hitIndex:1});
             broadcast({type:"player",player:publicPlayer(victim)});
