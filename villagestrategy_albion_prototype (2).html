@@ -1970,6 +1970,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   const remoteMeshes = new Map();
   const MP_ATTACK_RANGE = 3.8;
   const MP_ATTACK_INTERVAL = 850;
+  let wasInAttackRange = false;
   window.mpTargetRing = { active:false, x:0, z:0 };
   window.mpTargetId = null;
   window.mpGetTarget = () => { const t = remotes.get(mpTargetId); return t && !t.dead ? {x:t.group.position.x,z:t.group.position.z,name:t.name} : null; };
@@ -2255,6 +2256,8 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         else if (msg.result === 'cooldown') toast('Способность на перезарядке');
         else if (msg.result === 'energy') toast('Не хватает энергии');
         else if (msg.result === 'no-target') toast('Нет цели в области действия');
+        else if (msg.result === 'invalid-aim') toast('Не удалось определить область применения');
+        else if (msg.result === 'invalid-ability') toast('Способность не соответствует выбранному оружию');
         else if (msg.result === 'disabled') toast('Нельзя использовать способности под контролем');
       } else if (msg.type === 'ping') mpStatus.textContent = 'Мультиплеер: онлайн · ' + msg.online + ' игрок(ов)' + (pingMs !== null ? ' · пинг ' + pingMs + ' мс' : ' · пинг…');
       else if (msg.type === 'error') mpStatus.textContent = 'Мультиплеер: ' + msg.message;
@@ -2368,13 +2371,19 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       window.mpTargetRing.x = selectedTarget.group.position.x;
       window.mpTargetRing.z = selectedTarget.group.position.z;
     } else window.mpTargetRing.active = false;
-    if (socket && socket.readyState === WebSocket.OPEN && player && mpTargetId && now - lastAttack > MP_ATTACK_INTERVAL) {
+    if (socket && socket.readyState === WebSocket.OPEN && player && mpTargetId) {
       const target = remotes.get(mpTargetId);
-      if (!target) { mpTargetId = null; window.mpTargetId = null; }
-      else if (playerVitals.hp > 0 && !target.dead && Math.hypot(player.position.x - target.group.position.x, player.position.z - target.group.position.z) <= MP_ATTACK_RANGE) {
-        faceXZ(target.group.position.x, target.group.position.z);
-        socket.send(JSON.stringify({type:'attack', targetId:mpTargetId, weapon:loadout.weapon}));
-        lastAttack = now;
+      if (!target || target.dead) { mpTargetId = null; window.mpTargetId = null; wasInAttackRange = false; }
+      else {
+        const inAttackRange = playerVitals.hp > 0 && Math.hypot(player.position.x - target.group.position.x, player.position.z - target.group.position.z) <= MP_ATTACK_RANGE;
+        // Fire as soon as the player enters melee range; don't carry a stale interval from a previous target/range state.
+        if (inAttackRange && !wasInAttackRange) lastAttack = 0;
+        wasInAttackRange = inAttackRange;
+        if (inAttackRange && now - lastAttack > MP_ATTACK_INTERVAL) {
+          faceXZ(target.group.position.x, target.group.position.z);
+          socket.send(JSON.stringify({type:'attack', targetId:mpTargetId, weapon:loadout.weapon}));
+          lastAttack = now;
+        }
       }
     }
     if (socket && socket.readyState === WebSocket.OPEN && now - lastPingSend > 2000) {
