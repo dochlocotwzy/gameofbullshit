@@ -42,6 +42,9 @@ assert.ok(serverSource.includes("startFactoryJob(p, activeFactory)") && !serverS
 assert.ok(serverSource.includes("worldResources.some(node => !node.depleted") && serverSource.includes("factory-damage"), "factory placement avoids live resource nodes and enemy factories can be damaged");
 assert.ok(!serverSource.includes('sword: { name: "Меч", inputs:') && !clientHtml.includes('sword:["⚔️","Мечи"]'), "sword crafting and sword inventory display are disabled in the economy prototype");
 assert.ok(serverSource.includes('type: "resource-node"'), "resource depletion and respawn are broadcast");
+assert.ok(serverSource.includes("for (const viewer of players.values()) if (isInVision(viewer, node.x, node.z)) send(viewer.ws, payload);"), "resource state updates are server-authoritative without revealing hidden node coordinates");
+assert.ok(clientHtml.includes("msg.type === 'world-vision'") && clientHtml.includes("syncResourceWorld(Array.isArray(msg.resources) ? msg.resources : [])"), "client refreshes resource nodes when server vision changes, including empty snapshots");
+assert.ok(clientHtml.includes("if (!r.serverManaged) { if (window.mpToast) window.mpToast('Жду синхронизации ресурсов с сервером.'); return; }"), "client cannot gather locally generated fallback resources while online");
 assert.ok(clientHtml.includes("nodeId:r.id"), "client sends the selected resource node ID");
 assert.ok(clientHtml.includes("syncResourceWorld(msg.resources)"), "client renders the shared resource layout");
 assert.ok(clientHtml.includes("if (!window.mpTargetId && window.mpSelectNearestTarget) window.mpSelectNearestTarget(); if (window.mpTargetId) window.mpStartChase();"), "Space selects a nearby opponent before starting chase");
