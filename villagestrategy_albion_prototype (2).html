@@ -806,9 +806,13 @@ addEventListener('keydown', e => {
   const tag=e.target?.tagName?.toLowerCase();
   if(tag==='input'||tag==='textarea'||tag==='select'||e.target?.isContentEditable) return;
   if(e.code==='KeyF') {
-    const nearby=resources.filter(r=>!r.depleted&&!r.pendingHarvest).map(r=>({r,d:Math.hypot(pos.x-r.x,pos.z-r.z)})).filter(v=>v.d<=2.25).sort((a,b)=>a.d-b.d)[0];
-    if(nearby){e.preventDefault();orderGather(nearby.r);if(window.mpToast)window.mpToast('Начинаем сбор ресурса');}
-    else if(window.mpToast)window.mpToast('Подойдите ближе к ресурсу или объекту для взаимодействия.');
+    // F only activates a valid resource within close interaction range; nearest wins deterministically.
+    const nearby=resources.filter(r=>!r.depleted&&!r.pendingHarvest)
+      .map((r,index)=>({r,index,d:Math.hypot(pos.x-r.x,pos.z-r.z)}))
+      .filter(v=>v.d<=1.6)
+      .sort((a,b)=>a.d-b.d||a.index-b.index)[0];
+    if(nearby){e.preventDefault();orderGather(nearby.r);if(window.mpToast)window.mpToast('Начинаем сбор ближайшего ресурса');}
+    else if(window.mpToast)window.mpToast('Подойдите вплотную к ресурсу или объекту для взаимодействия.');
   }
 });
 addEventListener('keyup', e => keys[e.code] = false);
@@ -1945,11 +1949,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   addEventListener('keydown', ev => {
     const el = ev.target, typing = el?.tagName === 'TEXTAREA' || el?.isContentEditable || (el?.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'range'].includes(el.type));
     if (typing || el?.tagName === 'SELECT') return;
-    if (ev.code === 'Escape' && !ev.repeat && window.mpTargetId) {
-      ev.preventDefault();
-      window.mpClearTarget(true);
-      return;
-    }
+    // Escape is reserved for closing open UI; it must not clear the PvP target.
   }, true);
 
   // Clicking a player selects/changes the PvP target; clicking the ground keeps the current target.
