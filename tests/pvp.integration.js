@@ -32,6 +32,8 @@ assert.ok(clientHtml.includes("ev.code==='KeyI'"), "inventory can be toggled wit
 assert.ok(clientHtml.includes("e.code==='KeyF'"), "F invokes contextual resource interaction");
 assert.ok(clientHtml.includes(".filter(v=>v.d<=1.6)"), "F requires close interaction range");
 assert.ok(clientHtml.includes(".sort((a,b)=>a.d-b.d||a.index-b.index)[0]"), "F chooses the nearest eligible resource deterministically");
+assert.ok(clientHtml.includes("sp.target === 'enemy' && !groundAoE.has(String(abilityId))"), "multiplayer AoE abilities do not require a selected enemy target");
+assert.ok(clientHtml.includes("sp.target === 'ground' || groundAoE.has(String(abilityId))"), "multiplayer AoE casts face their ground aim point");
 assert.ok(!clientHtml.includes("window.mpClearTarget(true);"), "Escape never clears the selected PvP target");
 assert.ok(clientHtml.includes("ev.code==='Escape'"), "Escape closes the inventory panel");
 assert.ok(clientHtml.includes("data-econ=\"build\""), "client can request factory construction");
