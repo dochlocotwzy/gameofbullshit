@@ -696,6 +696,41 @@ function createLocalResourceFallback() {
   while (n < 12 && tries++ < 3000) { const a = rand() * 6.283, d = rr(30, 50), x = Math.cos(a) * d, z = Math.sin(a) * d; if (!freeSpot(x, z, 1)) continue; const scale = rr(.9, 1.3); spawnRes('ore', pick(oreGeos), x, z, scale, .85 * scale, 1.1 * scale); n++; }
 }
 createLocalResourceFallback();
+
+// Shared world factories: server owns placement, team, health and construction progress.
+const factoryVisuals = new Map();
+let pendingFactoryType = null;
+function syncFactoryVisual(f) {
+  if (!f || !Number.isFinite(Number(f.id))) return;
+  let entry = factoryVisuals.get(Number(f.id));
+  if (!entry) {
+    const group = new THREE.Group();
+    const teamColor = f.team === 'blue' ? 0x3f91dc : 0xc94d42;
+    const base = new THREE.Mesh(new THREE.BoxGeometry(8.6,.55,6.8), M.stone); base.position.y=.28; base.castShadow=base.receiveShadow=true; group.add(base);
+    const bodyMat = new THREE.MeshStandardMaterial({color:f.type==='smelter'?0x5a6268:f.type==='shipyard'?0x7a5a37:0x8b7654,roughness:.92});
+    const body = new THREE.Mesh(new THREE.BoxGeometry(6.8,3.2,5.1), bodyMat); body.position.y=2.1; body.castShadow=body.receiveShadow=true; group.add(body);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(7.4,.55,5.7), new THREE.MeshStandardMaterial({color:teamColor,roughness:.85})); roof.position.y=3.95; roof.castShadow=true; group.add(roof);
+    const chimney = new THREE.Mesh(new THREE.BoxGeometry(.85,2.2,.85), M.stone); chimney.position.set(2.1,4.7,-1.3); chimney.castShadow=true; group.add(chimney);
+    const flag = new THREE.Mesh(new THREE.BoxGeometry(.12,2.6,.12), M.darkWood); flag.position.set(-3.25,2.2,2.2); group.add(flag);
+    const cloth = new THREE.Mesh(new THREE.BoxGeometry(1.05,.62,.08), new THREE.MeshStandardMaterial({color:teamColor,roughness:.7})); cloth.position.set(-2.75,3.05,2.2); group.add(cloth);
+    group.position.set(Number(f.x),0,Number(f.z)); group.userData.factoryId=Number(f.id); scene.add(group);
+    const collider=addCircle(Number(f.x),Number(f.z),4.7);
+    entry={group,collider,data:f,bodyMat}; factoryVisuals.set(Number(f.id),entry);
+  } else {
+    entry.data={...entry.data,...f}; entry.group.position.set(Number(f.x),0,Number(f.z));
+    entry.bodyMat.color.setHex(f.type==='smelter'?0x5a6268:f.type==='shipyard'?0x7a5a37:0x8b7654);
+  }
+  entry.data={...entry.data,...f}; entry.group.userData.factoryId=Number(f.id); entry.group.scale.y=.12;
+  entry.group.traverse(o=>{o.userData.factoryId=Number(f.id);});
+}
+function syncFactoryWorld(list) { if(!Array.isArray(list))return; const ids=new Set(list.map(f=>Number(f.id))); for(const f of list)syncFactoryVisual(f); for(const id of [...factoryVisuals.keys()])if(!ids.has(id))removeFactoryVisual(id); }
+function removeFactoryVisual(id) { const entry=factoryVisuals.get(Number(id)); if(!entry)return; scene.remove(entry.group); const i=circles.indexOf(entry.collider); if(i>=0)circles.splice(i,1); entry.group.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material&&!Array.isArray(o.material))o.material.dispose();}); factoryVisuals.delete(Number(id)); }
+function nearestFactory(range=7.5, ownOnly=false) { let best=null,dist=range; for(const [id,f] of factoryVisuals){const d=Math.hypot(pos.x-f.group.position.x,pos.z-f.group.position.z);if(d<=dist&&(!ownOnly||f.data.ownerId===window.mpId)){best=f;dist=d;}} return best; }
+function openFactoryMenu(entry) { if(!entry)return; if(entry.data.buildingUntil>Date.now()){if(window.mpToast)window.mpToast('Фабрика ещё строится');return;} econPanel.classList.add('open');setEconomyTab('factories');econSend({type:'economy-open-factory',factoryId:Number(entry.data.id)}); }
+window.mpOpenFactory = id => openFactoryMenu(factoryVisuals.get(Number(id)));
+window.mpDamageFactory = id => { if(window.mpEconomySend)window.mpEconomySend({type:'factory-damage',factoryId:Number(id)}); };
+function updateFactoryAnimations() { const now=Date.now(); for(const entry of factoryVisuals.values()){const duration=Math.max(1,Number(entry.data.buildingDuration)||5000),until=Number(entry.data.buildingUntil)||0;const progress=until>now?1-Math.max(0,until-now)/duration:1;entry.group.scale.y=.12+.88*Math.max(0,Math.min(1,progress));} requestAnimationFrame(updateFactoryAnimations); }
+requestAnimationFrame(updateFactoryAnimations);
 function setResourceVisual(r, depleted) {
   r.depleted = !!depleted;
   if (r.depleted) { if (r.type === 'tree') { r.mesh.geometry = stumpGeo; r.collider.r = .35 * r.s; } else { r.mesh.visible = false; r.collider.r = 0; } }
@@ -826,7 +861,7 @@ function setEconomyTab(tab) {
   $('#econ-title').textContent=titles[tab]||titles.items;
 }
 function openEconomy(tab='items') { econPanel.classList.add('open');setEconomyTab(tab);econSend({type:'economy-get'}); }
-function closeEconomy() { econPanel.classList.remove('open'); }
+function closeEconomy() { econPanel.classList.remove('open'); if(window.mpConnected) econSend({type:'economy-close-factory'}); }
 $('#economy-open').addEventListener('click',()=>econPanel.classList.contains('open')?closeEconomy():openEconomy());
 $('#econ-close').addEventListener('click',closeEconomy);
 econTabs.forEach(button=>button.addEventListener('click',()=>setEconomyTab(button.dataset.econTab)));
@@ -841,7 +876,7 @@ econPanel.addEventListener('click',ev=>{
   const b=ev.target.closest('button[data-econ]'); if(!b)return;
   const id=b.dataset.id, action=b.dataset.econ;
   if(action==='craft')econSend({type:'economy-craft',recipe:id});
-  else if(action==='build')econSend({type:'economy-build',factory:id});
+  else if(action==='build'){pendingFactoryType=id;closeEconomy();if(window.mpToast)window.mpToast('Выбери свободное место на суше кликом по земле.');}
   else if(action==='run')econSend({type:'economy-run',factoryId:Number(id)});
   else if(action==='stop')econSend({type:'economy-stop',factoryId:Number(id)});
 });
@@ -948,13 +983,18 @@ addEventListener('keydown', e => {
   const tag=e.target?.tagName?.toLowerCase();
   if(tag==='input'||tag==='textarea'||tag==='select'||e.target?.isContentEditable) return;
   if(e.code==='KeyF') {
-    // F only activates a valid resource within close interaction range; nearest wins deterministically.
+    const factory=nearestFactory(7.5,true);
+    if(factory){e.preventDefault();openFactoryMenu(factory);return;}
+    // F activates a nearby resource when no owned factory is in interaction range.
     const nearby=resources.filter(r=>!r.depleted&&!r.pendingHarvest)
       .map((r,index)=>({r,index,d:Math.hypot(pos.x-r.x,pos.z-r.z)}))
       .filter(v=>v.d<=1.6)
       .sort((a,b)=>a.d-b.d||a.index-b.index)[0];
     if(nearby){e.preventDefault();orderGather(nearby.r);if(window.mpToast)window.mpToast('Начинаем сбор ближайшего ресурса');}
     else if(window.mpToast)window.mpToast('Подойдите вплотную к ресурсу или объекту для взаимодействия.');
+  } else if(e.code==='KeyG') {
+    const enemy=nearestFactory(4.8,false);
+    if(enemy && enemy.data.team && enemy.data.team!==window.mpTeam){e.preventDefault();window.mpDamageFactory?.(enemy.data.id);}
   }
 });
 addEventListener('keyup', e => keys[e.code] = false);
@@ -984,7 +1024,12 @@ function orderMove(x, z) {
   order.dummy = null; order.mode = 'move'; order.x = x; order.z = z; order.res = null; gather.active = false; gather.t = 0; marker.position.set(x, .08, z); marker.visible = true; }
 function orderGather(r) { if (window.mpStopMovement) window.mpStopMovement(); order.dummy = null; if (order.res && order.res !== r) { order.res.mesh.position.x = order.res.x; order.res.mesh.rotation.z = 0; } order.mode = 'gather'; order.res = r; gather.t = 0; gather.active = false; marker.visible = false; }
 canvas.addEventListener('pointerdown', e => {
-  if (e.button !== 0) return; canvas.setPointerCapture(e.pointerId); mouseDown = true; mouse.x = e.clientX; mouse.y = e.clientY;
+  if (e.button !== 0) return;
+  if (pendingFactoryType) {
+    const target=groundPoint(e.clientX,e.clientY);
+    if(target){const probe={x:target.x,z:target.z};resolve(probe,4.7);if(Math.hypot(probe.x-target.x,probe.z-target.z)>.65){if(window.mpToast)window.mpToast('Фабрика пересекается с препятствием — выбери другое место.');return;}econSend({type:'economy-build',factory:pendingFactoryType,x:target.x,z:target.z});pendingFactoryType=null;return;}
+  }
+  canvas.setPointerCapture(e.pointerId); mouseDown = true; mouse.x = e.clientX; mouse.y = e.clientY;
   const dm = pickDummy(e.clientX, e.clientY);
   if (dm) { orderAttack(dm); return; }
   const r = pickResource(e.clientX, e.clientY);
@@ -1932,7 +1977,13 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     });
     socket.addEventListener('message', event => {
       let msg; try { msg = JSON.parse(event.data); } catch { return; }
-      if (msg.type === 'resource-node') {
+      if (msg.type === 'factory-created' || msg.type === 'factory-damaged') {
+        syncFactoryVisual(msg.factory);
+      } else if (msg.type === 'factory-destroyed') {
+        removeFactoryVisual(msg.factoryId);
+      } else if (msg.type === 'factory-menu-closed') {
+        closeEconomy(); if(window.mpToast && msg.message) window.mpToast(msg.message);
+      } else if (msg.type === 'resource-node') {
         applyResourceNode(msg.node);
       } else if (msg.type === 'economy-state') {
         if (window.renderEconomyState) window.renderEconomyState(msg);
@@ -1946,7 +1997,8 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free}));
         mpId = msg.id;
         if (msg.player && Number.isFinite(Number(msg.player.x)) && Number.isFinite(Number(msg.player.z))) player.position.set(Number(msg.player.x), 0, Number(msg.player.z));
-        window.mpTeam = msg.team || msg.player?.team || null;
+        window.mpId = msg.id; window.mpTeam = msg.team || msg.player?.team || null;
+        syncFactoryWorld(msg.factories || []);
         if (window.mpTeam) mpStatus.textContent = 'Команда: ' + (window.mpTeam === 'blue' ? 'Синие' : 'Красные') + ' · ' + mpName;
         socket.send(JSON.stringify({type:'economy-get'}));
         syncResourceWorld(msg.resources);
