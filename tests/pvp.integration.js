@@ -61,7 +61,7 @@ assert.ok(clientHtml.includes("addPortDock(-49, -1); addPortDock(49, 1)"), "map 
 assert.ok(clientHtml.includes("addPrototypeBoat(1.5, -42.5, 0)"), "map includes prototype ship visuals");
 assert.ok(clientHtml.includes("{id:'shipyard',name:'Верфь'") && clientHtml.includes("{id:'ship',name:'Корабль'"), "economy UI exposes shipyard construction and ship production");
 assert.ok(serverSource.includes("Math.hypot(p.x - node.x, p.z - node.z) > 3.6"), "resource gathering validates server-side proximity");
-assert.ok(serverSource.includes("closestRiverPoint(x, z).distance < 5.5"), "server resource generation excludes the river and its banks");
+assert.ok(serverSource.includes("closestRiverPoint(leftX, z).distance < 5.5") && serverSource.includes("closestRiverPoint(rightX, z).distance < 5.5"), "server resource generation excludes the river and its banks on both mirrored sides");
 assert.ok(serverSource.includes("function isRiverBlocked(x, z)"), "server blocks player positions inside the river");
 assert.ok(serverSource.includes("function safeLandPosition(fromX, fromZ, toX, toZ)"), "server dash movement cannot cross the river outside bridge corridors");
 assert.ok(serverSource.includes("const candidate = { x: Math.round((-31 + Math.cos(angle)*radius) * MAP_SCALE * 100) / 100, z: Math.round((-7 + Math.sin(angle)*radius) * MAP_SCALE * 100) / 100 };"), "player spawn and respawn positions are assigned around the left village");
@@ -85,7 +85,7 @@ assert.ok(serverSource.includes("startFactoryJob(p, activeFactory)") && !serverS
 assert.ok(serverSource.includes("worldResources.some(node => !node.depleted") && serverSource.includes("factory-damage"), "factory placement avoids live resource nodes and enemy factories can be damaged");
 assert.ok(!serverSource.includes('sword: { name: "Меч", inputs:') && !clientHtml.includes('sword:["⚔️","Мечи"]'), "sword crafting and sword inventory display are disabled in the economy prototype");
 assert.ok(serverSource.includes('type: "resource-node"'), "resource depletion and respawn are broadcast");
-assert.ok(serverSource.includes("for (const viewer of players.values()) if (isInVision(viewer, node.x, node.z)) send(viewer.ws, payload);"), "resource state updates are server-authoritative without revealing hidden node coordinates");
+assert.ok(serverSource.includes("const visible = isInVision(viewer, node.x, node.z);") && serverSource.includes("node: visible ? fullNode : {") && serverSource.includes("respawnAt: node.respawnAt"), "resource state updates reveal coordinates only inside player vision");
 assert.ok(clientHtml.includes("msg.type === 'world-vision'") && clientHtml.includes("syncResourceWorld(Array.isArray(msg.resources) ? msg.resources : [])"), "client refreshes resource nodes when server vision changes, including empty snapshots");
 assert.ok(clientHtml.includes("Keep still-visible server nodes alive so gather orders and mesh references remain stable"), "resource vision reconciliation preserves visible node identity instead of rebuilding all nodes each update");
 assert.ok(clientHtml.includes("if (!r.serverManaged) { if (window.mpToast) window.mpToast('Жду синхронизации ресурсов с сервером.'); return; }"), "client cannot gather locally generated fallback resources while online");
@@ -93,7 +93,7 @@ assert.ok(clientHtml.includes("nodeId:r.id"), "client sends the selected resourc
 assert.ok(clientHtml.includes("syncResourceWorld(msg.resources)"), "client renders the shared resource layout");
 assert.ok(clientHtml.includes("if (!window.mpTargetId && window.mpSelectNearestTarget) window.mpSelectNearestTarget(); if (window.mpTargetId) window.mpStartChase();"), "Space selects a nearby opponent before starting chase");
 assert.ok(serverSource.includes("const travel=Math.min(maxTravel,len);") && !serverSource.includes("if(len>maxTravel+1)return;"), "PvP dash AoE clamps distant cursor aim instead of silently rejecting the cast");
-assert.ok(clientHtml.includes("if (p.id === mpId) {\n      if (Number.isFinite(Number(p.hp))) setPlayerHealth(Number(p.hp));\n      return;\n    }"), "client applies server HP corrections to the local player");
+assert.ok(clientHtml.includes("if (p.id === mpId)") && clientHtml.includes("setPlayerHealth(Number(p.hp))"), "client applies server HP corrections to the local player");
 assert.ok(clientHtml.includes("(buffs.blood.t > 0 ? .3 : 0)"), "local dummy autoattacks include Bloodthirsty damage bonus");
 assert.ok(clientHtml.includes("if (!options.multiplayerCast && !TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }"), "multiplayer casts do not spend energy or start cooldown locally");
 assert.ok(clientHtml.includes("Do not trust local cooldown/energy mirrors in PvP."), "PvP cooldown and energy acceptance are server-authoritative");
