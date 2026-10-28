@@ -46,7 +46,7 @@ const VISION_SYNC_MS = 250;
 const TICK_MS = 50;
 // Keep server collision/resource rules aligned with the river drawn by the client.
 const RIVER_CENTER = [[0,-55],[3,-42],[0,-28],[-4,-18],[-7,0],[-4,18],[0,28],[3,42],[0,55]].map(([x,z]) => [x*MAP_SCALE,z*MAP_SCALE]);
-const RIVER_BLOCK_RADIUS = 3.45 * MAP_SCALE;
+const RIVER_BLOCK_RADIUS = 3.15 * MAP_SCALE;
 const RIVER_BRIDGES = [[0,-28],[-7,0],[0,28]].map(([x,z]) => [x*MAP_SCALE,z*MAP_SCALE]);
 function closestRiverPoint(x, z) {
   let best = { x: 0, z: 0, distance: Infinity, nx: 1, nz: 0, dx: 0, dz: 0 };
