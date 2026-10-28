@@ -86,7 +86,18 @@ function applyEffects(target,effects,sourceId) {
   }
   broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
 }
-function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{target.hp=PLAYER_MAX_HP;target.x=0;target.z=7;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
+let spawnSequence = 0;
+function spawnPosition(index) {
+  // Keep the first two duelists close enough for the existing opening-combat flow,
+  // but never stack them on the exact same point.
+  if (index === 0) return { x: -1.4, z: 7 };
+  if (index === 1) return { x: 1.4, z: 7 };
+  const slot = index - 2;
+  const angle = (slot % 8) * (Math.PI / 4);
+  const radius = 4 + Math.floor(slot / 8) * 3;
+  return { x: Math.round(Math.cos(angle) * radius * 100) / 100, z: Math.round((7 + Math.sin(angle) * radius) * 100) / 100 };
+}
+function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{const spawn=spawnPosition(target.spawnIndex);target.hp=PLAYER_MAX_HP;target.x=spawn.x;target.z=spawn.z;target.rotation=0;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.moveTarget=null;target.input={x:0,z:0,running:false};target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
 function safeName(value) {
   return String(value || "Player").replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 18) || "Player";
 }
@@ -97,7 +108,9 @@ wss.on("connection", (ws) => {
     return ws.close(1013, "Server full");
   }
   const id = crypto.randomUUID();
-  const p = { id, ws, name: "Игрок", x: 0, y: 0, z: 7, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0 };
+  const spawnIndex = spawnSequence++;
+  const spawn = spawnPosition(spawnIndex);
+  const p = { id, ws, spawnIndex, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0 };
   players.set(id, p);
   send(ws, { type: "welcome", id, players: snapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
