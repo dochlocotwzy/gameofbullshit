@@ -621,6 +621,7 @@ function spawnRes(type, geo, x, z, s, collR, hitR) {
 const inv = { wood: 0, stone: 0, ore: 0 };
 const ECON_LABELS = { wood:["🪵","Древесина"], stone:["🪨","Камень"], ore:["⛏️","Руда"], plank:["🪚","Доски"], iron_ingot:["🔩","Железные слитки"], sword:["⚔️","Мечи"] };
 let economyState = { items:{wood:0,stone:0,ore:0,plank:0,iron_ingot:0,sword:0}, factories:[] };
+const pendingHarvests = new Map();
 const econPanel = $('#economy-panel');
 function econSend(payload) {
   if (window.mpEconomySend) { window.mpEconomySend(payload); return true; }
@@ -628,6 +629,19 @@ function econSend(payload) {
   return false;
 }
 function renderEconomyState(data) {
+  if (data?.action === 'gather' && data.requestId && pendingHarvests.has(data.requestId)) {
+    const resource = pendingHarvests.get(data.requestId); pendingHarvests.delete(data.requestId);
+    if (data.ok) {
+      resource.pendingHarvest = false; resource.respawnAt = gameT + RES[resource.type].respawn;
+      burst(resource.x, 1.2, resource.z, RES[resource.type].chip);
+      floatText(`+${RES[resource.type].yield} ${RES[resource.type].icon}`, resource.x, 3.2, resource.z);
+      if (resource.type === 'tree') { resource.mesh.geometry = stumpGeo; resource.collider.r = .35 * resource.s; }
+      else { resource.mesh.visible = false; resource.collider.r = 0; }
+    } else {
+      resource.depleted = false; resource.pendingHarvest = false; resource.respawnAt = 0;
+      if (window.mpToast) window.mpToast(data.message || 'Сбор не подтверждён сервером.');
+    }
+  }
   if (data && data.economy) { economyState = data.economy; }
   const items = economyState.items || {};
   $('#econ-status').textContent = window.mpConnected ? (data?.message || 'Сервер синхронизирован') : 'Оффлайн: экономика доступна только на сервере';
@@ -808,16 +822,25 @@ function renderInv() { $('#c-wood').textContent = inv.wood; $('#c-stone').textCo
 function finishGather(r) {
   const def = RES[r.type];
   if (window.mpConnected && window.mpEconomySend) {
-    window.mpEconomySend({type:'economy-gather',resource:def.item});
-    floatText(`⏳ ${def.icon}`, r.x, 3.2, r.z);
-  } else {
-    inv[def.item] += def.yield; renderInv();
-    floatText(`+${def.yield} ${def.icon}`, r.x, 3.2, r.z);
+    const requestId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
+    r.depleted = true; r.pendingHarvest = true; r.respawnAt = Infinity;
+    pendingHarvests.set(requestId, r);
+    const sent = window.mpEconomySend({type:'economy-gather',resource:def.item,requestId});
+    if (!sent) { pendingHarvests.delete(requestId); r.depleted = false; r.pendingHarvest = false; r.respawnAt = 0; }
+    else floatText(`⏳ ${def.icon}`, r.x, 3.2, r.z);
+    cancelOrder(); return;
   }
+  inv[def.item] += def.yield; renderInv();
+  floatText(`+${def.yield} ${def.icon}`, r.x, 3.2, r.z);
   burst(r.x, 1.2, r.z, def.chip);
-  r.mesh.position.x = r.x; r.mesh.rotation.z = 0; r.depleted = true; r.respawnAt = gameT + def.respawn;
-  if (r.type === 'tree') { r.mesh.geometry = stumpGeo; r.collider.r = .35 * r.s; } else { r.mesh.visible = false; r.collider.r = 0; }
+  depleteResource(r);
   cancelOrder();
+}
+function depleteResource(r) {
+  const def = RES[r.type];
+  r.mesh.position.x = r.x; r.mesh.rotation.z = 0; r.depleted = true; r.pendingHarvest = false; r.respawnAt = gameT + def.respawn;
+  if (r.type === 'tree') { r.mesh.geometry = stumpGeo; r.collider.r = .35 * r.s; }
+  else { r.mesh.visible = false; r.collider.r = 0; }
 }
 function updateRespawn() {
   for (const r of resources) if (r.depleted && gameT >= r.respawnAt) {
@@ -1566,6 +1589,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (!socket || socket.readyState !== WebSocket.OPEN) return false;
     socket.send(JSON.stringify(payload)); return true;
   };
+  window.mpToast = message => toast(message);
   window.mpSetWeapon = id => {
     if (socket && socket.readyState === WebSocket.OPEN && WEAPONS[id]) socket.send(JSON.stringify({type:'weapon',weapon:id}));
   };
