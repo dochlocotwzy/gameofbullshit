@@ -66,7 +66,8 @@ assert.ok(serverSource.includes("function isRiverBlocked(x, z)"), "server blocks
 assert.ok(serverSource.includes("function safeLandPosition(fromX, fromZ, toX, toZ)"), "server dash movement cannot cross the river outside bridge corridors");
 assert.ok(serverSource.includes("const candidate = { x: Math.round((-31 + Math.cos(angle)*radius) * MAP_SCALE * 100) / 100, z: Math.round((-7 + Math.sin(angle)*radius) * MAP_SCALE * 100) / 100 };"), "player spawn and respawn positions are assigned around the left village");
 assert.ok(serverSource.includes("return isRiverBlocked(candidate.x, candidate.z) ? safeLandPosition(-31*MAP_SCALE, -7*MAP_SCALE, candidate.x, candidate.z) : candidate;"), "left-village spawn and respawn positions are kept on dry land");
-assert.ok(serverSource.includes("if (isRiverBlocked(x, z)) { send(ws, { type: \"player\", player: publicPlayer(p) }); return; }"), "server rejects client position updates inside the river");
+assert.ok(serverSource.includes("accepted = safeLandPosition(p.x, p.z, accepted.x, accepted.z)"), "server clamps river entry to last valid land point instead of snapping to old position");
+assert.ok(clientHtml.includes("style:base.style||w.id") && clientHtml.includes("function buildWeaponModel(look)"), "weapon families have data-driven visual identities and custom meshes");
 assert.ok(clientHtml.includes("function isRiverBlocked(x, z)"), "client collision system treats the river as an obstacle");
 assert.ok(clientHtml.includes("if (closestRiverPoint(x, z).distance < 5.5) return false;"), "client fallback resource generation excludes river banks");
 assert.ok(clientHtml.includes("only the three bridge decks permit crossing"), "client movement collision preserves the three bridge crossings");
