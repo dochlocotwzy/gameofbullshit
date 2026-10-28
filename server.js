@@ -401,7 +401,7 @@ wss.on("connection", (ws) => {
       }
       if((abilityId==="spinning"||abilityId==="carvingDash"||abilityId==="cyclone")&&Number.isFinite(aimX)&&Number.isFinite(aimZ)){
         const maxTravel=abilityId==="spinning"?12:abilityId==="carvingDash"?6:7,ax=aimX-p.x,az=aimZ-p.z,len=Math.hypot(ax,az);
-        if(len>maxTravel+1)return;
+        // Clamp cursor aim to the ability's travel distance instead of silently dropping the cast.
         const travel=Math.min(maxTravel,len);
         if(len>.01){p.x=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+ax/len*travel));p.z=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+az/len*travel));p.rotation=Math.atan2(ax,az);p.positionLockUntil=Date.now()+250;}
       }
