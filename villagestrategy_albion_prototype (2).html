@@ -2054,8 +2054,14 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   };
   addEventListener('keydown', ev => {
     const el = ev.target, typing = el?.tagName === 'TEXTAREA' || el?.isContentEditable || (el?.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'range'].includes(el.type));
-    if (typing || el?.tagName === 'SELECT') return;
-    // Escape is reserved for closing open UI; it must not clear the PvP target.
+    if (typing || el?.tagName === 'SELECT' || ev.code !== 'Escape') return;
+    // Let Escape close an open panel first; otherwise it clears the selected PvP target.
+    if (econPanel.classList.contains('open')) return;
+    if (!window.mpTargetId) return;
+    ev.preventDefault();
+    if (order.mode === 'mp-chase') window.mpStopMovement?.();
+    if (order.mode === 'mp-chase') cancelOrder();
+    window.mpClearTarget(true);
   }, true);
 
   // Clicking a player selects/changes the PvP target; clicking the ground keeps the current target.
