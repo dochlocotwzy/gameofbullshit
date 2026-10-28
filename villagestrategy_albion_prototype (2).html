@@ -405,6 +405,7 @@ function buildGroundTexture() {
     group.position.set(x, 0, z); scene.add(group);
   }
   addRiverBridge(2.6, -30);
+  addRiverBridge(-7, 0);
   addRiverBridge(3.5, 36);
 
   // пруд
@@ -537,12 +538,15 @@ function fence(x1, z1, x2, z2) {
 }
 let flameA, flameB;
 function makeVillage() {
-  makeHouse(-12, -12, 6, 5, 0, 0xb5533a);
-  makeHouse(11, -13, 7, 5.5, 0, 0x6b7e8c);
-  makeHouse(-15, 9, 5, 6, Math.PI / 2, 0xa8643a);
-  makeHouse(15, 10, 5.5, 5, -Math.PI / 2, 0xb5533a);
-  makeHouse(-7, 16, 5, 5, Math.PI, 0x8a5a3a);
-  makeHouse(8, 16, 5, 5, Math.PI, 0x6b7e8c);
+  // Four small outlying villages around the island; the well and campfire remain a central hub.
+  makeHouse(-13, -37, 5.5, 5, 0, 0xb5533a);
+  makeHouse(13, -39, 5, 5, 0, 0x6b7e8c);
+  makeHouse(-37, -7, 5, 5.5, Math.PI / 2, 0xa8643a);
+  makeHouse(-35, 7, 5, 5, Math.PI / 2, 0xb5533a);
+  makeHouse(37, -7, 5.5, 5, -Math.PI / 2, 0x8a5a3a);
+  makeHouse(35, 7, 5, 5, -Math.PI / 2, 0x6b7e8c);
+  makeHouse(-13, 37, 5, 5, Math.PI, 0xa8643a);
+  makeHouse(13, 39, 5, 5, Math.PI, 0xb5533a);
   // колодец
   const well = new THREE.Group();
   put(well, new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.35, 1, 14), M.stone), 0, .5, 0);
@@ -561,7 +565,9 @@ function makeVillage() {
   // реквизит
   makeBarrel(-9.2, -8.8); makeBarrel(-8.4, -9.3); makeCrate(-14.8, -8.6); makeCrate(7.2, -9.2); makeBarrel(8.2, -9.0);
   makeBarrel(12.6, 6.0); makeCrate(11.7, 14.2); makeBarrel(-4.2, 12.2); makeCrate(5.0, 12.3); makeBarrel(-10.8, 4.6);
-  fence(-18, -17, -9, -17); fence(-18, -17, -18, -13); fence(7, -19, 15, -19);
+  fence(-18, -41, -8, -41); fence(-18, -41, -18, -34);
+  fence(8, 41, 18, 41); fence(18, 34, 18, 41);
+  fence(-41, -13, -41, -3); fence(41, 3, 41, 13);
 }
 // Склеиваем всю статику деревни по материалам: ~250 мешей -> ~15 (меньше вызовов отрисовки, и для теней тоже)
 function bakeStatic(roots) {
