@@ -166,7 +166,7 @@ function absorbShield(target, amount) {
 }
 function applyEffects(target,effects,sourceId) {
   if(!target.statuses)target.statuses={};
-  const now=Date.now();
+  const now=Date.now(),oldHp=target.hp;
   if(target.pendingAttack&&effects.some(e=>["stun","air"].includes(e.type))){
     const cancelledAttack=target.pendingAttack;target.pendingAttack=null;
     broadcast({type:"combat-cancelled",attackerId:target.id,targetId:cancelledAttack.targetId,attackId:cancelledAttack.id});
@@ -222,6 +222,7 @@ function applyEffects(target,effects,sourceId) {
     if(key==="hpDown")target.hp=Math.min(target.hp,Math.round(PLAYER_MAX_HP*(1-Math.max(0,Math.min(.9,Number(e.value)||0)))));
   }
   broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
+  if(target.hp!==oldHp)broadcast({type:"player",player:publicPlayer(target)});
 }
 function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
   const now=Date.now(), branch=ALBION_BRANCHES[ability.branch], weaponBranch=ALBION_WEAPONS[p.weapon]?.branch||null;
