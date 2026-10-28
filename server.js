@@ -185,7 +185,9 @@ wss.on("connection", (ws) => {
     }
     if (msg.type === "economy-craft") {
       const recipeId = String(msg.recipe || ""), recipe = ECONOMY_RECIPES[recipeId];
-      if (!recipe || !hasItems(p.economy.items, recipe.inputs)) { sendEconomy(p, "Не хватает материалов для крафта."); return; }
+      if (!recipe) { sendEconomy(p, "Неизвестный рецепт."); return; }
+      if (!p.economy.factories.some(f => f.type === recipe.station && !f.running)) { sendEconomy(p, `Для этого рецепта нужна свободная станция: ${FACTORY_TYPES[recipe.station]?.name || recipe.station}.`); return; }
+      if (!hasItems(p.economy.items, recipe.inputs)) { sendEconomy(p, "Не хватает материалов для крафта."); return; }
       takeItems(p.economy.items, recipe.inputs); addItems(p.economy.items, recipe.output);
       sendEconomy(p, `Изготовлено: ${recipe.name}`);
       return;
@@ -495,6 +497,8 @@ const gameTick = setInterval(() => {
         const recipe = ECONOMY_RECIPES[factory.recipe];
         if (recipe) addItems(p.economy.items, recipe.output);
         factory.running = false; factory.startedAt = 0; factory.duration = 0; economyChanged = true;
+        // Keep the production line running while input materials remain.
+        if (recipe && startFactoryJob(p, factory)) economyChanged = true;
       }
       if (economyChanged) sendEconomy(p, "Производство завершено.");
     }
