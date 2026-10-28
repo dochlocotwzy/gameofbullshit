@@ -5,6 +5,8 @@ const { spawn } = require("node:child_process");
 const WebSocket = require("ws");
 
 const clientHtml = fs.readFileSync(path.join(__dirname, "..", "villagestrategy_albion_prototype (2).html"), "utf8");
+const serverSource = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+assert.ok(serverSource.includes('const ALLOW_TEST_MODE = process.env.ALLOW_TEST_MODE === "true";'), "server free-cast mode is disabled unless explicitly enabled for tests");
 assert.ok(clientHtml.includes("if (p.id === mpId) {\n      if (Number.isFinite(Number(p.hp))) setPlayerHealth(Number(p.hp));\n      return;\n    }"), "client applies server HP corrections to the local player");
 assert.ok(clientHtml.includes("(buffs.blood.t > 0 ? .3 : 0)"), "local dummy autoattacks include Bloodthirsty damage bonus");
 assert.ok(clientHtml.includes("const expiresAt = Number(msg.chargeExpiresAt);"), "client uses the server charge expiry timestamp");
@@ -12,7 +14,7 @@ assert.ok(clientHtml.includes("const expiresAt = Number(msg.chargeExpiresAt);"),
 const port = 10187;
 const base = `http://127.0.0.1:${port}`;
 const server = spawn(process.execPath, ["server.js"], {
-  env: { ...process.env, PORT: String(port), HOST: "127.0.0.1" },
+  env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", ALLOW_TEST_MODE: "true" },
   stdio: ["ignore", "pipe", "pipe"]
 });
 const clients = [];
