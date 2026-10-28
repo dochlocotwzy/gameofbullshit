@@ -110,6 +110,31 @@ async function waitMessage(ws, predicate, timeout = 5000) {
 
     // Regression: Interrupt scales auto-attack damage with the Heroic Charges held at cast time.
     await waitMessage(b, m => m.type === "respawn" && m.player?.id === bId, 7000);
+
+    // Regression: Majestic's delayed second hit must re-check the original 6m circle.
+    a.send(JSON.stringify({ type: "test-mode", enabled: true }));
+    a.send(JSON.stringify({ type: "weapon", weapon: "kingmaker" }));
+    a.send(JSON.stringify({ type: "state", x: 0, z: 0, rotation: 0 }));
+    b.send(JSON.stringify({ type: "state", x: 0, z: 5, rotation: 0 }));
+    await waitMessage(a, m => m.type === "player" && m.player?.id === bId && m.player?.z === 5);
+    a.messages.length = 0; b.messages.length = 0;
+    a.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "e", abilityId: "majestic", aimX: 0, aimZ: 0 }));
+    const majesticFirst = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "majestic" && m.hitIndex === 0);
+    assert.equal(majesticFirst.damage, 330, "Majestic first impact uses configured damage");
+    b.send(JSON.stringify({ type: "state", x: 0, z: 12, rotation: 0 }));
+    await waitMessage(a, m => m.type === "player" && m.player?.id === bId && m.player?.z === 12);
+    await sleep(1050);
+    assert.equal(b.messages.filter(m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "majestic" && m.hitIndex === 1).length, 0, "Majestic second impact misses a target that left the cast circle");
+
+    // Return to the circle and finish the target so later tests start with full HP after respawn.
+    b.send(JSON.stringify({ type: "state", x: 0, z: 5, rotation: 0 }));
+    await waitMessage(a, m => m.type === "player" && m.player?.id === bId && m.player?.z === 5);
+    a.messages.length = 0; b.messages.length = 0;
+    a.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "e", abilityId: "majestic", aimX: 0, aimZ: 0 }));
+    const majesticKill = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "majestic" && m.hitIndex === 1 && m.hp === 0, 3000);
+    assert.equal(majesticKill.damage, 480, "Majestic second impact still lands when the target remains in range");
+    await waitMessage(b, m => m.type === "respawn" && m.player?.id === bId, 7000);
+
     a.messages.length = 0; b.messages.length = 0;
     a.send(JSON.stringify({ type: "test-mode", enabled: true }));
     a.send(JSON.stringify({ type: "loadout", q: "strike", w: "interrupt", p: "deepcuts" }));
