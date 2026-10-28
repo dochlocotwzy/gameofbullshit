@@ -13,6 +13,11 @@ assert.ok(clientHtml.includes("if (!options.multiplayerCast && !TEST.free) { ene
 assert.ok(clientHtml.includes("Do not trust local cooldown/energy mirrors in PvP."), "PvP cooldown and energy acceptance are server-authoritative");
 assert.ok(clientHtml.includes("msg.abilityId !== 'splitting' && (msg.phase !== 'cast' || msg.attackerId === mpId)"), "Splitting Slash renders as a line rather than an endpoint damage circle");
 assert.ok(clientHtml.includes("const expiresAt = Number(msg.chargeExpiresAt);"), "client uses the server charge expiry timestamp");
+assert.ok(serverSource.includes("combat-windup"), "server broadcasts the start of the auto-attack windup");
+assert.ok(serverSource.includes("combat-cancelled"), "server cancels auto-attacks interrupted before impact");
+assert.ok(clientHtml.includes("window.mpStartChase"), "Space can start chasing the selected multiplayer target");
+assert.ok(clientHtml.includes("order.mode === 'mp-chase'"), "selected-target chasing follows the target's current position");
+assert.ok(clientHtml.includes("msg.type === 'combat-windup'"), "client starts the attack animation from the server windup event");
 
 const port = 10187;
 const base = `http://127.0.0.1:${port}`;
