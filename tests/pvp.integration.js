@@ -30,6 +30,9 @@ assert.ok(clientHtml.includes('id="economy-panel"'), "client exposes the invento
 assert.ok(clientHtml.includes('data-econ-tab="items"'), "economy UI separates inventory into compact tabs");
 assert.ok(clientHtml.includes("ev.code==='KeyI'"), "inventory can be toggled with I");
 assert.ok(clientHtml.includes("e.code==='KeyF'"), "F invokes contextual resource interaction");
+assert.ok(clientHtml.includes(".filter(v=>v.d<=1.6)"), "F requires close interaction range");
+assert.ok(clientHtml.includes(".sort((a,b)=>a.d-b.d||a.index-b.index)[0]"), "F chooses the nearest eligible resource deterministically");
+assert.ok(!clientHtml.includes("window.mpClearTarget(true);"), "Escape never clears the selected PvP target");
 assert.ok(clientHtml.includes("ev.code==='Escape'"), "Escape closes the inventory panel");
 assert.ok(clientHtml.includes("data-econ=\"build\""), "client can request factory construction");
 assert.ok(clientHtml.includes("data-econ=\"craft\""), "client can request crafting");
