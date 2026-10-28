@@ -264,7 +264,7 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
   if(ability.shape?.type==="single"&&!victims.length&&ability.target==="enemy"){send(ws,{type:"combat",result:target?"out-of-range":"no-target",abilityId,energy:p.energy});return;}
   if(!selfCast&&ability.target==="ground"&&!aim&&!ability.dash&&ability.shape?.origin==="aim"){send(ws,{type:"combat",result:"invalid-aim",abilityId,energy:p.energy});return;}
   p.lastAbility=now;if(!p.testMode){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;}
-  if(selfEffects.length)applyEffects(p,selfEffects,p.id);
+  if(selfEffects.length)applyEffects(p,selfEffects.filter(e=>e.type!=="auraStack"),p.id);
   let hits=Array.isArray(ability.hits)&&ability.hits.length?ability.hits:[{delay:0,damage:0,effects:ability.effects||[]}];
   if(ability.pulses&&Number(ability.pulses.count)>0){
     const pulse=ability.pulses;
