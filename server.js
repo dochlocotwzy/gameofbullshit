@@ -345,7 +345,7 @@ function generateResourceWorld() {
     // Every node is placed as a mirrored left/right pair for equal resource counts on both sides.
     while (nodes.filter(n => n.kind === kind).length < count && tries++ < 100000) {
       const angle = random() * Math.PI * 2;
-      const radius = 12 * MAP_SCALE + random() * (WORLD_BOUND - 20 * MAP_SCALE);
+      const radius = 12 * MAP_SCALE + random() * (WORLD_BOUND - 8 - 12 * MAP_SCALE);
       const absX = Math.abs(Math.cos(angle) * radius);
       const z = Math.round(Math.sin(angle) * radius * 100) / 100;
       const x = Math.round(absX * 100) / 100;
