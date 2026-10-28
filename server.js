@@ -75,6 +75,9 @@ function broadcast(payload, exceptId) {
   }
 }
 function publicPlayer(p) { return {id:p.id,name:p.name,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{},charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,weapon:p.weapon||"broadsword"}; }
+function isParryInvulnerable(target, now = Date.now()) {
+  return !!(target?.statuses?.parryLock && target.statuses.parryLock.until > now);
+}
 function applyEffects(target,effects,sourceId) {
   if(!target.statuses)target.statuses={};
   for(const e of effects){if(e.type==="charge"){target.charges=Math.min(3,(target.charges||0)+(e.amount||1));target.chargeExpiresAt=Date.now()+6000;continue;}
@@ -182,6 +185,7 @@ wss.on("connection", (ws) => {
         send(ws, { type: "combat", result: "out-of-range", targetId: target.id });
         return;
       }
+      if (isParryInvulnerable(target, now)) return;
       const weapon = p.weapon || "broadsword";
       const baseDamage = WEAPON_DAMAGE[weapon] || WEAPON_DAMAGE.broadsword;
       const outgoingWeak = p.statuses?.weak && p.statuses.weak.until > now ? Math.max(0, Math.min(.9, Number(p.statuses.weak.value) || 0)) : 0;
@@ -285,7 +289,7 @@ wss.on("connection", (ws) => {
         send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
         setTimeout(()=>{
           if(p.hp<=0)return;
-          const impactVictims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&Math.hypot(t.x-p.x,t.z-p.z)<=6);
+          const impactVictims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&!isParryInvulnerable(t)&&Math.hypot(t.x-p.x,t.z-p.z)<=6);
           for(const victim of impactVictims){
             const reduction=victim.statuses?.resist?.value||0;
             const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
@@ -313,6 +317,7 @@ wss.on("connection", (ws) => {
       if(abilityId==="cyclone"&&(p.charges||0)>0){castDamage=162;p.charges--;if(p.charges<=0)p.chargeExpiresAt=0;}
       if(["mightyBlow","charge","carvingDash"].includes(abilityId)){p.charges=0;p.chargeExpiresAt=0;}
       for(const victim of victims){
+        if(isParryInvulnerable(victim)) continue;
         if(abilityId==="majestic"){
           const reduction=victim.statuses?.resist?.value||0;
           const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
@@ -326,7 +331,7 @@ wss.on("connection", (ws) => {
           if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
           else setTimeout(()=>{
             // The second swing is a separate impact: only hit targets still inside the original cast circle.
-            if(victim.hp<=0 || Math.hypot(victim.x-castOriginX,victim.z-castOriginZ)>(ability.radius||0))return;
+            if(victim.hp<=0 || isParryInvulnerable(victim) || Math.hypot(victim.x-castOriginX,victim.z-castOriginZ)>(ability.radius||0))return;
             const reduction2=victim.statuses?.resist?.value||0;
             const defense2=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
             const defenseReduction2=defense2>0?Math.min(.5,defense2/(defense2+200)):0;
@@ -383,11 +388,13 @@ const gameTick = setInterval(() => {
       if ((key === "bleed" || key === "deepBleed") && p.hp > 0) {
         if (!Number.isFinite(status.nextTickAt)) status.nextTickAt = now + 500;
         while (status.nextTickAt <= now && status.nextTickAt <= status.until && p.hp > 0) {
-          const damage = Math.max(1, Math.round(Number(status.value || 60) * .5));
-          p.hp = Math.max(0, p.hp - damage);
-          broadcast({type:"combat-hit",attackerId:status.sourceId,targetId:p.id,damage,hp:p.hp,kind:"dot",abilityId:key === "deepBleed" ? "deepcuts" : "bloodthirsty"});
+          if (!isParryInvulnerable(p, now)) {
+            const damage = Math.max(1, Math.round(Number(status.value || 60) * .5));
+            p.hp = Math.max(0, p.hp - damage);
+            broadcast({type:"combat-hit",attackerId:status.sourceId,targetId:p.id,damage,hp:p.hp,kind:"dot",abilityId:key === "deepBleed" ? "deepcuts" : "bloodthirsty"});
+            if (p.hp === 0) scheduleRespawn(p);
+          }
           status.nextTickAt += 500;
-          if (p.hp === 0) scheduleRespawn(p);
         }
       }
       if (status.until <= now) { delete p.statuses[key]; statusExpired = true; }
