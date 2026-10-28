@@ -1969,7 +1969,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   let selfTargetX = player.position.x, selfTargetZ = player.position.z, selfTargetRot = player.rotation.y;
   const remoteMeshes = new Map();
   const MP_ATTACK_RANGE = 3.8;
-  const MP_ATTACK_INTERVAL = 1200;
+  const MP_ATTACK_INTERVAL = 850;
   window.mpTargetRing = { active:false, x:0, z:0 };
   window.mpTargetId = null;
   window.mpGetTarget = () => { const t = remotes.get(mpTargetId); return t && !t.dead ? {x:t.group.position.x,z:t.group.position.z,name:t.name} : null; };
