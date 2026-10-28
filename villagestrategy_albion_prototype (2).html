@@ -1901,7 +1901,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   function addRemote(p) {
     if (!p || p.id === mpId || remotes.has(p.id)) return;
     const group = new THREE.Group();
-    const material = new THREE.MeshStandardMaterial({color:0x438fe0, roughness:.9});
+    const material = new THREE.MeshStandardMaterial({color:p.team === 'red' ? 0xc94d42 : 0x438fe0, roughness:.9});
     const potato = new THREE.Group();
     const mesh = new THREE.Mesh(new THREE.SphereGeometry(.48, 12, 10), material);
     mesh.scale.set(.88, 1.18, .78); mesh.position.y = .82; mesh.castShadow = true; mesh.userData.mpPlayerId = p.id; potato.add(mesh);
@@ -1918,7 +1918,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     group.rotation.y = Number(p.rotation)||0;
     scene.add(group);
     const hp = Number.isFinite(Number(p.hp)) ? Number(p.hp) : 1000;
-    remotes.set(p.id, {group, mesh, potato, label, targetX:group.position.x, targetZ:group.position.z, targetRot:group.rotation.y, name:p.name||'Игрок', hp, dead:hp <= 0, charges:Number(p.charges)||0, chargeExpiresAt:Number(p.chargeExpiresAt)||0, swingT:0});
+    remotes.set(p.id, {group, mesh, potato, label, material, team:p.team, targetX:group.position.x, targetZ:group.position.z, targetRot:group.rotation.y, name:p.name||'Игрок', hp, dead:hp <= 0, charges:Number(p.charges)||0, chargeExpiresAt:Number(p.chargeExpiresAt)||0, swingT:0});
     if (hp <= 0) setRemoteDead(remotes.get(p.id), true);
     remoteMeshes.set(p.id, mesh);
   }
@@ -1945,6 +1945,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (r.snapshots.length > 12) r.snapshots.splice(0, r.snapshots.length - 12);
     r.targetX = Number(p.x)||0; r.targetZ = Number(p.z)||0;
     r.targetRot = Number(p.rotation)||0; r.hp = Number.isFinite(Number(p.hp)) ? Number(p.hp) : r.hp;
+    if (p.team) { r.team=p.team; r.material?.color.setHex(p.team === 'red' ? 0xc94d42 : 0x438fe0); }
     r.charges = Number(p.charges)||0; r.chargeExpiresAt = Number(p.chargeExpiresAt)||0; r.weapon = p.weapon || r.weapon || 'broadsword';
     r.statuses = p.statuses || r.statuses || {};
     setRemoteDead(r, r.hp <= 0);
@@ -2140,7 +2141,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (!player) return;
     let nearestId = null, nearestDist = 20;
     for (const [id, remote] of remotes) {
-      if (!remote || remote.dead || !remote.group || remote.group.visible === false) continue;
+      if (!remote || remote.dead || !remote.group || remote.group.visible === false || (window.mpTeam && remote.team === window.mpTeam)) continue;
       const d = Math.hypot(player.position.x - remote.group.position.x, player.position.z - remote.group.position.z);
       if (d <= nearestDist) { nearestDist = d; nearestId = id; }
     }
@@ -2181,6 +2182,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       ev.preventDefault();
       return;
     }
+    if (window.mpTeam && picked.team === window.mpTeam) { toast('Это союзник — выбери игрока вражеской команды.'); ev.stopImmediatePropagation(); ev.preventDefault(); return; }
     mpTargetId = targetId;
     window.mpTargetId = targetId;
     toast('Цель захвачена: автоатака в радиусе, Q/W/E — умения, Esc — снять цель.');
