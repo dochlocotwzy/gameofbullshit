@@ -741,10 +741,10 @@ wss.on("connection", (ws) => {
             const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
             const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;
             const outgoingWeak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;
-            const vulnerability=victim.statuses?.armorBreak?1.25:1;
+            const vulnerability=victim.statuses?.armorBreak&&victim.statuses.armorBreak.until>Date.now()?(1+Math.max(0,Number(victim.statuses.armorBreak.value)||0)):1;
             const dealt=Math.max(0,Math.round(80*(1-reduction)*(1-defenseReduction)*(1-outgoingWeak)*vulnerability));
-            victim.hp=Math.max(0,victim.hp-dealt);
-            broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:0});
+            const actual=absorbShield(victim,dealt);victim.hp=Math.max(0,victim.hp-actual);
+            broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:actual,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:0});
             if(victim.hp>0)applyEffects(victim,ability.effects||[],p.id);
             if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
             broadcast({type:"player",player:publicPlayer(victim)});
