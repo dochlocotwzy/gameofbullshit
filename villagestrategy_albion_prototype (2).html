@@ -70,21 +70,25 @@
   .fl.dmg.big{font-size:28px;color:#ffb347}
   .fl.dmg.dot{color:#ff6a5a;font-size:13px}
   .fl.dmg.info{color:#cfa8ff;font-size:14px}
-  #economy-open{position:fixed;left:14px;bottom:144px;z-index:20;padding:8px 12px;font:600 12px system-ui;background:#14201bf0;border:1px solid #d7c18b88;color:#f3efe3;border-radius:9px;cursor:pointer}
-  #economy-panel{position:fixed;inset:50% auto auto 50%;transform:translate(-50%,-50%);z-index:1100;width:min(680px,94vw);max-height:82vh;overflow:auto;padding:16px;background:#101a15f5;border:1px solid #d7c18b88;border-radius:14px;box-shadow:0 16px 60px #000b;display:none}
+  #economy-open{position:fixed;left:14px;bottom:144px;z-index:20;padding:7px 10px;font:600 12px system-ui;background:#14201be8;border:1px solid #d7c18b66;color:#f3efe3;border-radius:9px;cursor:pointer}
+  #economy-panel{position:fixed;left:16px;bottom:190px;transform:none;z-index:1100;width:min(430px,calc(100vw - 32px));max-height:min(64vh,560px);overflow:auto;padding:12px;background:#101a15f5;border:1px solid #d7c18b88;border-radius:12px;box-shadow:0 12px 40px #000a;display:none;backdrop-filter:blur(12px)}
   #economy-panel.open{display:block}
-  #economy-panel h2{margin:0 0 8px;font-size:18px}
-  #economy-panel h3{font-size:13px;color:#f1d99a;margin:14px 0 6px}
-  #economy-panel .econ-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
-  #economy-panel .econ-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
-  #economy-panel .econ-card{padding:10px;border:1px solid #ffffff24;border-radius:9px;background:#ffffff08}
-  #economy-panel .econ-card b{display:block;margin-bottom:4px}
-  #economy-panel .econ-card small{display:block;color:#c0cfc2;line-height:1.4;margin-bottom:7px}
-  #economy-panel button{font:inherit;font-size:12px;color:#f3efe3;background:#273a2d;border:1px solid #a4c19a66;border-radius:7px;padding:5px 8px;cursor:pointer;margin:2px}
+  #economy-panel h2{margin:0 0 4px;font-size:16px}
+  #economy-panel h3{font-size:12px;color:#f1d99a;margin:10px 0 6px}
+  #economy-panel .econ-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  #economy-panel .econ-tabs{display:flex;gap:5px;margin:10px 0 8px;position:sticky;top:-12px;padding:5px 0;background:#101a15f5;z-index:2}
+  #economy-panel .econ-tabs button{flex:1;margin:0;padding:7px 5px}
+  #economy-panel .econ-tabs button.active{background:#705b31;border-color:#e3c77c}
+  #economy-panel .econ-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:6px}
+  #economy-panel .econ-card{padding:8px;border:1px solid #ffffff20;border-radius:8px;background:#ffffff06;min-width:0}
+  #economy-panel .econ-card b{display:block;margin-bottom:3px;font-size:12px}
+  #economy-panel .econ-card small{display:block;color:#c0cfc2;line-height:1.4;margin-bottom:6px;font-size:11px}
+  #economy-panel button{font:inherit;font-size:11px;color:#f3efe3;background:#273a2d;border:1px solid #a4c19a66;border-radius:7px;padding:5px 7px;cursor:pointer;margin:2px}
   #economy-panel button:disabled{opacity:.4;cursor:default}
-  #economy-panel .econ-muted{color:#aab8aa;font-size:11px}
+  #economy-panel .econ-muted{color:#aab8aa;font-size:10px;line-height:1.4}
   #economy-panel #econ-close{background:#392b25;border-color:#c88c7566}
-  @media(max-width:600px){#economy-open{bottom:135px}#economy-panel{max-height:88vh;padding:12px}#inv{gap:3px;padding:5px}.slot{width:60px}}
+  #interact-hint{position:fixed;left:50%;bottom:104px;transform:translateX(-50%);z-index:25;padding:6px 10px;background:#101a15e8;border:1px solid #d7c18b77;border-radius:8px;color:#f3efe3;font-size:12px;pointer-events:none;display:none}
+  @media(max-width:600px){#economy-open{bottom:135px}#economy-panel{left:8px;bottom:174px;width:min(380px,calc(100vw - 16px));max-height:58vh;padding:9px}#economy-panel .econ-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#inv{gap:3px;padding:5px}.slot{width:60px}}
 
 </style>
 </head>
@@ -109,14 +113,19 @@
   <div class="slot"><b>🪨</b><span id="c-stone">0</span><small>Камень</small></div>
   <div class="slot"><b>⛏️</b><span id="c-ore">0</span><small>Руда</small></div>
 </div>
-<button id="economy-open">🎒 Инвентарь · Крафт · Фабрики</button>
+<button id="economy-open">🎒 Инвентарь <kbd>I</kbd></button>
+<div id="interact-hint" role="status" aria-live="polite"></div>
 <section id="economy-panel" aria-label="Инвентарь, крафт и фабрики">
-  <div class="econ-head"><div><h2>🎒 Экономика</h2><div class="econ-muted" id="econ-status">Подключение к серверу…</div></div><button id="econ-close">Закрыть ✕</button></div>
-  <h3>Инвентарь и склад</h3><div id="econ-items" class="econ-grid"></div>
-  <h3>Крафт вручную</h3><div id="econ-recipes" class="econ-grid"></div>
-  <h3>Фабрики</h3><div id="econ-buildings" class="econ-grid"></div>
-  <h3>Твои производственные линии</h3><div id="econ-factories" class="econ-grid"></div>
-  <p class="econ-muted">Производство серверное: материалы списываются при запуске цикла, готовые предметы поступают на склад. Пока данные хранятся в памяти игрового сервера и сбрасываются при его перезапуске.</p>
+  <div class="econ-head"><div><h2 id="econ-title">🎒 Инвентарь</h2><div class="econ-muted" id="econ-status">Подключение к серверу…</div></div><button id="econ-close" title="Закрыть (Esc)">✕</button></div>
+  <div class="econ-tabs" role="tablist" aria-label="Разделы">
+    <button type="button" class="active" data-econ-tab="items" role="tab" aria-selected="true">🎒 Предметы</button>
+    <button type="button" data-econ-tab="craft" role="tab" aria-selected="false">⚒ Крафт</button>
+    <button type="button" data-econ-tab="factories" role="tab" aria-selected="false">🏭 Фабрики</button>
+  </div>
+  <div data-econ-view="items"><div id="econ-items" class="econ-grid"></div></div>
+  <div data-econ-view="craft" hidden><h3>Создание предметов</h3><div id="econ-recipes" class="econ-grid"></div></div>
+  <div data-econ-view="factories" hidden><h3>Построить производство</h3><div id="econ-buildings" class="econ-grid"></div><h3>Твои производственные линии</h3><div id="econ-factories" class="econ-grid"></div></div>
+  <p class="econ-muted">Прототип: производство серверное, сохранение между перезапусками пока не подключено.</p>
 </section>
 <div id="cpanel" class="glass">
   <h2>⚔️ Бой: ветка мечей</h2>
@@ -667,8 +676,25 @@ function renderEconomyState(data) {
   $('#c-wood').textContent = items.wood || 0; $('#c-stone').textContent = items.stone || 0; $('#c-ore').textContent = items.ore || 0;
 }
 window.renderEconomyState = renderEconomyState;
-$('#economy-open').addEventListener('click',()=>{econPanel.classList.add('open');econSend({type:'economy-get'});});
-$('#econ-close').addEventListener('click',()=>econPanel.classList.remove('open'));
+const econTabs = [...econPanel.querySelectorAll('[data-econ-tab]')];
+function setEconomyTab(tab) {
+  const titles = {items:'🎒 Инвентарь',craft:'⚒ Крафт',factories:'🏭 Фабрики'};
+  econPanel.querySelectorAll('[data-econ-view]').forEach(view=>{view.hidden=view.dataset.econView!==tab;});
+  econTabs.forEach(button=>{const active=button.dataset.econTab===tab;button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));});
+  $('#econ-title').textContent=titles[tab]||titles.items;
+}
+function openEconomy(tab='items') { econPanel.classList.add('open');setEconomyTab(tab);econSend({type:'economy-get'}); }
+function closeEconomy() { econPanel.classList.remove('open'); }
+$('#economy-open').addEventListener('click',()=>econPanel.classList.contains('open')?closeEconomy():openEconomy());
+$('#econ-close').addEventListener('click',closeEconomy);
+econTabs.forEach(button=>button.addEventListener('click',()=>setEconomyTab(button.dataset.econTab)));
+addEventListener('keydown',ev=>{
+  if(ev.repeat || ev.ctrlKey || ev.altKey || ev.metaKey) return;
+  const tag=ev.target?.tagName?.toLowerCase();
+  if(tag==='input'||tag==='textarea'||tag==='select'||ev.target?.isContentEditable) return;
+  if(ev.code==='KeyI'){ev.preventDefault();econPanel.classList.contains('open')?closeEconomy():openEconomy('items');}
+  else if(ev.code==='Escape'&&econPanel.classList.contains('open')){ev.preventDefault();closeEconomy();}
+});
 econPanel.addEventListener('click',ev=>{
   const b=ev.target.closest('button[data-econ]'); if(!b)return;
   const id=b.dataset.id, action=b.dataset.econ;
@@ -773,7 +799,18 @@ function play(name) {
 /* =====================  ввод  ===================== */
 const keys = {};
 const down = (...c) => c.some(k => keys[k]);
-addEventListener('keydown', e => { keys[e.code] = true; if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault(); });
+addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
+  if (e.repeat || e.ctrlKey || e.altKey || e.metaKey || econPanel.classList.contains('open')) return;
+  const tag=e.target?.tagName?.toLowerCase();
+  if(tag==='input'||tag==='textarea'||tag==='select'||e.target?.isContentEditable) return;
+  if(e.code==='KeyF') {
+    const nearby=resources.filter(r=>!r.depleted&&!r.pendingHarvest).map(r=>({r,d:Math.hypot(pos.x-r.x,pos.z-r.z)})).filter(v=>v.d<=2.25).sort((a,b)=>a.d-b.d)[0];
+    if(nearby){e.preventDefault();orderGather(nearby.r);if(window.mpToast)window.mpToast('Начинаем сбор ресурса');}
+    else if(window.mpToast)window.mpToast('Подойдите ближе к ресурсу или объекту для взаимодействия.');
+  }
+});
 addEventListener('keyup', e => keys[e.code] = false);
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; });
 
