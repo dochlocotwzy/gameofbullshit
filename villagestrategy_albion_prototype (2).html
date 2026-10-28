@@ -413,6 +413,29 @@ function buildGroundTexture() {
   addRiverBridge(0, -28);
   addRiverBridge(-7, 0);
   addRiverBridge(0, 28);
+  // Prototype harbours at both river mouths; boats are visual until sailing controls are implemented.
+  function addPortDock(z, direction) {
+    const dock = new THREE.Group();
+    const deckMat = new THREE.MeshStandardMaterial({ color: 0x8b6842, roughness: .95 });
+    const beamMat = new THREE.MeshStandardMaterial({ color: 0x4e3826, roughness: 1 });
+    for (let i = 0; i < 10; i++) { const plank = new THREE.Mesh(new THREE.BoxGeometry(3.6, .16, .68), deckMat); plank.position.set(0, .22, -3.35 + i * .74); dock.add(plank); }
+    for (const x of [-1.55, 1.55]) for (let i = 0; i < 5; i++) { const post = new THREE.Mesh(new THREE.BoxGeometry(.22, .8, .22), beamMat); post.position.set(x, -.08, -3.2 + i * 1.6); dock.add(post); }
+    const tie = new THREE.Mesh(new THREE.BoxGeometry(4.1, .18, .3), beamMat); tie.position.set(0, .38, direction * 3.75); dock.add(tie);
+    dock.position.set(0, 0, z); scene.add(dock);
+  }
+  function addPrototypeBoat(x, z, rotation) {
+    const boat = new THREE.Group(), hullShape = new THREE.Shape();
+    hullShape.moveTo(-1.05, -2.45); hullShape.lineTo(1.05, -2.45); hullShape.lineTo(1.28, 1.45); hullShape.lineTo(0, 2.55); hullShape.lineTo(-1.28, 1.45); hullShape.closePath();
+    const hull = new THREE.Mesh(new THREE.ExtrudeGeometry(hullShape, { depth: .62, bevelEnabled: true, bevelSegments: 1, steps: 1, bevelSize: .07, bevelThickness: .07 }), M.darkWood);
+    hull.rotation.x = -Math.PI / 2; hull.position.y = .18; hull.castShadow = hull.receiveShadow = true; boat.add(hull);
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(1.65, .12, 3.2), M.wood); deck.position.y = .62; boat.add(deck);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(.07, .1, 3.1, 8), M.darkWood); mast.position.set(0, 2.05, -.1); boat.add(mast);
+    const sail = new THREE.Mesh(new THREE.PlaneGeometry(1.65, 1.85), new THREE.MeshStandardMaterial({ color: 0xe6dfc8, side: THREE.DoubleSide, roughness: .95 })); sail.position.set(.12, 2.35, -.12); sail.rotation.y = -.12; boat.add(sail);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(1.9, .14, 3.7), M.darkWood); rail.position.y = .73; boat.add(rail);
+    boat.position.set(x, .02, z); boat.rotation.y = rotation; scene.add(boat);
+  }
+  addPortDock(-49, -1); addPortDock(49, 1);
+  addPrototypeBoat(1.5, -42.5, 0); addPrototypeBoat(-2.5, 42.5, Math.PI);
 
   // пруд
   const water = new THREE.Mesh(new THREE.CircleGeometry(6.4, 48), new THREE.MeshStandardMaterial({ color: 0x3b87a8, roughness: .2, transparent: true, opacity: .88 }));
@@ -704,7 +727,7 @@ function applyResourceNode(node) {
 
 /* =====================  инвентарь, всплывающие надписи, частицы  ===================== */
 const inv = { wood: 0, stone: 0, ore: 0 };
-const ECON_LABELS = { wood:["🪵","Древесина"], stone:["🪨","Камень"], ore:["⛏️","Руда"], plank:["🪚","Доски"], iron_ingot:["🔩","Железные слитки"], sword:["⚔️","Мечи"] };
+const ECON_LABELS = { wood:["🪵","Древесина"], stone:["🪨","Камень"], ore:["⛏️","Руда"], plank:["🪚","Доски"], iron_ingot:["🔩","Железные слитки"], sword:["⚔️","Мечи"], ship:["⛵","Корабли"] };
 let economyState = { items:{wood:0,stone:0,ore:0,plank:0,iron_ingot:0,sword:0}, factories:[] };
 const pendingHarvests = new Map();
 const econPanel = $('#economy-panel');
@@ -733,20 +756,22 @@ function renderEconomyState(data) {
   const recipes = [
     {id:'plank',name:'Доски',icon:'🪚',inputs:'2 древесины',output:'1 доска',station:'Лесопилка'},
     {id:'iron_ingot',name:'Железный слиток',icon:'🔩',inputs:'2 руды + 1 древесина',output:'1 слиток',station:'Плавильня'},
-    {id:'sword',name:'Меч',icon:'⚔️',inputs:'3 доски + 2 слитка',output:'1 меч',station:'Кузница'}
+    {id:'sword',name:'Меч',icon:'⚔️',inputs:'3 доски + 2 слитка',output:'1 меч',station:'Кузница'},
+    {id:'ship',name:'Корабль',icon:'⛵',inputs:'20 досок + 4 слитка',output:'1 корабль',station:'Верфь'}
   ];
   $('#econ-recipes').innerHTML = recipes.map(r=>`<div class="econ-card"><b>${r.icon} ${r.name}</b><small>Расход: ${r.inputs}<br>Выход: ${r.output}<br>Станция: ${r.station}</small><button data-econ="craft" data-id="${r.id}">Создать</button></div>`).join('');
   const buildings = [
     {id:'sawmill',name:'Лесопилка',cost:'8 древесины + 4 камня',recipe:'Производит доски'},
     {id:'smelter',name:'Плавильня',cost:'6 древесины + 8 камня',recipe:'Производит железные слитки'},
-    {id:'forge',name:'Кузница',cost:'4 доски + 2 слитка + 5 камня',recipe:'Производит мечи'}
+    {id:'forge',name:'Кузница',cost:'4 доски + 2 слитка + 5 камня',recipe:'Производит мечи'},
+    {id:'shipyard',name:'Верфь',cost:'20 древесины + 12 камня + 8 досок',recipe:'Строит корабли'}
   ];
   $('#econ-buildings').innerHTML = buildings.map(b=>`<div class="econ-card"><b>🏭 ${b.name}</b><small>${b.recipe}<br>Строительство: ${b.cost}</small><button data-econ="build" data-id="${b.id}">Построить</button></div>`).join('');
   const factories = economyState.factories || [];
   $('#econ-factories').innerHTML = factories.length ? factories.map(f=>{
     const progress=Math.max(0,Math.min(100,Math.round((f.progress||0)*100)));
     const state=f.running ? `Работает · ${Math.ceil((f.remainingMs||0)/1000)} с · ${progress}%` : 'Ожидает запуска';
-    return `<div class="econ-card"><b>🏭 ${f.name} №${f.id}</b><small>${state}<br>Рецепт: ${({plank:'доски',iron_ingot:'железные слитки',sword:'мечи'})[f.recipe]||f.recipe}</small><button data-econ="run" data-id="${f.id}" ${f.running?'disabled':''}>Запустить</button><button data-econ="stop" data-id="${f.id}" ${f.running?'':'disabled'}>Отменить цикл</button></div>`;
+    return `<div class="econ-card"><b>🏭 ${f.name} №${f.id}</b><small>${state}<br>Рецепт: ${({plank:'доски',iron_ingot:'железные слитки',sword:'мечи',ship:'корабли'})[f.recipe]||f.recipe}</small><button data-econ="run" data-id="${f.id}" ${f.running?'disabled':''}>Запустить</button><button data-econ="stop" data-id="${f.id}" ${f.running?'':'disabled'}>Отменить цикл</button></div>`;
   }).join('') : '<div class="econ-card">Пока нет фабрик. Построй первую выше.</div>';
   $('#c-wood').textContent = items.wood || 0; $('#c-stone').textContent = items.stone || 0; $('#c-ore').textContent = items.ore || 0;
 }
