@@ -157,8 +157,8 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     assert.ok(depletedNode.node.respawnAt >= Date.now() + 29 * 60 * 1000, "shared node receives a thirty-minute server respawn deadline");
     assert.equal(gatheredEconomy.nodeId, woodNode.id, "gather confirmation identifies the depleted node");
     a.send(JSON.stringify({type:"economy-craft",recipe:"sword"}));
-    const rejectedCraft = await waitMessage(a, m => m.type === "economy-state" && m.message.includes("станция"));
-    assert.equal(rejectedCraft.economy.items.sword, 0, "crafting cannot bypass station requirements");
+    const rejectedCraft = await waitMessage(a, m => m.type === "economy-state" && m.message.includes("отключён"));
+    assert.equal("sword" in rejectedCraft.economy.items, false, "swords are not part of the prototype economy inventory");
     a.messages.length = 0; b.messages.length = 0;
     a.send(JSON.stringify({ type: "attack", targetId: bId }));
     await waitMessage(b, m => m.type === "combat-windup" && m.attackerId === aId);
