@@ -116,7 +116,7 @@ wss.on("connection", (ws) => {
   let spawnIndex = 0;
   while (occupiedSpawnIndices.has(spawnIndex)) spawnIndex++;
   const spawn = spawnPosition(spawnIndex);
-  const p = { id, ws, spawnIndex, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0 };
+  const p = { id, ws, spawnIndex, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
   players.set(id, p);
   send(ws, { type: "welcome", id, players: snapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
@@ -150,6 +150,12 @@ wss.on("connection", (ws) => {
         broadcast({ type: "player", player: publicPlayer(p) }, p.id);
         return;
       }
+      if (p.pendingAttack && Math.hypot(x - p.pendingAttack.startX, z - p.pendingAttack.startZ) > 0.12) {
+        clearTimeout(p.pendingAttack.timer);
+        const cancelledAttack = p.pendingAttack;
+        p.pendingAttack = null;
+        broadcast({type:"combat-cancelled",attackerId:p.id,targetId:cancelledAttack.targetId,attackId:cancelledAttack.id});
+      }
       p.x = x; p.z = z; p.rotation = rotation;
       broadcast({ type: "player", player: publicPlayer(p) }, p.id);
       return;
@@ -180,7 +186,7 @@ wss.on("connection", (ws) => {
     }
     if (msg.type === "attack") {
       const now = Date.now();
-      if (p.hp <= 0 || p.statuses?.stun || p.statuses?.air || now - p.lastAttack < ATTACK_COOLDOWN_MS) return;
+      if (p.hp <= 0 || p.statuses?.stun || p.statuses?.air || now - p.lastAttack < ATTACK_COOLDOWN_MS || p.pendingAttack) return;
       const target = players.get(String(msg.targetId || ""));
       if (!target || target.id === p.id || target.hp <= 0) return;
       const distance = Math.hypot(target.x - p.x, target.z - p.z);
@@ -189,6 +195,20 @@ wss.on("connection", (ws) => {
         return;
       }
       if (isParryInvulnerable(target, now)) return;
+      const attackId = crypto.randomUUID(), startX = p.x, startZ = p.z;
+      p.pendingAttack = { id: attackId, targetId: target.id, startX, startZ };
+      broadcast({ type: "combat-windup", attackerId: p.id, targetId: target.id, attackId, weapon: p.weapon || "broadsword", duration: 320 });
+      setTimeout(() => {
+        if (!p.pendingAttack || p.pendingAttack.id !== attackId) return;
+        p.pendingAttack = null;
+        const now = Date.now();
+        if (p.hp <= 0 || p.statuses?.stun || p.statuses?.air ||
+            Math.hypot(p.x - startX, p.z - startZ) > 0.12 ||
+            target.hp <= 0 || Math.hypot(target.x - p.x, target.z - p.z) > ATTACK_RANGE ||
+            isParryInvulnerable(target, now)) {
+          broadcast({ type: "combat-cancelled", attackerId: p.id, targetId: target.id, attackId });
+          return;
+        }
       const weapon = p.weapon || "broadsword";
       const baseDamage = WEAPON_DAMAGE[weapon] || WEAPON_DAMAGE.broadsword;
       const outgoingWeak = p.statuses?.weak && p.statuses.weak.until > now ? Math.max(0, Math.min(.9, Number(p.statuses.weak.value) || 0)) : 0;
@@ -219,6 +239,7 @@ wss.on("connection", (ws) => {
       broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: dealt, hp: target.hp, kind: "auto" });
       broadcast({ type: "player", player: { id: target.id, name: target.name, x: target.x, y: 0, z: target.z, rotation: target.rotation, hp: target.hp } });
       if (target.hp === 0) scheduleRespawn(target);
+      }, 320);
       return;
     }
     if (msg.type === "ability-hit") {
