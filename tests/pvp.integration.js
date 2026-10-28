@@ -24,6 +24,8 @@ assert.ok(serverSource.includes("Math.hypot(p.x - node.x, p.z - node.z) > 3.6"),
 assert.ok(serverSource.includes('type: "resource-node"'), "resource depletion and respawn are broadcast");
 assert.ok(clientHtml.includes("nodeId:r.id"), "client sends the selected resource node ID");
 assert.ok(clientHtml.includes("syncResourceWorld(msg.resources)"), "client renders the shared resource layout");
+assert.ok(clientHtml.includes("if (!window.mpTargetId && window.mpSelectNearestTarget) window.mpSelectNearestTarget(); if (window.mpTargetId) window.mpStartChase();"), "Space selects a nearby opponent before starting chase");
+assert.ok(serverSource.includes("const travel=Math.min(maxTravel,len);") && !serverSource.includes("if(len>maxTravel+1)return;"), "PvP dash AoE clamps distant cursor aim instead of silently rejecting the cast");
 assert.ok(clientHtml.includes("if (p.id === mpId) {\n      if (Number.isFinite(Number(p.hp))) setPlayerHealth(Number(p.hp));\n      return;\n    }"), "client applies server HP corrections to the local player");
 assert.ok(clientHtml.includes("(buffs.blood.t > 0 ? .3 : 0)"), "local dummy autoattacks include Bloodthirsty damage bonus");
 assert.ok(clientHtml.includes("if (!options.multiplayerCast && !TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }"), "multiplayer casts do not spend energy or start cooldown locally");
