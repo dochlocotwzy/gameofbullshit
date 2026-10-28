@@ -1675,10 +1675,12 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       } else if (msg.type === 'combat-effect') {
         const impactPhase = msg.phase === 'impact';
         const attacker = remotes.get(msg.attackerId);
-        if (attacker && !impactPhase) {
+        if (attacker && (!impactPhase || msg.hitIndex === 1)) {
           attacker.swingT = 1; attacker.abilityT = 1; attacker.lastAbilitySlot = null;
-          attacker.weapon = msg.weapon || attacker.weapon;
-          attacker.charges = Number(msg.charges)||0;
+          if (!impactPhase) {
+            attacker.weapon = msg.weapon || attacker.weapon;
+            attacker.charges = Number(msg.charges)||0;
+          }
           attacker.potato.rotation.x = -.42;
           attacker.potato.rotation.z = msg.abilityId === 'spinning' || msg.abilityId === 'cyclone' ? .28 : 0;
         }
@@ -1801,7 +1803,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     const smooth = 1 - Math.exp(-12 * frameDt);
     const selfAir = window.mpSelfStatuses?.air;
     const selfAirLeft = selfAir && selfAir.until > Date.now() ? (selfAir.until - Date.now()) / 1000 : 0;
-    if (player) player.position.y = selfAirLeft > 0 ? Math.sin(Math.PI * (1 - selfAirLeft / Math.max(.01, Number(selfAir.value === true ? .9 : .9)))) * 1.05 : 0;
+    if (player) player.position.y = selfAirLeft > 0 ? Math.sin(Math.PI * (1 - selfAirLeft / .9)) * 1.05 : 0;
     for (const r of remotes.values()) {
       const air = r.statuses?.air;
       const airLeft = air && air.until > Date.now() ? (air.until - Date.now()) / 1000 : 0;
