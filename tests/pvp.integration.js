@@ -163,6 +163,11 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     const depletedNode = await waitMessage(b, m => m.type === "resource-node" && m.node?.id === resourceNode.id && m.node.depleted === true);
     assert.ok(depletedNode.node.respawnAt >= Date.now() + 29 * 60 * 1000, "shared node receives a thirty-minute server respawn deadline");
     assert.equal(gatheredEconomy.nodeId, resourceNode.id, "gather confirmation identifies the depleted node");
+    // The server must serialize competing requests: the second player cannot collect the same node.
+    b.send(JSON.stringify({type:"economy-gather",resource:resourceNode.kind,nodeId:resourceNode.id,requestId:"resource-test-contended"}));
+    const contendedGather = await waitMessage(b, m => m.type === "economy-state" && m.action === "gather" && m.requestId === "resource-test-contended");
+    assert.equal(contendedGather.ok, false, "a depleted node cannot be harvested by a competing client");
+    assert.equal(contendedGather.economy.items[resourceNode.kind] || 0, 0, "a rejected competing gather grants no resources");
     a.send(JSON.stringify({type:"economy-craft",recipe:"sword"}));
     const rejectedCraft = await waitMessage(a, m => m.type === "economy-state" && m.message.includes("отключён"));
     assert.equal("sword" in rejectedCraft.economy.items, false, "swords are not part of the prototype economy inventory");
