@@ -15,6 +15,10 @@ assert.ok(catalogSource.includes("statModifiers"), "item metadata supports equip
 assert.ok(serverSource.includes('const ALLOW_TEST_MODE = process.env.ALLOW_TEST_MODE === "true";'), "server free-cast mode is disabled unless explicitly enabled for tests");
 assert.ok(serverSource.includes("const RESOURCE_RESPAWN_MS = 30 * 60 * 1000;"), "shared resources respawn after thirty minutes");
 assert.ok(serverSource.includes("const RESOURCE_COUNTS = { wood: 62, stone: 24, ore: 12 };"), "server generates fixed world counts for each resource type");
+assert.ok(clientHtml.includes("const wasDepleted = !!r.depleted;"), "resource visuals distinguish respawn transitions from repeated snapshots");
+assert.ok(clientHtml.includes("if (wasDepleted) {"), "resource growth animation starts only when a depleted node respawns");
+assert.ok(!clientHtml.includes("const lowGeos = [buildPineLow()"), "decorative non-harvestable background trees are not generated");
+assert.ok(clientHtml.includes("Medieval landscape detailing:"), "ground texture includes layered natural terrain detail");
 assert.ok(serverSource.includes('ship: { name: "Корабль", inputs: { plank: 20, iron_ingot: 4 }, output: { ship: 1 }, seconds: 45, station: "shipyard" }'), "ship construction consumes refined materials at a shipyard");
 assert.ok(serverSource.includes('shipyard: { name: "Верфь", cost: { wood: 20, stone: 12, plank: 8 }, recipe: "ship" }'), "shipyard has a server-validated construction cost");
 assert.ok(clientHtml.includes("addPortDock(-49, -1); addPortDock(49, 1)"), "map has docks at both river mouths");
