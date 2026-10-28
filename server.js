@@ -86,7 +86,6 @@ function applyEffects(target,effects,sourceId) {
   }
   broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
 }
-let spawnSequence = 0;
 function spawnPosition(index) {
   // Keep the first two duelists close enough for the existing opening-combat flow,
   // but never stack them on the exact same point.
@@ -108,7 +107,9 @@ wss.on("connection", (ws) => {
     return ws.close(1013, "Server full");
   }
   const id = crypto.randomUUID();
-  const spawnIndex = spawnSequence++;
+  const occupiedSpawnIndices = new Set([...players.values()].map(player => player.spawnIndex));
+  let spawnIndex = 0;
+  while (occupiedSpawnIndices.has(spawnIndex)) spawnIndex++;
   const spawn = spawnPosition(spawnIndex);
   const p = { id, ws, spawnIndex, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0 };
   players.set(id, p);
