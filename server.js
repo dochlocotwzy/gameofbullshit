@@ -549,7 +549,7 @@ wss.on("connection", (ws) => {
     }
     if (msg.type === "state") {
       if (p.hp <= 0) return;
-      const x = Number(msg.x), z = Number(msg.z), rotation = Number(msg.rotation);
+      let x = Number(msg.x), z = Number(msg.z); const rotation = Number(msg.rotation);
       if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(rotation)) return;
       if (Math.abs(x) > WORLD_BOUND || Math.abs(z) > WORLD_BOUND) return;
       // Clamp river entry to the last valid land point; rejecting the packet caused rubber-banding.
