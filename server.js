@@ -142,8 +142,9 @@ wss.on("connection", (ws) => {
       const x = Number(msg.x), z = Number(msg.z), rotation = Number(msg.rotation);
       if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(rotation)) return;
       if (Math.abs(x) > WORLD_BOUND || Math.abs(z) > WORLD_BOUND) return;
-      // Root is server-authoritative: accept facing updates, but reject movement until it expires.
-      if ((p.statuses?.root && p.statuses.root.until > Date.now()) || (p.statuses?.parryLock && p.statuses.parryLock.until > Date.now()) || (p.positionLockUntil && p.positionLockUntil > Date.now())) {
+      // Crowd control and dash locks are server-authoritative; clients may update facing but not position.
+      const movementLocked = ["root","parryLock","air","stun"].some(key => p.statuses?.[key]?.until > Date.now()) || (p.positionLockUntil && p.positionLockUntil > Date.now());
+      if (movementLocked) {
         p.rotation = rotation;
         send(ws, { type: "player", player: publicPlayer(p) });
         broadcast({ type: "player", player: publicPlayer(p) }, p.id);
@@ -276,8 +277,8 @@ wss.on("connection", (ws) => {
         } else victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&Math.hypot(t.x-ax,t.z-az)<=ability.radius);
       }
       else if(ability.line){
-        const ox=castOriginX,oz=castOriginZ,tx=Number.isFinite(aimX)?aimX:target.x,tz=Number.isFinite(aimZ)?aimZ:target.z;
-        const vx=tx-ox,vz=tz-oz,l=Math.hypot(vx,vz)||1,ux=vx/l,uz=vz/l,len=ability.line;
+        const ox=castOriginX,oz=castOriginZ,tx=Number.isFinite(aimX)?aimX:(target?.x??castOriginX),tz=Number.isFinite(aimZ)?aimZ:(target?.z??castOriginZ);
+        const vx=tx-ox,vz=tz-oz,l=Math.hypot(vx,vz),ux=l>.01?vx/l:Math.sin(p.rotation),uz=l>.01?vz/l:Math.cos(p.rotation),len=ability.line;
         victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&(()=>{const rx=t.x-ox,rz=t.z-oz,a=rx*ux+rz*uz,side=Math.abs(rx*uz-rz*ux);return a>=0&&a<=len&&side<=1.5;})());
       }
       else {if(!target){send(ws,{type:"combat",result:"no-target",abilityId,energy:p.energy});return;}if(distance>(ability.range||4)){send(ws,{type:"combat",result:"out-of-range",targetId:target.id,abilityId,energy:p.energy});return;}victims=[target];}
@@ -343,6 +344,7 @@ wss.on("connection", (ws) => {
             victim.hp=Math.max(0,victim.hp-secondDamage);
             broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:secondDamage,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:1});
             if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
+            broadcast({type:"combat-effect",phase:"impact",attackerId:p.id,abilityId,targetIds:[victim.id],x:castOriginX,z:castOriginZ,originX:castOriginX,originZ:castOriginZ,aimX:castOriginX,aimZ:castOriginZ,rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||"kingmaker",hitIndex:1});
             broadcast({type:"player",player:publicPlayer(victim)});
           },950);
           continue;
@@ -356,7 +358,14 @@ wss.on("connection", (ws) => {
         applyEffects(p,selfEffects,p.id);
       }
       send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
-      broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:victims.map(v=>v.id),x:p.x,z:p.z,originX:castOriginX,originZ:castOriginZ,aimX:selfCentered?p.x:(Number.isFinite(aimX)?aimX:p.x),aimZ:selfCentered?p.z:(Number.isFinite(aimZ)?aimZ:p.z),rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||"broadsword"});
+      let effectAimX=selfCentered?p.x:(Number.isFinite(aimX)?aimX:p.x),effectAimZ=selfCentered?p.z:(Number.isFinite(aimZ)?aimZ:p.z);
+      if(abilityId==="splitting"){
+        let vx=effectAimX-castOriginX,vz=effectAimZ-castOriginZ,len=Math.hypot(vx,vz);
+        if(len<=.01){vx=Math.sin(p.rotation);vz=Math.cos(p.rotation);len=1;}
+        effectAimX=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,castOriginX+vx/len*ability.line));
+        effectAimZ=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,castOriginZ+vz/len*ability.line));
+      }
+      broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:victims.map(v=>v.id),x:p.x,z:p.z,originX:castOriginX,originZ:castOriginZ,aimX:effectAimX,aimZ:effectAimZ,rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||"broadsword"});
       broadcast({type:"player",player:publicPlayer(p)});
       for(const victim of victims)broadcast({type:"player",player:publicPlayer(victim)});
     }
