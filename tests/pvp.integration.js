@@ -44,6 +44,7 @@ assert.ok(!serverSource.includes('sword: { name: "Меч", inputs:') && !clientH
 assert.ok(serverSource.includes('type: "resource-node"'), "resource depletion and respawn are broadcast");
 assert.ok(serverSource.includes("for (const viewer of players.values()) if (isInVision(viewer, node.x, node.z)) send(viewer.ws, payload);"), "resource state updates are server-authoritative without revealing hidden node coordinates");
 assert.ok(clientHtml.includes("msg.type === 'world-vision'") && clientHtml.includes("syncResourceWorld(Array.isArray(msg.resources) ? msg.resources : [])"), "client refreshes resource nodes when server vision changes, including empty snapshots");
+assert.ok(clientHtml.includes("Keep still-visible server nodes alive so gather orders and mesh references remain stable"), "resource vision reconciliation preserves visible node identity instead of rebuilding all nodes each update");
 assert.ok(clientHtml.includes("if (!r.serverManaged) { if (window.mpToast) window.mpToast('Жду синхронизации ресурсов с сервером.'); return; }"), "client cannot gather locally generated fallback resources while online");
 assert.ok(clientHtml.includes("nodeId:r.id"), "client sends the selected resource node ID");
 assert.ok(clientHtml.includes("syncResourceWorld(msg.resources)"), "client renders the shared resource layout");
