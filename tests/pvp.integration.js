@@ -7,6 +7,23 @@ const WebSocket = require("ws");
 const clientHtml = fs.readFileSync(path.join(__dirname, "..", "villagestrategy_albion_prototype (2).html"), "utf8");
 const serverSource = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
 const catalogSource = fs.readFileSync(path.join(__dirname, "..", "game-data", "catalog.js"), "utf8");
+const weaponBranches = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "albion-weapon-branches.json"), "utf8"));
+assert.deepEqual(Object.keys(weaponBranches.branches).sort(), ["axe", "mace"], "T8 weapon pack defines axe and mace branches");
+for (const [branchId, branch] of Object.entries(weaponBranches.branches)) {
+  assert.equal(branch.weapons.length, 8, `${branchId} branch has eight T8 weapons`);
+  assert.ok(branch.weapons.every(weapon => weapon.id && weapon.nameRu && weapon.name && weapon.e), `${branchId} weapons have IDs, localized names and E abilities`);
+  assert.ok(branch.q.length >= 1 && branch.w.length >= 1, `${branchId} branch has Q and W choices`);
+  assert.equal(Object.keys(branch.passives).length, 4, `${branchId} branch defines four passives`);
+  for (const [spellId, spell] of Object.entries(branch.spells)) {
+    assert.equal(spell.id, spellId, `${branchId} spell key matches its stable ID`);
+    assert.ok(["q", "w", "e"].includes(spell.slot), `${spellId} has a valid slot`);
+    assert.ok(Number.isFinite(spell.cost) && spell.cost >= 0, `${spellId} has a non-negative energy cost`);
+    assert.ok(Number.isFinite(spell.cooldown) && spell.cooldown >= 0, `${spellId} has a non-negative cooldown`);
+    assert.ok(spell.shape && typeof spell.shape.type === "string", `${spellId} declares a hit shape`);
+  }
+}
+assert.ok(fs.existsSync(path.join(__dirname, "..", "INTEGRATION.md")), "weapon integration guide is available at the repository root");
+
 assert.ok(serverSource.includes('require("./game-data/catalog")'), "server inventory uses the shared item catalog");
 assert.ok(catalogSource.includes("const TIERS = Object.freeze("), "item catalog defines extensible tiers");
 assert.ok(catalogSource.includes("const ITEM_DEFINITIONS = Object.freeze("), "item catalog defines item metadata");
