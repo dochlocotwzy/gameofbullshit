@@ -6,6 +6,12 @@ const WebSocket = require("ws");
 
 const clientHtml = fs.readFileSync(path.join(__dirname, "..", "villagestrategy_albion_prototype (2).html"), "utf8");
 const serverSource = fs.readFileSync(path.join(__dirname, "..", "server.js"), "utf8");
+const catalogSource = fs.readFileSync(path.join(__dirname, "..", "game-data", "catalog.js"), "utf8");
+assert.ok(serverSource.includes('require("./game-data/catalog")'), "server inventory uses the shared item catalog");
+assert.ok(catalogSource.includes("const TIERS = Object.freeze("), "item catalog defines extensible tiers");
+assert.ok(catalogSource.includes("const ITEM_DEFINITIONS = Object.freeze("), "item catalog defines item metadata");
+assert.ok(catalogSource.includes("const WEAPON_FAMILIES = Object.freeze("), "item catalog defines extensible weapon families");
+assert.ok(catalogSource.includes("statModifiers"), "item metadata supports equipment stat modifiers");
 assert.ok(serverSource.includes('const ALLOW_TEST_MODE = process.env.ALLOW_TEST_MODE === "true";'), "server free-cast mode is disabled unless explicitly enabled for tests");
 assert.ok(clientHtml.includes("if (p.id === mpId) {\n      if (Number.isFinite(Number(p.hp))) setPlayerHealth(Number(p.hp));\n      return;\n    }"), "client applies server HP corrections to the local player");
 assert.ok(clientHtml.includes("(buffs.blood.t > 0 ? .3 : 0)"), "local dummy autoattacks include Bloodthirsty damage bonus");
