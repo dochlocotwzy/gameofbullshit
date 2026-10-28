@@ -1696,13 +1696,76 @@ function buildWeaponModel(look){
  const add=(geo,mat,x,y,z,rx=0,ry=0,rz=0)=>{const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);m.rotation.set(rx,ry,rz);m.castShadow=true;g.add(m);return m;};
  add(new THREE.CylinderGeometry(.035,.047,len,10),grip,0,len*.43,0);add(new THREE.CylinderGeometry(.052,.052,.07,10),dark,0,len*.12,0);add(new THREE.CylinderGeometry(.06,.06,.09,10),dark,0,len*.82,0);add(new THREE.SphereGeometry(.075,10,8),metal,0,len*.89,0);
  if(look.type==='axe'){
-  const double=['greataxe','halberd','carrioncaller','scythe','realmbreaker','crystalreaper'].includes(style),span=style==='greataxe'?.72:style==='halberd'?.58:style==='scythe'?.68:style==='realmbreaker'?.66:.48;
-  const shape=new THREE.Shape();shape.moveTo(-.04,-.20);shape.quadraticCurveTo(-span*.35,-.16,-span*.78,.02);shape.quadraticCurveTo(-span*1.12,.22,-span*.72,.39);shape.lineTo(-.05,.27);shape.closePath();
-  const blade=new THREE.Mesh(new THREE.ExtrudeGeometry(shape,{depth:.085,bevelEnabled:true,bevelSegments:2,steps:1,bevelSize:.025,bevelThickness:.025}),metal);blade.position.set(.02,len*.63,-.042);blade.castShadow=true;g.add(blade);add(new THREE.BoxGeometry(.12,.42,.13),dark,0,len*.64,0);
-  if(double){const other=blade.clone();other.position.x=-.03;other.rotation.y=Math.PI;g.add(other);}
-  if(style==='scythe')add(new THREE.ConeGeometry(.12,.56,8),metal,.18,len*.89,0,0,0,-Math.PI/2);
-  if(style==='bearpaws')for(let i=0;i<3;i++)add(new THREE.ConeGeometry(.035,.43,7),metal,-.06+i*.11,len*.78,.04,0,0,Math.PI/2);
-  if(style==='crystalreaper'||style==='realmbreaker')add(new THREE.OctahedronGeometry(.13),metal,0,len*.57,.08);
+  // Albion-inspired weapon heads: broad forged silhouettes, bright cutting bevels,
+  // dark inset plates, visible haft socket and weapon-specific profiles.
+  const double=['greataxe','halberd','carrioncaller','scythe','realmbreaker','crystalreaper'].includes(style);
+  const span=style==='greataxe'?.78:style==='halberd'?.59:style==='scythe'?.72:style==='realmbreaker'?.78:style==='crystalreaper'?.66:style==='carrioncaller'?.58:style==='bearpaws'?.52:.52;
+  const headY=len*.64, headZ=-.045;
+  const silver=new THREE.MeshStandardMaterial({color:0xd8e0e5,metalness:.94,roughness:.2});
+  const edgeMat=new THREE.MeshStandardMaterial({color:0xf0f3ed,metalness:.96,roughness:.16});
+  const inset=new THREE.MeshStandardMaterial({color:look.glow?look.glow:0x343d43,metalness:.72,roughness:.3,emissive:look.glow||0,emissiveIntensity:look.glow?.16:0});
+  const gemMat=new THREE.MeshStandardMaterial({color:look.glow||0x7aa9b8,metalness:.45,roughness:.18,emissive:look.glow||0,emissiveIntensity:look.glow?.35:0});
+  const shapeFor=(kind,side=1)=>{
+    const sh=new THREE.Shape();
+    // Coordinates follow the outside edge from heel to blade tip, then return along the socket.
+    if(kind==='greataxe'||kind==='realmbreaker'){
+      sh.moveTo(0,-.25);sh.quadraticCurveTo(-span*.55,-.32,-span*.86,-.06);sh.lineTo(-span*1.03,.18);sh.lineTo(-span*.86,.38);sh.lineTo(-span*.48,.31);sh.lineTo(-.04,.24);sh.closePath();
+    }else if(kind==='halberd'){
+      sh.moveTo(0,-.24);sh.lineTo(-span*.55,-.22);sh.lineTo(-span*1.02,.02);sh.lineTo(-span*.68,.12);sh.lineTo(-span*.88,.29);sh.lineTo(-span*.38,.32);sh.lineTo(-.02,.22);sh.closePath();
+    }else if(kind==='scythe'||kind==='carrioncaller'){
+      sh.moveTo(0,-.22);sh.quadraticCurveTo(-span*.58,-.27,-span*.85,-.03);sh.quadraticCurveTo(-span*1.13,.15,-span*.65,.42);sh.quadraticCurveTo(-span*.9,.12,-span*.52,.08);sh.lineTo(-.03,.24);sh.closePath();
+    }else if(kind==='crystalreaper'){
+      sh.moveTo(0,-.22);sh.lineTo(-span*.6,-.28);sh.lineTo(-span*1.04,-.02);sh.lineTo(-span*.73,.16);sh.lineTo(-span*.96,.34);sh.lineTo(-span*.4,.3);sh.lineTo(-.03,.22);sh.closePath();
+    }else if(kind==='bearpaws'){
+      sh.moveTo(0,-.22);sh.lineTo(-span*.65,-.2);sh.lineTo(-span*.93,.12);sh.lineTo(-span*.58,.32);sh.lineTo(-.03,.23);sh.closePath();
+    }else{
+      sh.moveTo(0,-.22);sh.quadraticCurveTo(-span*.48,-.24,-span*.86,-.02);sh.quadraticCurveTo(-span*1.1,.18,-span*.67,.39);sh.lineTo(-span*.45,.3);sh.lineTo(-.03,.24);sh.closePath();
+    }
+    if(side<0){const pts=sh.getPoints(16);const mirrored=new THREE.Shape();mirrored.moveTo(-pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)mirrored.lineTo(-pts[i].x,pts[i].y);mirrored.closePath();return mirrored;}
+    return sh;
+  };
+  const addHeadPart=(kind,mat,side=1,scale=1,z=headZ)=>{
+    const sh=shapeFor(kind,side);
+    const mesh=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:.095*scale,bevelEnabled:true,bevelSegments:3,steps:1,bevelSize:.025*scale,bevelThickness:.022*scale}),mat);
+    mesh.position.set(0,headY,z);mesh.castShadow=true;mesh.receiveShadow=true;g.add(mesh);return mesh;
+  };
+  const sides=double?[-1,1]:[-1];
+  // Haft collar and a raised forged spine anchor the blade visually to the pole.
+  add(new THREE.BoxGeometry(.18,.34,.17),dark,0,headY,0);
+  add(new THREE.CylinderGeometry(.105,.085,.18,8),silver,0,headY-.02,0,0,0,0);
+  for(const side of sides){
+    const blade=addHeadPart(style,metal,side,1,headZ);
+    blade.scale.x=side<0?-1:1;
+    const plate=addHeadPart(style,inset,side,.68,headZ-.055);
+    plate.scale.set(side<0?-.68:.68,.68,1);
+    // Bright cutting edge: a narrow forged lip offset toward the outer blade.
+    const edgeShape=new THREE.Shape();
+    edgeShape.moveTo(-span*.72,-.17);edgeShape.quadraticCurveTo(-span*1.02,.02,-span*.82,.27);
+    edgeShape.lineTo(-span*.67,.32);edgeShape.quadraticCurveTo(-span*.86,.13,-span*.61,-.02);edgeShape.closePath();
+    const edge=new THREE.Mesh(new THREE.ExtrudeGeometry(edgeShape,{depth:.025,bevelEnabled:true,bevelSegments:2,bevelSize:.008,bevelThickness:.008}),edgeMat);
+    edge.position.set(side<0?-.01:.01,headY,headZ-.11);edge.scale.x=side<0?-1:1;edge.castShadow=true;g.add(edge);
+    for(const y of [-.12,.12])add(new THREE.SphereGeometry(.027,8,6),silver,side*span*.35,headY+y,.075);
+  }
+  // The weapon silhouettes differ by family instead of reusing one generic crescent.
+  if(style==='halberd'){
+    add(new THREE.ConeGeometry(.105,.48,6),silver,0,len*.91,0,0,0,0);
+    add(new THREE.ConeGeometry(.085,.3,6),silver,0,len*.43,0,0,0,Math.PI);
+    add(new THREE.BoxGeometry(.08,.24,.11),dark,0,len*.48,0);
+  }else if(style==='scythe'){
+    add(new THREE.ConeGeometry(.11,.48,7),silver,.14,len*.88,0,0,0,-Math.PI/2);
+    add(new THREE.TorusGeometry(.16,.025,6,12),dark,.1,headY+.17,.025,0,0,.3);
+  }else if(style==='bearpaws'){
+    for(let i=0;i<3;i++)add(new THREE.ConeGeometry(.045,.42,7),silver,-.12+i*.12,len*.79,.04,0,0,Math.PI/2);
+  }else if(style==='crystalreaper'||style==='realmbreaker'||style==='carrioncaller'){
+    add(new THREE.OctahedronGeometry(style==='realmbreaker'?.19:.14,1),gemMat,0,headY+.02,.1);
+    add(new THREE.TorusGeometry(style==='realmbreaker'?.2:.15,.022,6,16),dark,0,headY+.02,.08,Math.PI/2,0,0);
+    if(style==='realmbreaker')for(let i=0;i<3;i++)add(new THREE.ConeGeometry(.045,.22,5),silver,-.08+i*.08,headY+.27,.02,0,0,Math.PI);
+  }else if(style==='greataxe'){
+    add(new THREE.OctahedronGeometry(.09),gemMat,0,headY,.1);
+  }else{
+    add(new THREE.BoxGeometry(.12,.12,.16),silver,0,headY,.08);
+    add(new THREE.OctahedronGeometry(.065),gemMat,0,headY,.13);
+  }
  }else{
   add(new THREE.BoxGeometry(.18,.34,.17),dark,0,len*.79,0);
   if(style==='morningstar'){add(new THREE.IcosahedronGeometry(.19,1),metal,0,len*.92,0);for(let i=0;i<8;i++){const a=i*Math.PI/4;add(new THREE.ConeGeometry(.045,.2,6),metal,Math.cos(a)*.18,len*.92+Math.sin(a)*.18,0,0,0,-a);}add(new THREE.CylinderGeometry(.018,.018,.3,6),grip,0,len*.86,0);}
