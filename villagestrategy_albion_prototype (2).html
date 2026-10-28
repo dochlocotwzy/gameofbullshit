@@ -304,10 +304,10 @@ function distToPaths(x, z) {
   // Roads radiate from the central hub and branch toward four separated village regions.
   // Northern and southern roads cross the central river at the visible bridges.
   const defs = [
-    [[0, -8], [1, -20], [2.6, -30], [-5, -34], [-13, -37]],
-    [[0, -8], [1, -20], [2.6, -30], [7, -35], [13, -39]],
-    [[0, 8], [1, 20], [3.5, 36], [-5, 37], [-13, 37]],
-    [[0, 8], [1, 20], [3.5, 36], [8, 38], [13, 39]],
+    [[0, -8], [0, -20], [0, -28], [-5, -34], [-13, -37]],
+    [[0, -8], [0, -20], [0, -28], [7, -35], [13, -39]],
+    [[0, 8], [0, 20], [0, 28], [-5, 37], [-13, 37]],
+    [[0, 8], [0, 20], [0, 28], [8, 38], [13, 39]],
     [[0, 0], [-7, 0], [-18, -2], [-27, -5], [-37, -7]],
     [[0, 0], [-7, 0], [-18, 2], [-27, 5], [-35, 7]],
     [[0, 0], [12, -1], [23, -4], [37, -7]],
@@ -375,7 +375,7 @@ function buildGroundTexture() {
   outer.rotation.x = -Math.PI / 2; outer.position.y = -0.06; scene.add(outer);
 
   // First-pass central river with sandy banks and two visible crossings.
-  const riverCenter = [[0,-55],[2,-42],[4,-28],[2,-17],[-3,-7],[-7,0],[-4,10],[0,20],[4,33],[3,45],[0,55]];
+  const riverCenter = [[0,-55],[3,-42],[0,-28],[-4,-18],[-7,0],[-4,18],[0,28],[3,42],[0,55]];
   function addRiverRibbon(halfWidth, material, y) {
     const left = [], right = [];
     for (let i = 0; i < riverCenter.length; i++) {
@@ -410,9 +410,9 @@ function buildGroundTexture() {
     }
     group.position.set(x, 0, z); scene.add(group);
   }
-  addRiverBridge(2.6, -30);
+  addRiverBridge(0, -28);
   addRiverBridge(-7, 0);
-  addRiverBridge(3.5, 36);
+  addRiverBridge(0, 28);
 
   // пруд
   const water = new THREE.Mesh(new THREE.CircleGeometry(6.4, 48), new THREE.MeshStandardMaterial({ color: 0x3b87a8, roughness: .2, transparent: true, opacity: .88 }));
