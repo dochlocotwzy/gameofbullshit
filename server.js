@@ -36,6 +36,43 @@ const MOVE_SPEED = 5.2;
 const RUN_SPEED = 8.0;
 const WORLD_BOUND = 57;
 const TICK_MS = 50;
+// Keep server collision/resource rules aligned with the river drawn by the client.
+const RIVER_CENTER = [[0,-55],[3,-42],[0,-28],[-4,-18],[-7,0],[-4,18],[0,28],[3,42],[0,55]];
+const RIVER_BLOCK_RADIUS = 3.45;
+const RIVER_BRIDGES = [[0,-28],[-7,0],[0,28]];
+function closestRiverPoint(x, z) {
+  let best = { x: 0, z: 0, distance: Infinity, nx: 1, nz: 0, dx: 0, dz: 0 };
+  for (let i = 0; i < RIVER_CENTER.length - 1; i++) {
+    const a = RIVER_CENTER[i], b = RIVER_CENTER[i + 1];
+    const vx = b[0] - a[0], vz = b[1] - a[1], len2 = vx * vx + vz * vz || 1;
+    const t = Math.max(0, Math.min(1, ((x - a[0]) * vx + (z - a[1]) * vz) / len2));
+    const px = a[0] + vx * t, pz = a[1] + vz * t;
+    const dx = x - px, dz = z - pz, distance = Math.hypot(dx, dz);
+    if (distance < best.distance) {
+      const len = Math.sqrt(len2);
+      best = { x: px, z: pz, distance, nx: -vz / len, nz: vx / len, dx, dz };
+    }
+  }
+  return best;
+}
+function isBridgeCrossing(x, z) {
+  return RIVER_BRIDGES.some(([bx, bz]) => Math.abs(x - bx) <= 4.15 && Math.abs(z - bz) <= 2.15);
+}
+function isRiverBlocked(x, z) {
+  return !isBridgeCrossing(x, z) && closestRiverPoint(x, z).distance < RIVER_BLOCK_RADIUS;
+}
+function safeLandPosition(fromX, fromZ, toX, toZ) {
+  const distance = Math.hypot(toX - fromX, toZ - fromZ);
+  const steps = Math.max(1, Math.ceil(distance / 0.25));
+  let x = fromX, z = fromZ;
+  for (let i = 1; i <= steps; i++) {
+    const nx = fromX + (toX - fromX) * i / steps;
+    const nz = fromZ + (toZ - fromZ) * i / steps;
+    if (isRiverBlocked(nx, nz)) break;
+    x = nx; z = nz;
+  }
+  return { x, z };
+}
 const players = new Map();
 
 const server = http.createServer((req, res) => {
@@ -124,6 +161,8 @@ function generateResourceWorld() {
       const x = Math.round(Math.cos(angle) * radius * 100) / 100;
       const z = Math.round(Math.sin(angle) * radius * 100) / 100;
       if (Math.hypot(x, z) > WORLD_BOUND - 6 || Math.hypot(x, z) < 14) continue;
+      // Exclude the river and its sandy banks from every server-generated resource cluster.
+      if (closestRiverPoint(x, z).distance < 5.5) continue;
       if (nodes.some(n => Math.hypot(n.x - x, n.z - z) < minDistance)) continue;
       nodes.push({ id: `res-${nodes.length + 1}`, kind, x, z, scale: Math.round((0.85 + random() * 0.55) * 100) / 100, variant: Math.floor(random() * 4), depleted: false, respawnAt: 0, lastGatherAt: 0 });
     }
@@ -208,7 +247,7 @@ wss.on("connection", (ws) => {
       const kind = String(msg.resource || ""), nodeId = String(msg.nodeId || ""), requestId = String(msg.requestId || "").slice(0, 80);
       const node = worldResources.find(n => n.id === nodeId);
       const now = Date.now();
-      if (!node || node.kind !== kind || p.hp <= 0 || Math.hypot(p.x - node.x, p.z - node.z) > 3.6) {
+      if (!node || node.kind !== kind || p.hp <= 0 || isRiverBlocked(node.x, node.z) || Math.hypot(p.x - node.x, p.z - node.z) > 3.6) {
         sendEconomy(p, "Подойди ближе к доступному ресурсу.", {action:"gather",requestId,ok:false,nodeId}); return;
       }
       if (node.depleted || now - node.lastGatherAt < 2500) {
@@ -264,7 +303,9 @@ wss.on("connection", (ws) => {
       const x = Number(msg.x), z = Number(msg.z), rotation = Number(msg.rotation);
       if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(rotation)) return;
       if (Math.abs(x) > WORLD_BOUND || Math.abs(z) > WORLD_BOUND) return;
-      // Crowd control and dash locks are server-authoritative; clients may update facing but not position.
+      // Reject client position updates inside the river; bridges are the only crossing points.
+      if (isRiverBlocked(x, z)) { send(ws, { type: "player", player: publicPlayer(p) }); return; }
+      // Crowd control and dash locks are server-authoritative; clients may update facing but not position;
       const movementLocked = ["root","parryLock","air","stun"].some(key => p.statuses?.[key]?.until > Date.now()) || (p.positionLockUntil && p.positionLockUntil > Date.now());
       if (movementLocked) {
         p.rotation = rotation;
@@ -392,8 +433,8 @@ wss.on("connection", (ws) => {
       if(ability.dash&&distance<=ability.range&&distance>1.35){
         const travel=Math.min(distance-1.05,abilityId==="charge"?12:Math.max(2.7,distance-1.7));
         p.rotation=Math.atan2(dx,dz);
-        p.x=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+dx/distance*travel));
-        p.z=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+dz/distance*travel));
+        const dashLanding = safeLandPosition(p.x, p.z, Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+dx/distance*travel)), Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+dz/distance*travel)));
+        p.x = dashLanding.x; p.z = dashLanding.z;
         p.positionLockUntil = Date.now() + 250;
         distance=Math.hypot(target.x-p.x,target.z-p.z);
         // Replicate server-authoritative dash immediately so clients render the jump, not only the impact.
@@ -403,7 +444,7 @@ wss.on("connection", (ws) => {
         const maxTravel=abilityId==="spinning"?12:abilityId==="carvingDash"?6:7,ax=aimX-p.x,az=aimZ-p.z,len=Math.hypot(ax,az);
         // Clamp cursor aim to the ability's travel distance instead of silently dropping the cast.
         const travel=Math.min(maxTravel,len);
-        if(len>.01){p.x=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+ax/len*travel));p.z=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+az/len*travel));p.rotation=Math.atan2(ax,az);p.positionLockUntil=Date.now()+250;}
+        if(len>.01){const dashLanding=safeLandPosition(p.x,p.z,Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+ax/len*travel)),Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+az/len*travel)));p.x=dashLanding.x;p.z=dashLanding.z;p.rotation=Math.atan2(ax,az);p.positionLockUntil=Date.now()+250;}
       }
       let victims=[];
       if(ability.path&&isArea){
