@@ -200,8 +200,18 @@ function applyEffects(target,effects,sourceId) {
       for(const key of ["haste","resist","shield","attackBuff","damageBuff","attackSpeed","healOverTime","lifesteal"])delete target.statuses[key];
       continue;
     }
+    if(e.type==="auraStack"){
+      const oldAura=target.statuses.auraStack, max=Math.max(1,Number(e.max)||3);
+      target.statuses.auraStack={value:Math.min(max,(oldAura&&oldAura.until>now?Number(oldAura.value)||0:0)+1),until:now+Math.round((Number(e.duration)||5)*1000),sourceId};continue;
+    }
+    const control=["stun","root","silence","slow","air"].includes(e.type);
+    if(control&&target.statuses.ccImmune&&target.statuses.ccImmune.until>now)continue;
+    let duration=Math.max(0.05,Number(e.duration)||1);
+    if(control&&target.statuses.ccResist&&target.statuses.ccResist.until>now)duration*=1-Math.max(0,Math.min(.9,Number(target.statuses.ccResist.value)||0));
+    const source=players.get(String(sourceId||""));
+    if(control&&source?.statuses?.ccDurationBonus&&source.statuses.ccDurationBonus.until>now)duration*=1+Math.max(0,Number(source.statuses.ccDurationBonus.value)||0);
     const key=e.type,old=target.statuses[key]||{};
-    target.statuses[key]={value:e.value??e.dps??true,until:now+Math.round((e.duration||1)*1000),sourceId};
+    target.statuses[key]={value:e.value??e.dps??true,until:now+Math.round(duration*1000),sourceId};
     if(key==="bleed"||key==="deepBleed")target.statuses[key].nextTickAt=now+500;
     if(key==="hpDown")target.hp=Math.min(target.hp,Math.round(PLAYER_MAX_HP*(1-Math.max(0,Math.min(.9,Number(e.value)||0)))));
   }
@@ -211,7 +221,7 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
   const now=Date.now(), branch=ALBION_BRANCHES[ability.branch], weaponBranch=ALBION_WEAPONS[p.weapon]?.branch||null;
   const validLoadout=slot==="e"?WEAPON_E[p.weapon]===abilityId:p.loadout?.[slot]===abilityId;
   if(!branch||weaponBranch!==ability.branch||slot!==ability.slot||!validLoadout){send(ws,{type:"combat",result:"invalid-ability",abilityId,slot,energy:p.energy});return;}
-  if(p.hp<=0||p.statuses?.stun||p.statuses?.air||p.statuses?.silence){send(ws,{type:"combat",result:"disabled",abilityId,energy:p.energy});return;}
+  if(p.hp<=0||p.statuses?.stun||p.statuses?.air||p.statuses?.silence||(p.statuses?.cannotAttack&&p.statuses.cannotAttack.until>now)){send(ws,{type:"combat",result:"disabled",abilityId,energy:p.energy});return;}
   if(now-p.lastAbility<250)return;
   if(!p.testMode&&(p.abilityCooldowns[abilityId]||0)>now){send(ws,{type:"combat",result:"cooldown",abilityId,until:p.abilityCooldowns[abilityId],energy:p.energy});return;}
   if(!p.testMode&&p.energy<ability.cost){send(ws,{type:"combat",result:"energy",abilityId,energy:p.energy});return;}
@@ -602,7 +612,7 @@ wss.on("connection", (ws) => {
     }
     if (msg.type === "attack") {
       const now = Date.now();
-      if (p.hp <= 0 || p.statuses?.stun || p.statuses?.air || now - p.lastAttack < ATTACK_COOLDOWN_MS || p.pendingAttack) return;
+      if (p.hp <= 0 || p.statuses?.stun || p.statuses?.air || (p.statuses?.cannotAttack && p.statuses.cannotAttack.until > now) || now - p.lastAttack < ATTACK_COOLDOWN_MS / (1 + Math.max(0,Number(p.statuses?.attackSpeed?.value)||0)) || p.pendingAttack) return;
       const target = players.get(String(msg.targetId || ""));
       if (!target || target.id === p.id || target.hp <= 0 || target.team === p.team) return;
       const distance = Math.hypot(target.x - p.x, target.z - p.z);
@@ -628,7 +638,7 @@ wss.on("connection", (ws) => {
       const weapon = p.weapon || "broadsword";
       const baseDamage = WEAPON_DAMAGE[weapon] || WEAPON_DAMAGE.broadsword;
       const outgoingWeak = p.statuses?.weak && p.statuses.weak.until > now ? Math.max(0, Math.min(.9, Number(p.statuses.weak.value) || 0)) : 0;
-      const attackBonus = ["attackBuff","interruptAttackBuff","bloodthirstAttackBuff"].reduce((sum,key) => { const st=p.statuses?.[key]; return sum + (st && st.until > now ? Math.max(0,Number(st.value)||0) : 0); }, 0);
+      const attackBonus = ["attackBuff","interruptAttackBuff","bloodthirstAttackBuff","damageBuff"].reduce((sum,key) => { const st=p.statuses?.[key]; return sum + (st && st.until > now ? Math.max(0,Number(st.value)||0) : 0); }, 0);
       const damage = Math.round(baseDamage * (1 + attackBonus) * (1 - outgoingWeak) * (target.statuses?.armorBreak ? 1.25 : 1));
       const defense = target.statuses?.defense && target.statuses.defense.until > now ? Math.max(0, Number(target.statuses.defense.value) || 0) : 0;
       const defenseReduction = defense > 0 ? Math.min(.5, defense / (defense + 200)) : 0;
