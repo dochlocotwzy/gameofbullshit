@@ -34,12 +34,13 @@ const ATTACK_RANGE = 3.8; // PvP auto-attack reach
 const ATTACK_COOLDOWN_MS = 850;
 const MOVE_SPEED = 5.2;
 const RUN_SPEED = 8.0;
-const WORLD_BOUND = 57;
+const MAP_SCALE = 2.3;
+const WORLD_BOUND = 126.5;
 const TICK_MS = 50;
 // Keep server collision/resource rules aligned with the river drawn by the client.
-const RIVER_CENTER = [[0,-55],[3,-42],[0,-28],[-4,-18],[-7,0],[-4,18],[0,28],[3,42],[0,55]];
-const RIVER_BLOCK_RADIUS = 3.45;
-const RIVER_BRIDGES = [[0,-28],[-7,0],[0,28]];
+const RIVER_CENTER = [[0,-55],[3,-42],[0,-28],[-4,-18],[-7,0],[-4,18],[0,28],[3,42],[0,55]].map(([x,z]) => [x*MAP_SCALE,z*MAP_SCALE]);
+const RIVER_BLOCK_RADIUS = 3.45 * MAP_SCALE;
+const RIVER_BRIDGES = [[0,-28],[-7,0],[0,28]].map(([x,z]) => [x*MAP_SCALE,z*MAP_SCALE]);
 function closestRiverPoint(x, z) {
   let best = { x: 0, z: 0, distance: Infinity, nx: 1, nz: 0, dx: 0, dz: 0 };
   for (let i = 0; i < RIVER_CENTER.length - 1; i++) {
@@ -105,7 +106,7 @@ function send(ws, payload) {
 }
 function snapshot() {
   return [...players.values()].map(p => ({
-    id: p.id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp, statuses: p.statuses || {}, charges: p.charges || 0, chargeExpiresAt: p.chargeExpiresAt || 0, weapon: p.weapon || "broadsword"
+    id: p.id, name: p.name, team: p.team, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp, statuses: p.statuses || {}, charges: p.charges || 0, chargeExpiresAt: p.chargeExpiresAt || 0, weapon: p.weapon || "broadsword"
   }));
 }
 function broadcast(payload, exceptId) {
@@ -114,7 +115,8 @@ function broadcast(payload, exceptId) {
     if (p.id !== exceptId && p.ws.readyState === WebSocket.OPEN) p.ws.send(message);
   }
 }
-function publicPlayer(p) { return {id:p.id,name:p.name,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{},charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,weapon:p.weapon||"broadsword"}; }
+function publicPlayer(p) { return {id:p.id,name:p.name,team:p.team,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{},charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,weapon:p.weapon||"broadsword"}; }
+function chooseTeam() { let blue=0,red=0; for(const player of players.values()){if(player.team==="blue")blue++;else if(player.team==="red")red++;} if(blue===red)return crypto.randomInt(0,2)?"blue":"red"; return blue<red?"blue":"red"; }
 function isParryInvulnerable(target, now = Date.now()) {
   return !!(target?.statuses?.parryLock && target.statuses.parryLock.until > now);
 }
@@ -135,16 +137,10 @@ function applyEffects(target,effects,sourceId) {
   broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
 }
 function spawnPosition(index) {
-  // Keep the first two duelists close enough for the existing opening-combat flow,
-  // but never stack them on the exact same point.
-  if (index === 0) return { x: -1.4, z: 7 };
-  if (index === 1) return { x: 1.4, z: 7 };
-  const slot = index - 2;
-  const angle = (slot % 8) * (Math.PI / 4);
-  const radius = 4 + Math.floor(slot / 8) * 3;
-  const candidate = { x: Math.round(Math.cos(angle) * radius * 100) / 100, z: Math.round((7 + Math.sin(angle) * radius) * 100) / 100 };
-  // Higher player counts must not respawn on the river either.
-  return isRiverBlocked(candidate.x, candidate.z) ? safeLandPosition(0, 7, candidate.x, candidate.z) : candidate;
+  // Prototype starts every player in the left village until team-specific bases are built.
+  const slot = Math.max(0, index|0), angle = (slot % 8) * (Math.PI / 4), radius = 2.4 + Math.floor(slot / 8) * 2.4;
+  const candidate = { x: Math.round((-31 + Math.cos(angle)*radius) * MAP_SCALE * 100) / 100, z: Math.round((-7 + Math.sin(angle)*radius) * MAP_SCALE * 100) / 100 };
+  return isRiverBlocked(candidate.x, candidate.z) ? safeLandPosition(-31*MAP_SCALE, -7*MAP_SCALE, candidate.x, candidate.z) : candidate;
 }
 function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{const spawn=spawnPosition(target.spawnIndex);target.hp=PLAYER_MAX_HP;target.x=spawn.x;target.z=spawn.z;target.rotation=0;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.moveTarget=null;target.input={x:0,z:0,running:false};target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
 const RESOURCE_RESPAWN_MS = 30 * 60 * 1000;
@@ -154,15 +150,15 @@ const worldResources = [];
 function generateResourceWorld() {
   const nodes = [];
   const random = () => crypto.randomInt(0, 1_000_000) / 1_000_000;
-  const minDistance = 2.8;
+  const minDistance = 2.8 * MAP_SCALE;
   for (const [kind, count] of Object.entries(RESOURCE_COUNTS)) {
     let tries = 0;
     while (nodes.filter(n => n.kind === kind).length < count && tries++ < 50000) {
       const angle = random() * Math.PI * 2;
       const radius = 17 + random() * 32;
-      const x = Math.round(Math.cos(angle) * radius * 100) / 100;
-      const z = Math.round(Math.sin(angle) * radius * 100) / 100;
-      if (Math.hypot(x, z) > WORLD_BOUND - 6 || Math.hypot(x, z) < 14) continue;
+      const x = Math.round(Math.cos(angle) * radius * MAP_SCALE * 100) / 100;
+      const z = Math.round(Math.sin(angle) * radius * MAP_SCALE * 100) / 100;
+      if (Math.hypot(x, z) > WORLD_BOUND - 6 || Math.hypot(x, z) < 14 * MAP_SCALE) continue;
       // Exclude the river and its sandy banks from every server-generated resource cluster.
       if (closestRiverPoint(x, z).distance < 5.5) continue;
       if (nodes.some(n => Math.hypot(n.x - x, n.z - z) < minDistance)) continue;
@@ -188,7 +184,6 @@ const ECONOMY_RECIPES = {
 const FACTORY_TYPES = {
   sawmill: { name: "Лесопилка", cost: { wood: 8, stone: 4 }, recipe: "plank" },
   smelter: { name: "Плавильня", cost: { wood: 6, stone: 8 }, recipe: "iron_ingot" },
-  forge: { name: "Кузница", cost: { plank: 4, iron_ingot: 2, stone: 5 }, recipe: "sword" },
   shipyard: { name: "Верфь", cost: { wood: 20, stone: 12, plank: 8 }, recipe: "ship" }
 };
 function economySnapshot(p) {
@@ -219,14 +214,15 @@ wss.on("connection", (ws) => {
     return ws.close(1013, "Server full");
   }
   const id = crypto.randomUUID();
+  const team = chooseTeam();
   const occupiedSpawnIndices = new Set([...players.values()].map(player => player.spawnIndex));
   let spawnIndex = 0;
   while (occupiedSpawnIndices.has(spawnIndex)) spawnIndex++;
   const spawn = spawnPosition(spawnIndex);
-  const p = { id, ws, spawnIndex, economy: { items: Object.fromEntries([...ECONOMY_ITEMS].map(itemId => [itemId, 0])), factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
+  const p = { id, ws, spawnIndex, team, economy: { items: Object.fromEntries([...ECONOMY_ITEMS].map(itemId => [itemId, 0])), factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
   players.set(id, p);
-  send(ws, { type: "welcome", id, players: snapshot(), resources: resourceWorldSnapshot() });
-  broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
+  send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(), resources: resourceWorldSnapshot() });
+  broadcast({ type: "joined", player: publicPlayer(p) }, id);
 
   ws.on("message", raw => {
     if (raw.length > 2048) return;
@@ -236,7 +232,7 @@ wss.on("connection", (ws) => {
     if (msg.type === "hello") {
       p.name = safeName(msg.name);
       broadcast({ type: "player", player: { id: p.id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, p.id);
-      send(ws, { type: "welcome", id, players: snapshot() });
+      send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot() });
       return;
     }
     if (msg.type === "latency-ping") {
@@ -353,7 +349,7 @@ wss.on("connection", (ws) => {
       const now = Date.now();
       if (p.hp <= 0 || p.statuses?.stun || p.statuses?.air || now - p.lastAttack < ATTACK_COOLDOWN_MS || p.pendingAttack) return;
       const target = players.get(String(msg.targetId || ""));
-      if (!target || target.id === p.id || target.hp <= 0) return;
+      if (!target || target.id === p.id || target.hp <= 0 || target.team === p.team) return;
       const distance = Math.hypot(target.x - p.x, target.z - p.z);
       if (!Number.isFinite(distance) || distance > ATTACK_RANGE) {
         send(ws, { type: "combat", result: "out-of-range", targetId: target.id });
@@ -451,7 +447,7 @@ wss.on("connection", (ws) => {
       let victims=[];
       if(ability.path&&isArea){
         const vx=p.x-castOriginX,vz=p.z-castOriginZ,l=Math.hypot(vx,vz)||1,ux=vx/l,uz=vz/l;
-        victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&(()=>{const rx=t.x-castOriginX,rz=t.z-castOriginZ,along=rx*ux+rz*uz,side=Math.abs(rx*uz-rz*ux);return along>=0&&along<=l&&side<=ability.radius;})());
+        victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&t.team!==p.team&&(()=>{const rx=t.x-castOriginX,rz=t.z-castOriginZ,along=rx*ux+rz*uz,side=Math.abs(rx*uz-rz*ux);return along>=0&&along<=l&&side<=ability.radius;})());
       } else if(ability.radius&&isArea){
         // Spinning lands at the server-clamped dash endpoint; resolve its hit circle there, not at a farther cursor point.
         const landingCentered=abilityId==="spinning";
@@ -460,12 +456,12 @@ wss.on("connection", (ws) => {
         if(["bloodthirsty","infinity"].includes(abilityId)){
           const dx=aimX-castOriginX,dz=aimZ-castOriginZ,len=Math.hypot(dx,dz),ux=len>.3?dx/len:Math.sin(p.rotation),uz=len>.3?dz/len:Math.cos(p.rotation);
           victims=[...players.values()].filter(t=>{if(t.hp<=0||t.id===p.id)return false;const rx=t.x-castOriginX,rz=t.z-castOriginZ,d=Math.hypot(rx,rz);return d<=ability.radius&&(d<.3||(rx/d)*ux+(rz/d)*uz>=Math.cos(.8));});
-        } else victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&Math.hypot(t.x-ax,t.z-az)<=ability.radius);
+        } else victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&t.team!==p.team&&Math.hypot(t.x-ax,t.z-az)<=ability.radius);
       }
       else if(ability.line){
         const ox=castOriginX,oz=castOriginZ,tx=Number.isFinite(aimX)?aimX:(target?.x??castOriginX),tz=Number.isFinite(aimZ)?aimZ:(target?.z??castOriginZ);
         const vx=tx-ox,vz=tz-oz,l=Math.hypot(vx,vz),ux=l>.01?vx/l:Math.sin(p.rotation),uz=l>.01?vz/l:Math.cos(p.rotation),len=ability.line;
-        victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&(()=>{const rx=t.x-ox,rz=t.z-oz,a=rx*ux+rz*uz,side=Math.abs(rx*uz-rz*ux);return a>=0&&a<=len&&side<=1.5;})());
+        victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&t.team!==p.team&&(()=>{const rx=t.x-ox,rz=t.z-oz,a=rx*ux+rz*uz,side=Math.abs(rx*uz-rz*ux);return a>=0&&a<=len&&side<=1.5;})());
       }
       else {if(!target){send(ws,{type:"combat",result:"no-target",abilityId,energy:p.energy});return;}if(distance>(ability.range||4)){send(ws,{type:"combat",result:"out-of-range",targetId:target.id,abilityId,energy:p.energy});return;}victims=[target];}
       if(!victims.length && !areaAbilityIds.has(abilityId)){send(ws,{type:"combat",result:"no-target",targetId:target?.id,abilityId,energy:p.energy});return;}
@@ -478,7 +474,7 @@ wss.on("connection", (ws) => {
         send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
         setTimeout(()=>{
           if(p.hp<=0)return;
-          const impactVictims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&!isParryInvulnerable(t)&&Math.hypot(t.x-p.x,t.z-p.z)<=6);
+          const impactVictims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&t.team!==p.team&&!isParryInvulnerable(t)&&Math.hypot(t.x-p.x,t.z-p.z)<=6);
           for(const victim of impactVictims){
             const reduction=victim.statuses?.resist?.value||0;
             const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
