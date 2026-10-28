@@ -209,6 +209,8 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
   let dl=Math.hypot(dir.x,dir.z)||1;dir={x:dir.x/dl,z:dir.z/dl};
   const maxRange=Math.max(0,Number(ability.range)||0);
   if(aim&&maxRange>0&&Math.hypot(aim.x-p.x,aim.z-p.z)>maxRange){aim.x=p.x+dir.x*maxRange;aim.z=p.z+dir.z*maxRange;}
+  if(ability.target==="enemy"&&ability.shape?.type==="single"&&(!target||target.hp<=0||target.id===p.id||target.team===p.team||Math.hypot(target.x-p.x,target.z-p.z)>maxRange+.01)){send(ws,{type:"combat",result:target?"out-of-range":"no-target",abilityId,energy:p.energy});return;}
+  if(!ability.dash&&ability.target==="ground"&&ability.shape?.origin==="aim"&&!aim){send(ws,{type:"combat",result:"invalid-aim",abilityId,energy:p.energy});return;}
   if(ability.dash&&aim){
     const d=Math.hypot(aim.x-p.x,aim.z-p.z),travel=Math.min(Number(ability.dash.distance)||maxRange,d);
     if(d>.05&&travel>0){const land=safeLandPosition(p.x,p.z,Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+(aim.x-p.x)/d*travel)),Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+(aim.z-p.z)/d*travel)));p.x=land.x;p.z=land.z;p.rotation=Math.atan2(dir.x,dir.z);p.positionLockUntil=Date.now()+Math.max(300,(Number(ability.dash.dur)||.35)*1000+150);broadcast({type:"player",player:publicPlayer(p)});}
@@ -229,12 +231,12 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
     return [];
   };
   const selfEffects=ability.selfEffects||[];
-  if(selfEffects.length)applyEffects(p,selfEffects,p.id);
   const selfCast=ability.target==="self";
   let victims=selfCast&&!ability.hits&&!ability.zone?[]:resolve(ability.shape,target);
   if(ability.shape?.type==="single"&&!victims.length&&ability.target==="enemy"){send(ws,{type:"combat",result:target?"out-of-range":"no-target",abilityId,energy:p.energy});return;}
   if(!selfCast&&ability.target==="ground"&&!aim&&!ability.dash&&ability.shape?.origin==="aim"){send(ws,{type:"combat",result:"invalid-aim",abilityId,energy:p.energy});return;}
   p.lastAbility=now;if(!p.testMode){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;}
+  if(selfEffects.length)applyEffects(p,selfEffects,p.id);
   const hits=Array.isArray(ability.hits)&&ability.hits.length?ability.hits:[{delay:0,damage:0,effects:ability.effects||[]}];
   for(const hit of hits){
     setTimeout(()=>{
@@ -246,7 +248,7 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
         const reduction=victim.statuses?.resist&&victim.statuses.resist.until>Date.now()?Math.max(0,Math.min(.9,Number(victim.statuses.resist.value)||0)):0;
         const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
         const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;
-        const armor=victim.statuses?.armorBreak&&victim.statuses.armorBreak.until>Date.now()?(1+Math.max(0,Number(victim.statuses.armorBreak.value)||0)):1.25;
+        const armor=victim.statuses?.armorBreak&&victim.statuses.armorBreak.until>Date.now()?(1+Math.max(0,Number(victim.statuses.armorBreak.value)||0)):1;
         const weak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;
         const raw=Number(hit.damage)||0,dealt=Math.max(0,Math.round(raw*bonus*(1-reduction)*(1-defenseReduction)*(1-weak)*armor));
         victim.hp=Math.max(0,victim.hp-dealt);
@@ -593,6 +595,11 @@ wss.on("connection", (ws) => {
       const dealt = Math.max(0, Math.round(damage * (1 - (target.statuses?.resist?.value || 0)) * (1 - defenseReduction)));
       p.lastAttack = now;
       p.autoCount = (p.autoCount || 0) + 1;
+      const passive = ALBION_PASSIVES[p.loadout?.p];
+      if (passive && ALBION_WEAPONS[p.weapon]?.branch === passive.branch && p.autoCount % Math.max(1,Number(passive.everyNthAutoAttack)||1) === 0) {
+        if (passive.effect) applyEffects(target,[passive.effect],p.id);
+        if (passive.selfEffect) applyEffects(p,[passive.selfEffect],p.id);
+      }
       if (p.loadout?.p === "deepcuts" && p.autoCount % 4 === 0) target.statuses.deepBleed = {value:53,until:now+1500,nextTickAt:now+500,sourceId:p.id};
       if (p.loadout?.p === "weakening") target.statuses.weak = {value:.04,until:now+2000,sourceId:p.id};
       if (p.loadout?.p === "heroicfighting" && p.autoCount % 4 === 0) { p.charges = Math.min(3,(p.charges||0)+1); p.chargeExpiresAt = now + 6000; broadcast({type:"player",player:publicPlayer(p)},p.id); }
@@ -608,6 +615,8 @@ wss.on("connection", (ws) => {
         };
       }
       target.hp = Math.max(0, target.hp - dealt);
+      const autoLeech = p.statuses?.lifestealAuto;
+      if (dealt > 0 && autoLeech && autoLeech.until > now) p.hp = Math.min(PLAYER_MAX_HP, p.hp + Math.round(dealt * (Number(autoLeech.value)||0)));
       broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
       send(ws,{type:"combat-resource",energy:p.energy,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
       broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: dealt, hp: target.hp, kind: "auto" });
