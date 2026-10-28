@@ -145,6 +145,8 @@ function spawnPosition(index) {
 function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{const spawn=spawnPosition(target.spawnIndex);target.hp=PLAYER_MAX_HP;target.x=spawn.x;target.z=spawn.z;target.rotation=0;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.moveTarget=null;target.input={x:0,z:0,running:false};target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
 const RESOURCE_RESPAWN_MS = 30 * 60 * 1000;
 const RESOURCE_COUNTS = { wood: 62, stone: 24, ore: 12 };
+const worldFactories = [];
+let nextWorldFactoryId = 1;
 const RESOURCE_YIELDS = { wood: 3, stone: 2, ore: 2 };
 const worldResources = [];
 function generateResourceWorld() {
@@ -178,7 +180,6 @@ const ECONOMY_ITEMS = new Set(Object.keys(ITEM_DEFINITIONS));
 const ECONOMY_RECIPES = {
   plank: { name: "Доски", inputs: { wood: 2 }, output: { plank: 1 }, seconds: 3, station: "sawmill" },
   iron_ingot: { name: "Железный слиток", inputs: { ore: 2, wood: 1 }, output: { iron_ingot: 1 }, seconds: 5, station: "smelter" },
-  sword: { name: "Меч", inputs: { plank: 3, iron_ingot: 2 }, output: { sword: 1 }, seconds: 8, station: "forge" },
   ship: { name: "Корабль", inputs: { plank: 20, iron_ingot: 4 }, output: { ship: 1 }, seconds: 45, station: "shipyard" }
 };
 const FACTORY_TYPES = {
@@ -186,10 +187,21 @@ const FACTORY_TYPES = {
   smelter: { name: "Плавильня", cost: { wood: 6, stone: 8 }, recipe: "iron_ingot" },
   shipyard: { name: "Верфь", cost: { wood: 20, stone: 12, plank: 8 }, recipe: "ship" }
 };
+function publicFactory(f) { return { id:f.id, type:f.type, name:FACTORY_TYPES[f.type]?.name || f.type, recipe:f.recipe, x:f.x, z:f.z, ownerId:f.ownerId, ownerName:f.ownerName, team:f.team, hp:f.hp, buildingUntil:f.buildingUntil || 0, buildingDuration:f.buildingDuration || 5000, running:!!f.running }; }
 function economySnapshot(p) {
   const e = p.economy || { items: {}, factories: [] };
-  return { items: { ...(e.items || {}) }, factories: (e.factories || []).map(f => ({ id:f.id, type:f.type, name:FACTORY_TYPES[f.type]?.name || f.type, recipe:f.recipe, running:!!f.running, progress:Math.max(0,Math.min(1, f.duration ? (Date.now()-f.startedAt)/f.duration : 0)), remainingMs:f.running ? Math.max(0,f.startedAt+f.duration-Date.now()) : 0 })) };
+  return { items: { ...(e.items || {}) }, activeFactoryId:p.activeFactoryId || null, factories: (e.factories || []).map(f => ({ ...publicFactory(f), progress:Math.max(0,Math.min(1, f.duration ? (Date.now()-f.startedAt)/f.duration : 0)), remainingMs:f.running ? Math.max(0,f.startedAt+f.duration-Date.now()) : 0 })) };
 }
+function factoryReady(f) { return !!f && (!f.buildingUntil || f.buildingUntil <= Date.now()); }
+function factoryNear(p, f, range=7.5) { return !!f && Math.hypot(p.x-f.x,p.z-f.z)<=range; }
+function factoryPlacementClear(x,z) {
+  if (!Number.isFinite(x)||!Number.isFinite(z)||Math.abs(x)>WORLD_BOUND-5||Math.abs(z)>WORLD_BOUND-5||isRiverBlocked(x,z)) return false;
+  const villageCenters=[[-13,-37],[13,-39],[-37,-7],[-35,7],[37,-7],[35,7],[-13,37],[13,39]].map(([a,b])=>[a*MAP_SCALE,b*MAP_SCALE]);
+  if (villageCenters.some(([a,b])=>Math.hypot(x-a,z-b)<11.5)) return false;
+  if (Math.hypot(x,z)<20) return false;
+  return !worldFactories.some(f=>Math.hypot(x-f.x,z-f.z)<12);
+}
+function getActiveFactory(p) { const f=worldFactories.find(item=>item.id===p.activeFactoryId && item.ownerId===p.id); return factoryReady(f)&&factoryNear(p,f)?f:null; }
 function sendEconomy(p, message = "Склад обновлён.", extra = {}) {
   if (p.economy) p.economy.lastUiUpdate = Date.now();
   send(p.ws, { type:"economy-state", economy:economySnapshot(p), message, ...extra });
@@ -221,7 +233,7 @@ wss.on("connection", (ws) => {
   const spawn = spawnPosition(spawnIndex);
   const p = { id, ws, spawnIndex, team, economy: { items: Object.fromEntries([...ECONOMY_ITEMS].map(itemId => [itemId, 0])), factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
   players.set(id, p);
-  send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(), resources: resourceWorldSnapshot() });
+  send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(), resources: resourceWorldSnapshot(), factories:worldFactories.map(publicFactory) });
   broadcast({ type: "joined", player: publicPlayer(p) }, id);
 
   ws.on("message", raw => {
@@ -261,8 +273,9 @@ wss.on("connection", (ws) => {
     }
     if (msg.type === "economy-craft") {
       const recipeId = String(msg.recipe || ""), recipe = ECONOMY_RECIPES[recipeId];
-      if (!recipe) { sendEconomy(p, "Неизвестный рецепт."); return; }
-      if (!p.economy.factories.some(f => f.type === recipe.station && !f.running)) { sendEconomy(p, `Для этого рецепта нужна свободная станция: ${FACTORY_TYPES[recipe.station]?.name || recipe.station}.`); return; }
+      if (!recipe) { sendEconomy(p, "Этот рецепт отключён."); return; }
+      const activeFactory = getActiveFactory(p);
+      if (!activeFactory || activeFactory.type !== recipe.station || activeFactory.running) { sendEconomy(p, `Подойди к свободной фабрике «${FACTORY_TYPES[recipe.station]?.name || recipe.station}» и открой её меню.`); return; }
       if (!hasItems(p.economy.items, recipe.inputs)) { sendEconomy(p, "Не хватает материалов для крафта."); return; }
       takeItems(p.economy.items, recipe.inputs); addItems(p.economy.items, recipe.output);
       sendEconomy(p, `Изготовлено: ${recipe.name}`);
@@ -272,16 +285,25 @@ wss.on("connection", (ws) => {
       const type = String(msg.factory || ""), def = FACTORY_TYPES[type], items = p.economy.items;
       if (!def) { sendEconomy(p, "Неизвестный тип фабрики."); return; }
       if (p.economy.factories.length >= 8) { sendEconomy(p, "Можно построить не более 8 фабрик."); return; }
+      const x=Number(msg.x), z=Number(msg.z);
+      if (!Number.isFinite(x)||!Number.isFinite(z)||Math.hypot(p.x-x,p.z-z)>18||!factoryPlacementClear(x,z)) { sendEconomy(p, "Здесь нельзя разместить фабрику: выбери свободное место на суше подальше от построек."); return; }
       if (!hasItems(items, def.cost)) { sendEconomy(p, "Не хватает ресурсов для строительства."); return; }
       takeItems(items, def.cost);
-      const factory = { id:p.economy.nextFactoryId++, type, recipe:def.recipe, running:false, startedAt:0, duration:0 };
-      p.economy.factories.push(factory);
-      sendEconomy(p, `Построено: ${def.name}`);
+      const factory = { id:nextWorldFactoryId++, type, recipe:def.recipe, ownerId:p.id, ownerName:p.name, team:p.team, x, z, hp:600, buildingUntil:Date.now()+5000, buildingDuration:5000, running:false, startedAt:0, duration:0 };
+      p.economy.factories.push(factory); worldFactories.push(factory);
+      broadcast({type:"factory-created",factory:publicFactory(factory)});
+      sendEconomy(p, `Начато строительство: ${def.name}`, {factory:publicFactory(factory)});
       return;
     }
+    if (msg.type === "economy-open-factory") {
+      const id=Number(msg.factoryId), factory=worldFactories.find(f=>f.id===id);
+      if (!factory || factory.ownerId!==p.id || !factoryReady(factory) || !factoryNear(p,factory)) { send(ws,{type:"factory-menu-closed",message:"Подойди ближе к своей готовой фабрике."}); return; }
+      p.activeFactoryId=factory.id; sendEconomy(p, `Открыта: ${factory.name}`, {activeFactoryId:factory.id}); return;
+    }
+    if (msg.type === "economy-close-factory") { p.activeFactoryId=null; sendEconomy(p,"Меню фабрики закрыто."); return; }
     if (msg.type === "economy-run") {
       const id = Number(msg.factoryId), factory = p.economy.factories.find(f => f.id === id);
-      if (!factory) { sendEconomy(p, "Фабрика не найдена."); return; }
+      if (!factory || p.activeFactoryId!==factory.id || !factoryReady(factory) || !factoryNear(p,factory)) { sendEconomy(p, "Подойди к своей готовой фабрике и открой её меню."); return; }
       if (factory.running) { sendEconomy(p, "Фабрика уже работает."); return; }
       if (!startFactoryJob(p, factory)) { sendEconomy(p, "Не хватает материалов для производства."); return; }
       sendEconomy(p, "Производство запущено.");
@@ -289,11 +311,25 @@ wss.on("connection", (ws) => {
     }
     if (msg.type === "economy-stop") {
       const id = Number(msg.factoryId), factory = p.economy.factories.find(f => f.id === id);
-      if (!factory || !factory.running) { sendEconomy(p, "Нет активного производства."); return; }
+      if (!factory || p.activeFactoryId!==factory.id || !factoryReady(factory) || !factoryNear(p,factory) || !factory.running) { sendEconomy(p, "Нет доступного активного производства."); return; }
       const recipe = ECONOMY_RECIPES[factory.recipe];
       if (recipe) addItems(p.economy.items, recipe.inputs);
       factory.running = false; factory.startedAt = 0; factory.duration = 0;
       sendEconomy(p, "Производство отменено, материалы возвращены.");
+      return;
+    }
+    if (msg.type === "factory-damage") {
+      const id=Number(msg.factoryId), factory=worldFactories.find(f=>f.id===id);
+      if (!factory || factory.team===p.team || p.hp<=0 || Math.hypot(p.x-factory.x,p.z-factory.z)>4.8) return;
+      factory.hp=Math.max(0,factory.hp-100);
+      if (factory.hp<=0) {
+        const owner=players.get(factory.ownerId);
+        if(owner?.economy) owner.economy.factories=owner.economy.factories.filter(f=>f.id!==factory.id);
+        worldFactories.splice(worldFactories.indexOf(factory),1);
+        for(const player of players.values()) if(player.activeFactoryId===factory.id){player.activeFactoryId=null;send(player.ws,{type:"factory-menu-closed",message:"Фабрика уничтожена."});}
+        broadcast({type:"factory-destroyed",factoryId:factory.id,byTeam:p.team});
+        if(owner)sendEconomy(owner,"Фабрика уничтожена. Незавершённые материалы потеряны.");
+      } else broadcast({type:"factory-damaged",factory:publicFactory(factory)});
       return;
     }
     if (msg.type === "state") {
@@ -318,6 +354,7 @@ wss.on("connection", (ws) => {
         broadcast({type:"combat-cancelled",attackerId:p.id,targetId:cancelledAttack.targetId,attackId:cancelledAttack.id});
       }
       p.x = x; p.z = z; p.rotation = rotation;
+      if (p.activeFactoryId) { const active=worldFactories.find(f=>f.id===p.activeFactoryId); if(!factoryNear(p,active)){p.activeFactoryId=null;send(ws,{type:"factory-menu-closed",message:"Ты отошёл от фабрики. Меню закрыто."});} }
       broadcast({ type: "player", player: publicPlayer(p) }, p.id);
       return;
     }
