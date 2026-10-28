@@ -382,6 +382,9 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     assert.ok(hpDownSync.player.hp <= 850, "Soulless caps server HP and broadcasts the corrected value");
 
     // Bloodthirsty bleed and its independent 30% auto-attack bonus.
+    b.messages.length = 0;
+    b.send(JSON.stringify({ type: "test-mode", enabled: true }));
+    await waitMessage(b, m => m.type === "test-mode" && m.enabled === true);
     await sleep(900);
     a.send(JSON.stringify({ type: "state", x: 0, z: 4, rotation: 0 }));
     a.send(JSON.stringify({ type: "weapon", weapon: "clarent" }));
