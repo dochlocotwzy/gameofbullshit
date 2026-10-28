@@ -722,7 +722,7 @@ function renderEconomyState(data) {
       floatText(`+${RES[resource.type].yield} ${RES[resource.type].icon}`, resource.x, 3.2, resource.z);
       if (!resource.serverManaged) setResourceVisual(resource, true);
     } else {
-      resource.depleted = false; resource.pendingHarvest = false; resource.respawnAt = 0;
+      resource.pendingHarvest = false; if (!resource.serverManaged) { resource.depleted = false; resource.respawnAt = 0; }
       if (window.mpToast) window.mpToast(data.message || 'Сбор не подтверждён сервером.');
     }
   }
@@ -939,7 +939,7 @@ function finishGather(r) {
   const def = RES[r.type];
   if (window.mpConnected && window.mpEconomySend) {
     const requestId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
-    r.depleted = true; r.pendingHarvest = true; r.respawnAt = Infinity;
+    if (r.serverManaged) { r.pendingHarvest = true; } else { r.depleted = true; r.pendingHarvest = true; r.respawnAt = Infinity; }
     pendingHarvests.set(requestId, r);
     const sent = window.mpEconomySend({type:'economy-gather',resource:def.item,nodeId:r.id,requestId});
     if (!sent) { pendingHarvests.delete(requestId); r.depleted = false; r.pendingHarvest = false; r.respawnAt = 0; }
