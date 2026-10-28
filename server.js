@@ -582,7 +582,7 @@ wss.on("connection", (ws) => {
       broadcast({ type: "player", player: publicPlayer(p) }, p.id);
       return;
     }
-    if (msg.type === "test-mode") { p.testMode = ALLOW_TEST_MODE && msg.enabled === true; if (p.testMode) { p.energy = 100; p.abilityCooldowns = {}; } send(ws, {type:"test-mode", enabled:p.testMode, energy:p.energy}); return; }
+    if (msg.type === "test-mode") { p.testMode = ALLOW_TEST_MODE && msg.enabled === true; if (p.testMode) { p.energy = 100; p.abilityCooldowns = {}; p.hp = 1000; p.charges = 0; p.chargeExpiresAt = 0; p.statuses = {}; } send(ws, {type:"test-mode", enabled:p.testMode, energy:p.energy, hp:p.hp, charges:p.charges, statuses:p.statuses}); if (p.testMode) broadcast({type:"player", player:publicPlayer(p)}); return; }
     if (msg.type === "weapon") {
       const weapon = String(msg.weapon || "");
       if (WEAPON_DAMAGE[weapon]) {
