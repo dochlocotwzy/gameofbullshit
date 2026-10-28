@@ -435,7 +435,7 @@ wss.on("connection", (ws) => {
       broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
       send(ws,{type:"combat-resource",energy:p.energy,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
       broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: dealt, hp: target.hp, kind: "auto" });
-      broadcast({ type: "player", player: { id: target.id, name: target.name, x: target.x, y: 0, z: target.z, rotation: target.rotation, hp: target.hp } });
+      broadcast({ type: "player", player: publicPlayer(target) });
       if (target.hp === 0) scheduleRespawn(target);
       }, 320);
       return;
@@ -450,8 +450,8 @@ wss.on("connection", (ws) => {
       const areaAbilityIds=new Set(["cleave","cyclone","splitting","parry","spinning","bloodthirsty","carvingDash","soulless","majestic","infinity"]);
       const selfAbilityIds=new Set(["ironwill"]);
       const needsTarget=!areaAbilityIds.has(abilityId)&&!selfAbilityIds.has(abilityId);
-      if(!ability||!ABILITY_IDS.has(abilityId)||(needsTarget&&(!target||target.id===p.id||target.hp<=0)))return;
-      if(target&&(target.id===p.id||target.hp<=0))return;
+      if(!ability||!ABILITY_IDS.has(abilityId)||(needsTarget&&(!target||target.id===p.id||target.hp<=0||target.team===p.team)))return;
+      if(target&&(target.id===p.id||target.hp<=0||target.team===p.team))return;
       if(!["q","w","e"].includes(slot))return;
       if(slot==="e"&&WEAPON_E[weapon]!==abilityId)return;
       if(slot==="q"&&p.loadout.q!==abilityId)return;
@@ -492,7 +492,7 @@ wss.on("connection", (ws) => {
         if(!selfCentered&&!["bloodthirsty","infinity"].includes(abilityId)&&Math.hypot(ax-castOriginX,az-castOriginZ)>(ability.range||7)+1)return;
         if(["bloodthirsty","infinity"].includes(abilityId)){
           const dx=aimX-castOriginX,dz=aimZ-castOriginZ,len=Math.hypot(dx,dz),ux=len>.3?dx/len:Math.sin(p.rotation),uz=len>.3?dz/len:Math.cos(p.rotation);
-          victims=[...players.values()].filter(t=>{if(t.hp<=0||t.id===p.id)return false;const rx=t.x-castOriginX,rz=t.z-castOriginZ,d=Math.hypot(rx,rz);return d<=ability.radius&&(d<.3||(rx/d)*ux+(rz/d)*uz>=Math.cos(.8));});
+          victims=[...players.values()].filter(t=>{if(t.hp<=0||t.id===p.id||t.team===p.team)return false;const rx=t.x-castOriginX,rz=t.z-castOriginZ,d=Math.hypot(rx,rz);return d<=ability.radius&&(d<.3||(rx/d)*ux+(rz/d)*uz>=Math.cos(.8));});
         } else victims=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&t.team!==p.team&&Math.hypot(t.x-ax,t.z-az)<=ability.radius);
       }
       else if(ability.line){
