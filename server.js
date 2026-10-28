@@ -29,7 +29,7 @@ const ABILITIES = {
  infinity:{cost:25,cooldown:18,damage:210,radius:5,hits:3,secondDamage:380,effects:[{type:"slow",value:.3,duration:2}]}
 };
 const ABILITY_IDS = new Set(["strike","cleave","cyclone","interrupt","splitting","hamstring","parry","ironwill",...Object.values(WEAPON_E)]);
-const ATTACK_RANGE = 3.8;
+const ATTACK_RANGE = 3.8; // PvP auto-attack reach
 const ATTACK_COOLDOWN_MS = 850;
 const MOVE_SPEED = 5.2;
 const RUN_SPEED = 8.0;
