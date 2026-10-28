@@ -331,7 +331,7 @@ function spawnPosition(index) {
 }
 function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{const spawn=spawnPosition(target.spawnIndex);target.hp=PLAYER_MAX_HP;target.x=spawn.x;target.z=spawn.z;target.rotation=0;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.moveTarget=null;target.input={x:0,z:0,running:false};target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
 const RESOURCE_RESPAWN_MS = 30 * 60 * 1000;
-const RESOURCE_COUNTS = { wood: 62, stone: 24, ore: 12 };
+const RESOURCE_COUNTS = { wood: 124, stone: 48, ore: 24 };
 const worldFactories = [];
 let nextWorldFactoryId = 1;
 const RESOURCE_YIELDS = { wood: 3, stone: 2, ore: 2 };
@@ -342,22 +342,24 @@ function generateResourceWorld() {
   const minDistance = 2.8 * MAP_SCALE;
   for (const [kind, count] of Object.entries(RESOURCE_COUNTS)) {
     let tries = 0;
-    while (nodes.filter(n => n.kind === kind).length < count && tries++ < 50000) {
-      const currentKindCount = nodes.filter(n => n.kind === kind).length;
-      const anchors = { wood:[[8,-8],[14,2],[-2,15]], stone:[[4,18],[15,12]], ore:[[0,-18]] };
-      const anchor = anchors[kind]?.[currentKindCount];
-      const baseX = -31 * MAP_SCALE, baseZ = -7 * MAP_SCALE;
+    // Every node is placed as a mirrored left/right pair for equal resource counts on both sides.
+    while (nodes.filter(n => n.kind === kind).length < count && tries++ < 100000) {
       const angle = random() * Math.PI * 2;
-      const radius = 17 + random() * 32;
-      const x = anchor ? Math.round((baseX + anchor[0] + (random()-.5)*.4) * 100) / 100 : Math.round(Math.cos(angle) * radius * MAP_SCALE * 100) / 100;
-      const z = anchor ? Math.round((baseZ + anchor[1] + (random()-.5)*.4) * 100) / 100 : Math.round(Math.sin(angle) * radius * MAP_SCALE * 100) / 100;
-      if (Math.hypot(x, z) > WORLD_BOUND - 6 || Math.hypot(x, z) < 14 * MAP_SCALE) continue;
-      // Exclude the river and its sandy banks from every server-generated resource cluster.
-      if (closestRiverPoint(x, z).distance < 5.5) continue;
-      if (nodes.some(n => Math.hypot(n.x - x, n.z - z) < minDistance)) continue;
-      nodes.push({ id: `res-${nodes.length + 1}`, kind, x, z, scale: Math.round((0.85 + random() * 0.55) * 100) / 100, variant: Math.floor(random() * 4), depleted: false, respawnAt: 0, lastGatherAt: 0 });
+      const radius = 12 * MAP_SCALE + random() * (WORLD_BOUND - 20 * MAP_SCALE);
+      const absX = Math.abs(Math.cos(angle) * radius);
+      const z = Math.round(Math.sin(angle) * radius * 100) / 100;
+      const x = Math.round(absX * 100) / 100;
+      const leftX = -x;
+      const rightX = x;
+      if (Math.hypot(x, z) > WORLD_BOUND - 7 || Math.hypot(x, z) < 10 * MAP_SCALE) continue;
+      if (closestRiverPoint(leftX, z).distance < 5.5 || closestRiverPoint(rightX, z).distance < 5.5) continue;
+      const pair = [{x:leftX,z},{x:rightX,z}];
+      if (pair.some(p => nodes.some(n => Math.hypot(n.x-p.x,n.z-p.z) < minDistance))) continue;
+      for (const p of pair) {
+        nodes.push({ id: "res-" + (nodes.length + 1), kind, x:p.x, z:p.z, scale:Math.round((0.85+random()*0.55)*100)/100, variant:Math.floor(random()*4), depleted:false, respawnAt:0, lastGatherAt:0 });
+      }
     }
-    if (nodes.filter(n => n.kind === kind).length !== count) throw new Error(`Unable to generate resource nodes: ${kind}`);
+    if (nodes.filter(n => n.kind === kind).length !== count) throw new Error("Unable to generate mirrored resource nodes: " + kind);
   }
   return nodes;
 }
