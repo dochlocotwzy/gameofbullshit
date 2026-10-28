@@ -1721,7 +1721,6 @@ function buildWeaponModel(look){
     }else{
       sh.moveTo(0,-.22);sh.quadraticCurveTo(-span*.48,-.24,-span*.86,-.02);sh.quadraticCurveTo(-span*1.1,.18,-span*.67,.39);sh.lineTo(-span*.45,.3);sh.lineTo(-.03,.24);sh.closePath();
     }
-    if(side<0){const pts=sh.getPoints(16);const mirrored=new THREE.Shape();mirrored.moveTo(-pts[0].x,pts[0].y);for(let i=1;i<pts.length;i++)mirrored.lineTo(-pts[i].x,pts[i].y);mirrored.closePath();return mirrored;}
     return sh;
   };
   const addHeadPart=(kind,mat,side=1,scale=1,z=headZ)=>{
@@ -1729,7 +1728,7 @@ function buildWeaponModel(look){
     const mesh=new THREE.Mesh(new THREE.ExtrudeGeometry(sh,{depth:.095*scale,bevelEnabled:true,bevelSegments:3,steps:1,bevelSize:.025*scale,bevelThickness:.022*scale}),mat);
     mesh.position.set(0,headY,z);mesh.castShadow=true;mesh.receiveShadow=true;g.add(mesh);return mesh;
   };
-  const sides=double?[-1,1]:[-1];
+  const sides=double?[-1,1]:[1];
   // Haft collar and a raised forged spine anchor the blade visually to the pole.
   add(new THREE.BoxGeometry(.18,.34,.17),dark,0,headY,0);
   add(new THREE.CylinderGeometry(.105,.085,.18,8),silver,0,headY-.02,0,0,0,0);
