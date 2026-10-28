@@ -29,6 +29,14 @@ assert.ok(catalogSource.includes("const TIERS = Object.freeze("), "item catalog 
 assert.ok(catalogSource.includes("const ITEM_DEFINITIONS = Object.freeze("), "item catalog defines item metadata");
 assert.ok(catalogSource.includes("const WEAPON_FAMILIES = Object.freeze("), "item catalog defines extensible weapon families");
 assert.ok(catalogSource.includes("statModifiers"), "item metadata supports equipment stat modifiers");
+assert.ok(serverSource.includes('require("./albion-weapon-branches.json")'), "server loads the shared T8 weapon data pack");
+assert.ok(serverSource.includes("function handleAlbionAbility("), "server resolves data-driven axe and mace abilities");
+assert.ok(serverSource.includes("weaponBranch!==ability.branch"), "server rejects abilities from a different weapon branch");
+assert.ok(serverSource.includes("passive.everyNthAutoAttack"), "branch passives use their configured auto-attack cadence");
+assert.ok(clientHtml.includes("const ALBION_PACK = "), "client embeds the weapon data for branch metadata");
+assert.ok(clientHtml.includes("function configureBranchOptions("), "weapon changes rebuild Q/W/passive choices for the active branch");
+assert.ok(clientHtml.includes("function buildWeaponModel("), "client renders axe and mace silhouettes instead of sword models");
+assert.ok(clientHtml.includes("castAlbionDummySpell"), "new branch abilities have a generic local dummy-cast path");
 assert.ok(serverSource.includes('const ALLOW_TEST_MODE = process.env.ALLOW_TEST_MODE === "true";'), "server free-cast mode is disabled unless explicitly enabled for tests");
 assert.ok(serverSource.includes("const RESOURCE_RESPAWN_MS = 30 * 60 * 1000;"), "shared resources respawn after thirty minutes");
 assert.ok(serverSource.includes("const RESOURCE_COUNTS = { wood: 62, stone: 24, ore: 12 };"), "server generates fixed world counts for each resource type");
