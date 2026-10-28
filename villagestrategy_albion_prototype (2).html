@@ -1634,7 +1634,18 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free}));
         mpId = msg.id;
         (msg.players || []).forEach(p => { if (p.id !== mpId) addRemote(p); });
-      } else if (msg.type === 'joined' || msg.type === 'player') updateRemote(msg.player);
+      } else if (msg.type === 'joined' || msg.type === 'player') {
+        const incoming = msg.player;
+        if (incoming && incoming.id === mpId) {
+          const sx = Number(incoming.x), sz = Number(incoming.z), sr = Number(incoming.rotation);
+          if (Number.isFinite(sx) && Number.isFinite(sz)) {
+            player.position.set(sx, 0, sz);
+            selfTargetX = sx; selfTargetZ = sz;
+          }
+          if (Number.isFinite(sr)) { player.rotation.y = sr; selfTargetRot = sr; }
+          if (Number.isFinite(Number(incoming.hp))) setPlayerHealth(Number(incoming.hp));
+        } else updateRemote(incoming);
+      }
       else if (msg.type === 'world-state') {
         for (const p of (msg.players || [])) {
           if (p.id === mpId) { selfTargetX = Number(p.x)||0; selfTargetZ = Number(p.z)||0; selfTargetRot = Number(p.rotation)||0; if (Number.isFinite(Number(p.hp))) setPlayerHealth(Number(p.hp)); }
