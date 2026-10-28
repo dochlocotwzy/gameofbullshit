@@ -32,6 +32,10 @@ assert.ok(clientHtml.includes("if (closestRiverPoint(x, z).distance < 5.5) retur
 assert.ok(clientHtml.includes("only the three bridge decks permit crossing"), "client movement collision preserves the three bridge crossings");
 assert.ok(serverSource.includes("const MAP_SCALE = 2.3;") && clientHtml.includes("const MAP_SCALE = 2.3;"), "server and client use the same expanded map scale");
 assert.ok(serverSource.includes("function chooseTeam()") && serverSource.includes("team===p.team"), "server assigns balanced teams and prevents friendly fire");
+assert.ok(serverSource.includes("target.team===p.team") && serverSource.includes("t.team===p.team"), "targeted and cone PvP abilities reject teammates");
+assert.ok(serverSource.includes("factories:worldFactories.map(publicFactory)") && clientHtml.includes("if (Array.isArray(msg.factories)) syncFactoryWorld(msg.factories)"), "reconnect welcome messages preserve the shared factory world");
+assert.ok(clientHtml.includes("remote.team === window.mpTeam") && clientHtml.includes("Это союзник"), "client target selection avoids teammates");
+assert.ok(clientHtml.includes("ownedMaterials:[bodyMat,roof.material,cloth.material]") && clientHtml.includes("for(const material of entry.ownedMaterials||[])material.dispose()"), "factory removal does not dispose shared map materials");
 assert.ok(serverSource.includes("function factoryPlacementClear") && clientHtml.includes("function syncFactoryVisual"), "factory placement has server validation and shared world visuals");
 assert.ok(serverSource.includes("economy-open-factory") && serverSource.includes("p.activeFactoryId!==factory.id"), "factory production requires an opened nearby factory menu");
 assert.ok(serverSource.includes("startFactoryJob(p, activeFactory)") && !serverSource.includes("takeItems(p.economy.items, recipe.inputs); addItems(p.economy.items, recipe.output);"), "refining runs as timed factory production instead of instant crafting");
