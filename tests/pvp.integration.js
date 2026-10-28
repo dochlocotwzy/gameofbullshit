@@ -279,13 +279,13 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     a.send(JSON.stringify({ type: "weapon", weapon: "kingmaker" }));
     a.send(JSON.stringify({ type: "state", x: 0, z: 0, rotation: 0 }));
     b.send(JSON.stringify({ type: "state", x: 0, z: 5, rotation: 0 }));
-    await waitMessage(a, m => m.type === "player" && m.player?.id === bId && m.player?.z === 5);
+    await waitMessage(a, m => m.type === "player" && m.player?.id === bId && m.player?.x === 0 && m.player?.z === 5);
     a.messages.length = 0; b.messages.length = 0;
     a.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "e", abilityId: "majestic", aimX: 0, aimZ: 0 }));
     const majesticFirst = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "majestic" && m.hitIndex === 0);
     assert.equal(majesticFirst.damage, 330, "Majestic first impact uses configured damage");
-    b.send(JSON.stringify({ type: "state", x: 0, z: 12, rotation: 0 }));
-    await waitMessage(a, m => m.type === "player" && m.player?.id === bId && m.player?.z === 12);
+    b.send(JSON.stringify({ type: "state", x: 8, z: 5, rotation: 0 }));
+    await waitMessage(a, m => m.type === "player" && m.player?.id === bId && m.player?.x === 8);
     await sleep(1050);
     assert.equal(b.messages.filter(m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "majestic" && m.hitIndex === 1).length, 0, "Majestic second impact misses a target that left the cast circle");
 
