@@ -1139,7 +1139,9 @@ function trySpell(slot) {
     const target = window.mpGetTarget && window.mpGetTarget();
     const localDummyTarget = needsTarget && (!window.mpTargetId || !target) ? pickTarget() : null;
     const aim = aimPoint();
-    const localGroundCast = !needsTarget && abilityId !== 'ironwill' && !window.mpTargetId && localDummyWouldBeHit(abilityId, aim);
+    const hoveredDummy = mouse.x >= 0 && mouse.y >= 0 ? pickDummy(mouse.x, mouse.y) : null;
+    const explicitDummyTraining = (order.mode === 'attack' && order.dummy && dummies.includes(order.dummy)) || !!hoveredDummy;
+    const localGroundCast = !needsTarget && abilityId !== 'ironwill' && !window.mpTargetId && explicitDummyTraining && localDummyWouldBeHit(abilityId, aim);
     // If the player is explicitly training on a mannequin, preserve the original local spell script.
     // Otherwise PvP casts remain server-authoritative, including targetless ground/AoE abilities.
     if (!localDummyTarget && !localGroundCast) {
