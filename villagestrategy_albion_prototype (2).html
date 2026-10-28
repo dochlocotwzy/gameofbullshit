@@ -1520,6 +1520,26 @@ function localDummyWouldBeHit(abilityId, aim) {
     const k = len > 14 ? 14 / len : 1;
     return circleHit(ox + dx * k, oz + dz * k, 4.5);
   }
+  // Data-driven axe/mace abilities use their own shape metadata so they can be
+  // tested on the same local mannequins while connected to the PvP server.
+  const spell = ALBION_SPELLS[abilityId];
+  if (spell) {
+    const shape = spell.shape || { type: 'single' };
+    const range = Number(spell.range) || Number(shape.length) || 4;
+    if (shape.type === 'single') return dummies.some(d => dist2(ox, oz, d.x, d.z) <= range + (d.r || 0));
+    if (shape.type === 'circle' || shape.type === 'combo') {
+      const cx = shape.origin === 'aim' ? aim.x : shape.origin === 'selfFront' ? ox + ux * (Number(shape.offset) || 0) : ox;
+      const cz = shape.origin === 'aim' ? aim.z : shape.origin === 'selfFront' ? oz + uz * (Number(shape.offset) || 0) : oz;
+      return circleHit(cx, cz, Number(shape.radius) || 0);
+    }
+    if (shape.type === 'cone') {
+      const half = (Number(shape.angle) || 90) * Math.PI / 360, radius = Number(shape.radius) || range;
+      return dummies.some(d => { const rx=d.x-ox,rz=d.z-oz,dist=Math.hypot(rx,rz);return dist<=radius+(d.r||0)&&(dist<.3||(rx/dist)*ux+(rz/dist)*uz>=Math.cos(half)); });
+    }
+    if (shape.type === 'line') return lineHit(Number(shape.length) || range, (Number(shape.width) || 1) / 2);
+    if (spell.dash) return dummies.some(d => dist2(ox,oz,d.x,d.z) <= (Number(spell.dash.distance)||range) + (d.r||0) + (Number(spell.dash.landing?.radius)||0));
+    if (spell.pulses || spell.channel || spell.chain || spell.selfEffects) return circleHit(ox,oz,Number(shape.radius)||range||4);
+  }
   return false;
 }
 function trySpell(slot) {
