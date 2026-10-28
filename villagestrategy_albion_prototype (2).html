@@ -1709,6 +1709,8 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         if (msg.targetId === mpId && activeEntries.length) toast('Эффекты: ' + activeEntries.map(([k]) => k).join(', '));
       } else if (msg.type === 'combat-effect') {
         const impactPhase = msg.phase === 'impact';
+        const localSecondImpact = impactPhase && msg.attackerId === mpId && msg.abilityId === 'majestic';
+        if (localSecondImpact) swing('chop', .3);
         const attacker = remotes.get(msg.attackerId);
         if (attacker && (!impactPhase || msg.hitIndex === 1)) {
           attacker.swingT = 1; attacker.abilityT = 1; attacker.lastAbilitySlot = null;
