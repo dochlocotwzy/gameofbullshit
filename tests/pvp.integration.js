@@ -29,6 +29,13 @@ assert.ok(catalogSource.includes("const TIERS = Object.freeze("), "item catalog 
 assert.ok(catalogSource.includes("const ITEM_DEFINITIONS = Object.freeze("), "item catalog defines item metadata");
 assert.ok(catalogSource.includes("const WEAPON_FAMILIES = Object.freeze("), "item catalog defines extensible weapon families");
 assert.ok(catalogSource.includes("statModifiers"), "item metadata supports equipment stat modifiers");
+assert.equal(Object.values(weaponBranches.branches).reduce((n, branch) => n + Object.keys(branch.spells).length, 0), 31, "weapon pack defines 31 spells across both branches");
+assert.equal(Object.values(weaponBranches.branches).reduce((n, branch) => n + Object.keys(branch.passives).length, 0), 8, "weapon pack defines eight branch passives");
+assert.ok(serverSource.includes("function absorbShield("), "server damage pipeline absorbs damage with shields");
+assert.ok(serverSource.includes('e.type==="stackBleed"'), "server supports stacking axe bleed");
+assert.ok(serverSource.includes('e.type==="moveBleed"'), "server supports movement-triggered bleed");
+assert.ok(serverSource.includes('e.type==="healOverTime"'), "server supports healing-over-time effects");
+assert.ok(serverSource.includes('e.type==="knockback"||e.type==="pull"'), "server resolves knockback and pull movement authoritatively");
 assert.ok(serverSource.includes('require("./albion-weapon-branches.json")'), "server loads the shared T8 weapon data pack");
 assert.ok(serverSource.includes("function handleAlbionAbility("), "server resolves data-driven axe and mace abilities");
 assert.ok(serverSource.includes("weaponBranch!==ability.branch"), "server rejects abilities from a different weapon branch");
