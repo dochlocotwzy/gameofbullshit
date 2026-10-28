@@ -630,7 +630,7 @@ wss.on("connection", (ws) => {
       if (actualDealt > 0 && autoLeech && autoLeech.until > now) p.hp = Math.min(PLAYER_MAX_HP, p.hp + Math.round(actualDealt * (Number(autoLeech.value)||0)));
       broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
       send(ws,{type:"combat-resource",energy:p.energy,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
-      broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: dealt, hp: target.hp, kind: "auto" });
+      broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: actualDealt, hp: target.hp, kind: "auto" });
       broadcast({ type: "player", player: publicPlayer(target) });
       if (target.hp === 0) scheduleRespawn(target);
       }, 320);
