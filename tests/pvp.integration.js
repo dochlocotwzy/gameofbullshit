@@ -182,6 +182,12 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     await sleep(100);
     b.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "w", weapon: "broadsword", abilityId: "parry", aimX: 0, aimZ: 7 }));
     await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && m.statuses?.resist?.value === 1);
+    // Parry must block incoming autoattacks for its full active window.
+    a.messages.length = 0; b.messages.length = 0;
+    a.send(JSON.stringify({ type: "attack", targetId: bId }));
+    await sleep(150);
+    assert.equal(b.messages.filter(m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.kind === "auto").length, 0, "Parry blocks autoattack damage while invulnerability is active");
+    await sleep(700);
     a.messages.length = 0; b.messages.length = 0;
     a.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "e", weapon: "galatine", abilityId: "soulless", aimX: 0, aimZ: 7 }));
     await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && m.statuses?.hpDown);
