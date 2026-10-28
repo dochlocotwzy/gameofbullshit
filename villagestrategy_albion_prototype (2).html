@@ -274,6 +274,30 @@ const M = {
 
 /* =====================  коллизии и дороги  ===================== */
 const circles = [], boxes = [], paths = [];
+// This centreline is shared with the server-side river/resource validation.
+const riverCenter = [[0,-55],[3,-42],[0,-28],[-4,-18],[-7,0],[-4,18],[0,28],[3,42],[0,55]];
+const riverBridges = [[0,-28],[-7,0],[0,28]];
+function closestRiverPoint(x, z) {
+  let best = { x: 0, z: 0, distance: Infinity, nx: 1, nz: 0, dx: 0, dz: 0 };
+  for (let i = 0; i < riverCenter.length - 1; i++) {
+    const a = riverCenter[i], b = riverCenter[i + 1];
+    const vx = b[0] - a[0], vz = b[1] - a[1], len2 = vx * vx + vz * vz || 1;
+    const t = clamp(((x - a[0]) * vx + (z - a[1]) * vz) / len2, 0, 1);
+    const px = a[0] + vx * t, pz = a[1] + vz * t;
+    const dx = x - px, dz = z - pz, distance = Math.hypot(dx, dz);
+    if (distance < best.distance) {
+      const len = Math.sqrt(len2);
+      best = { x: px, z: pz, distance, nx: -vz / len, nz: vx / len, dx, dz };
+    }
+  }
+  return best;
+}
+function isBridgeCrossing(x, z) {
+  return riverBridges.some(([bx, bz]) => Math.abs(x - bx) <= 4.15 && Math.abs(z - bz) <= 2.15);
+}
+function isRiverBlocked(x, z) {
+  return !isBridgeCrossing(x, z) && closestRiverPoint(x, z).distance < 3.45;
+}
 const addCircle = (x, z, r) => { const c = { x, z, r }; circles.push(c); return c; };
 const addBox = (x, z, hx, hz) => boxes.push({ x0: x - hx, x1: x + hx, z0: z - hz, z1: z + hz });
 function resolve(pos, pr) {
@@ -288,6 +312,15 @@ function resolve(pos, pr) {
       if (d2 > 1e-8) { const d = Math.sqrt(d2); pos.x = cx + dx / d * pr; pos.z = cz + dz / d * pr; }
       else { const l = pos.x - b.x0, r = b.x1 - pos.x, t = pos.z - b.z0, bt = b.z1 - pos.z, m = Math.min(l, r, t, bt); if (m === l) pos.x = b.x0 - pr; else if (m === r) pos.x = b.x1 + pr; else if (m === t) pos.z = b.z0 - pr; else pos.z = b.z1 + pr; }
     }
+  }
+  // Push the player back to the nearest bank; only the three bridge decks permit crossing.
+  for (let attempt = 0; attempt < 2 && isRiverBlocked(pos.x, pos.z); attempt++) {
+    const river = closestRiverPoint(pos.x, pos.z);
+    let dx = river.dx, dz = river.dz, d = Math.hypot(dx, dz);
+    if (d < 1e-4) { dx = river.nx; dz = river.nz; d = 1; }
+    const side = dx * river.nx + dz * river.nz < 0 ? -1 : 1;
+    pos.x = river.x + river.nx * side * (3.45 + pr + .02);
+    pos.z = river.z + river.nz * side * (3.45 + pr + .02);
   }
   const d = Math.hypot(pos.x, pos.z); if (d > CFG.BOUND) { pos.x *= CFG.BOUND / d; pos.z *= CFG.BOUND / d; }
 }
@@ -375,7 +408,6 @@ function buildGroundTexture() {
   outer.rotation.x = -Math.PI / 2; outer.position.y = -0.06; scene.add(outer);
 
   // First-pass central river with sandy banks and two visible crossings.
-  const riverCenter = [[0,-55],[3,-42],[0,-28],[-4,-18],[-7,0],[-4,18],[0,28],[3,42],[0,55]];
   function addRiverRibbon(halfWidth, material, y) {
     const left = [], right = [];
     for (let i = 0; i < riverCenter.length; i++) {
@@ -629,6 +661,8 @@ const RES = {
 const resources = [], resMeshes = [];
 function freeSpot(x, z, r) {
   if (Math.hypot(x, z) > CFG.BOUND - 3 || Math.hypot(x, z) < 12) return false;
+  // Do not place resource nodes in the river or on its sandy banks.
+  if (closestRiverPoint(x, z).distance < 5.5) return false;
   if (distToPaths(x, z) < 2.8 + r) return false;
   for (const c of circles) if (Math.hypot(x - c.x, z - c.z) < c.r + r + .6) return false;
   for (const b of boxes) if (x > b.x0 - r - 1 && x < b.x1 + r + 1 && z > b.z0 - r - 1 && z < b.z1 + r + 1) return false;
