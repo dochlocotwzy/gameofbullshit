@@ -806,7 +806,7 @@ function applyResourceNode(node) {
 
 /* =====================  инвентарь, всплывающие надписи, частицы  ===================== */
 const inv = { wood: 0, stone: 0, ore: 0 };
-const ECON_LABELS = { wood:["🪵","Древесина"], stone:["🪨","Камень"], ore:["⛏️","Руда"], plank:["🪚","Доски"], iron_ingot:["🔩","Железные слитки"], sword:["⚔️","Мечи"], ship:["⛵","Корабли"] };
+const ECON_LABELS = { wood:["🪵","Древесина"], stone:["🪨","Камень"], ore:["⛏️","Руда"], plank:["🪚","Доски"], iron_ingot:["🔩","Железные слитки"], ship:["⛵","Корабли"] };
 let economyState = { items:{wood:0,stone:0,ore:0,plank:0,iron_ingot:0,ship:0}, factories:[] };
 const pendingHarvests = new Map();
 const econPanel = $('#economy-panel');
@@ -832,12 +832,13 @@ function renderEconomyState(data) {
   const items = economyState.items || {};
   $('#econ-status').textContent = window.mpConnected ? (data?.message || 'Сервер синхронизирован') : 'Оффлайн: экономика доступна только на сервере';
   $('#econ-items').innerHTML = Object.entries(ECON_LABELS).map(([id,meta])=>`<div class="econ-card"><b>${meta[0]} ${meta[1]}</b><span>${Math.max(0,Number(items[id])||0)}</span></div>`).join('');
+  const activeFactory = (economyState.factories || []).find(f => Number(f.id) === Number(economyState.activeFactoryId));
   const recipes = [
-    {id:'plank',name:'Доски',icon:'🪚',inputs:'2 древесины',output:'1 доска',station:'Лесопилка'},
-    {id:'iron_ingot',name:'Железный слиток',icon:'🔩',inputs:'2 руды + 1 древесина',output:'1 слиток',station:'Плавильня'},
-    {id:'ship',name:'Корабль',icon:'⛵',inputs:'20 досок + 4 слитка',output:'1 корабль',station:'Верфь'}
+    {id:'plank',name:'Доски',icon:'🪚',inputs:'2 древесины',output:'1 доска',station:'Лесопилка',stationId:'sawmill'},
+    {id:'iron_ingot',name:'Железный слиток',icon:'🔩',inputs:'2 руды + 1 древесина',output:'1 слиток',station:'Плавильня',stationId:'smelter'},
+    {id:'ship',name:'Корабль',icon:'⛵',inputs:'20 досок + 4 слитка',output:'1 корабль',station:'Верфь',stationId:'shipyard'}
   ];
-  $('#econ-recipes').innerHTML = recipes.map(r=>`<div class="econ-card"><b>${r.icon} ${r.name}</b><small>Расход: ${r.inputs}<br>Выход: ${r.output}<br>Станция: ${r.station}</small><button data-econ="craft" data-id="${r.id}">Создать</button></div>`).join('');
+  $('#econ-recipes').innerHTML = recipes.map(r=>{const enabled=!!activeFactory&&activeFactory.type===r.stationId&&!activeFactory.running&&Number(activeFactory.buildingUntil||0)<=Date.now();return `<div class="econ-card"><b>${r.icon} ${r.name}</b><small>Расход: ${r.inputs}<br>Выход: ${r.output}<br>Станция: ${r.station}</small><button data-econ="craft" data-id="${r.id}" ${enabled?'':'disabled'}>Запустить производство</button></div>`;}).join('');
   const buildings = [
     {id:'sawmill',name:'Лесопилка',cost:'8 древесины + 4 камня',recipe:'Производит доски'},
     {id:'smelter',name:'Плавильня',cost:'6 древесины + 8 камня',recipe:'Производит железные слитки'},
@@ -847,7 +848,7 @@ function renderEconomyState(data) {
   const factories = economyState.factories || [];
   $('#econ-factories').innerHTML = factories.length ? factories.map(f=>{
     const progress=Math.max(0,Math.min(100,Math.round((f.progress||0)*100)));
-    const state=f.running ? `Работает · ${Math.ceil((f.remainingMs||0)/1000)} с · ${progress}%` : 'Ожидает запуска';
+    const state=Number(f.buildingUntil||0)>Date.now() ? `Строится · ${Math.ceil((Number(f.buildingUntil)-Date.now())/1000)} с` : f.running ? `Работает · ${Math.ceil((f.remainingMs||0)/1000)} с · ${progress}%` : 'Ожидает запуска';
     return `<div class="econ-card"><b>🏭 ${f.name} №${f.id}</b><small>${state}<br>Рецепт: ${({plank:'доски',iron_ingot:'железные слитки',sword:'мечи',ship:'корабли'})[f.recipe]||f.recipe}</small><button data-econ="run" data-id="${f.id}" ${f.running?'disabled':''}>Запустить</button><button data-econ="stop" data-id="${f.id}" ${f.running?'':'disabled'}>Отменить цикл</button></div>`;
   }).join('') : '<div class="econ-card">Пока нет фабрик. Построй первую выше.</div>';
   $('#c-wood').textContent = items.wood || 0; $('#c-stone').textContent = items.stone || 0; $('#c-ore').textContent = items.ore || 0;
@@ -993,7 +994,7 @@ addEventListener('keydown', e => {
     if(nearby){e.preventDefault();orderGather(nearby.r);if(window.mpToast)window.mpToast('Начинаем сбор ближайшего ресурса');}
     else if(window.mpToast)window.mpToast('Подойдите вплотную к ресурсу или объекту для взаимодействия.');
   } else if(e.code==='KeyG') {
-    const enemy=nearestFactory(4.8,false);
+    const enemy=nearestFactory(6.2,false);
     if(enemy && enemy.data.team && enemy.data.team!==window.mpTeam){e.preventDefault();window.mpDamageFactory?.(enemy.data.id);}
   }
 });
