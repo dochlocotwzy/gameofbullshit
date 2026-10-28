@@ -38,6 +38,7 @@ assert.ok(clientHtml.includes("float coastLimit = 0.90"), "world ground is clipp
 assert.ok(clientHtml.includes("const riverCenter = [[0,-55]"), "world map includes a central winding river");
 assert.ok(clientHtml.includes("addRiverBridge(2.6, -30)") && clientHtml.includes("addRiverBridge(3.5, 36)"), "river prototype includes two visible crossings");
 assert.ok(clientHtml.includes("makeHouse(-13, -37") && clientHtml.includes("makeHouse(37, -7") && clientHtml.includes("makeHouse(-13, 37"), "village buildings are distributed across distinct island regions");
+assert.ok(clientHtml.includes("[[0, -8], [1, -20], [2.6, -30], [-5, -34], [-13, -37]]") && clientHtml.includes("[[0, 0], [-7, 0], [-18, -2], [-27, -5], [-37, -7]]"), "road network connects outer villages to river crossings and central hub");
 assert.ok(clientHtml.includes("addRiverBridge(-7, 0)"), "central river route has a crossing near the hub");
 assert.ok(clientHtml.includes("color: 0x1b5977"), "island is surrounded by ocean rather than an outer grass plane");
 assert.ok(!clientHtml.includes("window.mpClearTarget(true);"), "Escape never clears the selected PvP target");
