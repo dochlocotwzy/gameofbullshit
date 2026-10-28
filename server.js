@@ -4,6 +4,11 @@ const path = require("path");
 const crypto = require("crypto");
 const WebSocket = require("ws");
 const { ITEM_DEFINITIONS } = require("./game-data/catalog");
+const ALBION_PACK = require("./albion-weapon-branches.json");
+const ALBION_BRANCHES = ALBION_PACK.branches;
+const ALBION_WEAPONS = Object.fromEntries(Object.entries(ALBION_BRANCHES).flatMap(([branchId, branch]) => branch.weapons.map(weapon => [weapon.id, { ...weapon, branch: branchId }])));
+const ALBION_SPELLS = Object.fromEntries(Object.entries(ALBION_BRANCHES).flatMap(([branchId, branch]) => Object.entries(branch.spells).map(([id, spell]) => [id, { ...spell, branch: branchId }])));
+const ALBION_PASSIVES = Object.fromEntries(Object.entries(ALBION_BRANCHES).flatMap(([branchId, branch]) => Object.entries(branch.passives).map(([id, passive]) => [id, { ...passive, branch: branchId }])));
 
 const PORT = Number(process.env.PORT) || 10000;
 const HOST = "0.0.0.0";
@@ -12,12 +17,12 @@ const MAX_PLAYERS = 40;
 // Free-cast mode is for explicitly opted-in test servers only; never trust a public client toggle.
 const ALLOW_TEST_MODE = process.env.ALLOW_TEST_MODE === "true";
 const PLAYER_MAX_HP = 1000;
-const WEAPON_DAMAGE = { broadsword: 40, claymore: 58, dual: 44, clarent: 42, carving: 54, galatine: 46, kingmaker: 60, infinity: 44 };
+const WEAPON_DAMAGE = { broadsword: 40, claymore: 58, dual: 44, clarent: 42, carving: 54, galatine: 46, kingmaker: 60, infinity: 44, ...Object.fromEntries(Object.values(ALBION_WEAPONS).map(w => [w.id, w.auto])) };
 const ABILITY_MULTIPLIER = { q: 2.2, w: 2.8, e: 3.5 };
-const Q_ALLOWED = new Set(["strike","cleave"]);
-const W_ALLOWED = new Set(["cyclone","interrupt","splitting","hamstring","parry","ironwill"]);
-const PASSIVE_ALLOWED = new Set(["deepcuts","weakening","heroicfighting","increaseddef"]);
-const WEAPON_E = { broadsword:"mightyBlow", claymore:"charge", dual:"spinning", clarent:"bloodthirsty", carving:"carvingDash", galatine:"soulless", kingmaker:"majestic", infinity:"infinity" };
+const Q_ALLOWED = new Set(["strike","cleave", ...Object.values(ALBION_BRANCHES).flatMap(b => b.q)]);
+const W_ALLOWED = new Set(["cyclone","interrupt","splitting","hamstring","parry","ironwill", ...Object.values(ALBION_BRANCHES).flatMap(b => b.w)]);
+const PASSIVE_ALLOWED = new Set(["deepcuts","weakening","heroicfighting","increaseddef", ...Object.keys(ALBION_PASSIVES)]);
+const WEAPON_E = { broadsword:"mightyBlow", claymore:"charge", dual:"spinning", clarent:"bloodthirsty", carving:"carvingDash", galatine:"soulless", kingmaker:"majestic", infinity:"infinity", ...Object.fromEntries(Object.values(ALBION_WEAPONS).map(w => [w.id, w.e])) };
 const ABILITIES = {
  strike:{cost:6,cooldown:3,damage:249,range:3.2,selfEffects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:3.5}]}, cleave:{cost:11,cooldown:3,damage:200,radius:6,selfEffects:[{type:"charge",amount:1},{type:"haste",value:.2,duration:5}]},
  cyclone:{cost:24,cooldown:10,damage:120,radius:2.4,hits:3,range:7,path:true}, interrupt:{cost:32,cooldown:10,damage:248,range:3.2,effects:[{type:"interrupt"}],selfEffects:[{type:"interruptAttackBuff",value:.2,duration:5}]},
@@ -29,7 +34,7 @@ const ABILITIES = {
  soulless:{cost:28,cooldown:20,damage:150,radius:4.5,range:14,hits:3,effects:[{type:"hpDown",value:.15,duration:6}]}, majestic:{cost:30,cooldown:25,damage:330,radius:6,hits:2,secondDamage:480,effects:[{type:"air",duration:.9}]},
  infinity:{cost:25,cooldown:18,damage:210,radius:5,hits:3,secondDamage:380,effects:[{type:"slow",value:.3,duration:2}]}
 };
-const ABILITY_IDS = new Set(["strike","cleave","cyclone","interrupt","splitting","hamstring","parry","ironwill",...Object.values(WEAPON_E)]);
+const ABILITY_IDS = new Set(["strike","cleave","cyclone","interrupt","splitting","hamstring","parry","ironwill",...Object.values(WEAPON_E), ...Object.keys(ALBION_SPELLS)]);
 const ATTACK_RANGE = 3.8; // PvP auto-attack reach
 const ATTACK_COOLDOWN_MS = 850;
 const MOVE_SPEED = 5.2;
@@ -156,6 +161,74 @@ function applyEffects(target,effects,sourceId) {
     if(key==="hpDown")target.hp=Math.min(target.hp,Math.round(PLAYER_MAX_HP*(1-Math.max(0,Math.min(.9,Number(e.value)||0)))));
   }
   broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
+}
+function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
+  const now=Date.now(), branch=ALBION_BRANCHES[ability.branch], weaponBranch=ALBION_WEAPONS[p.weapon]?.branch||null;
+  const validLoadout=slot==="e"?WEAPON_E[p.weapon]===abilityId:p.loadout?.[slot]===abilityId;
+  if(!branch||weaponBranch!==ability.branch||slot!==ability.slot||!validLoadout){send(ws,{type:"combat",result:"invalid-ability",abilityId,slot,energy:p.energy});return;}
+  if(p.hp<=0||p.statuses?.stun||p.statuses?.air||p.statuses?.silence){send(ws,{type:"combat",result:"disabled",abilityId,energy:p.energy});return;}
+  if(now-p.lastAbility<250)return;
+  if(!p.testMode&&(p.abilityCooldowns[abilityId]||0)>now){send(ws,{type:"combat",result:"cooldown",abilityId,until:p.abilityCooldowns[abilityId],energy:p.energy});return;}
+  if(!p.testMode&&p.energy<ability.cost){send(ws,{type:"combat",result:"energy",abilityId,energy:p.energy});return;}
+  const target=msg.targetId?players.get(String(msg.targetId)):null, ax=Number(msg.aimX),az=Number(msg.aimZ),hasAim=Number.isFinite(ax)&&Number.isFinite(az);
+  const origin={x:p.x,z:p.z}, aim=hasAim?{x:ax,z:az}:null;
+  let dir=aim?{x:aim.x-p.x,z:aim.z-p.z}:{x:Math.sin(p.rotation||0),z:Math.cos(p.rotation||0)};
+  let dl=Math.hypot(dir.x,dir.z)||1;dir={x:dir.x/dl,z:dir.z/dl};
+  const maxRange=Math.max(0,Number(ability.range)||0);
+  if(aim&&maxRange>0&&Math.hypot(aim.x-p.x,aim.z-p.z)>maxRange){aim.x=p.x+dir.x*maxRange;aim.z=p.z+dir.z*maxRange;}
+  if(ability.dash&&aim){
+    const d=Math.hypot(aim.x-p.x,aim.z-p.z),travel=Math.min(Number(ability.dash.distance)||maxRange,d);
+    if(d>.05&&travel>0){const land=safeLandPosition(p.x,p.z,Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+(aim.x-p.x)/d*travel)),Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+(aim.z-p.z)/d*travel)));p.x=land.x;p.z=land.z;p.rotation=Math.atan2(dir.x,dir.z);p.positionLockUntil=Date.now()+Math.max(300,(Number(ability.dash.dur)||.35)*1000+150);broadcast({type:"player",player:publicPlayer(p)});}
+  }
+  const center={x:p.x,z:p.z};
+  const resolve=(shape,selected)=> {
+    shape=shape||ability.shape||{type:"single"};const type=shape.type;
+    const enemies=[...players.values()].filter(t=>t.hp>0&&t.id!==p.id&&t.team!==p.team);
+    if(type==="single")return selected&&selected.hp>0&&selected.team!==p.team&&Math.hypot(selected.x-p.x,selected.z-p.z)<=maxRange+.01?[selected]:[];
+    if(type==="self")return [];
+    let cx=center.x,cz=center.z;
+    if(shape.origin==="aim"){if(!aim)return [];cx=aim.x;cz=aim.z;}
+    if(shape.origin==="selfFront"){cx=p.x+dir.x*(Number(shape.offset)||0);cz=p.z+dir.z*(Number(shape.offset)||0);}
+    const radius=Math.max(0,Number(shape.radius)||0),inner=Math.max(0,Number(shape.innerRadius)||0);
+    if(type==="circle"||type==="combo")return enemies.filter(t=>{const d=Math.hypot(t.x-cx,t.z-cz);return d<=radius+.35&&d>=inner-.35;});
+    if(type==="cone"){const half=Math.max(1,Math.min(360,Number(shape.angle)||90))*Math.PI/360;return enemies.filter(t=>{const dx=t.x-p.x,dz=t.z-p.z,d=Math.hypot(dx,dz);return d<=radius+.35&&d>=inner-.35&&(d<.35||(dx/d)*dir.x+(dz/d)*dir.z>=Math.cos(half));});}
+    if(type==="line"){const len=Math.max(0,Number(shape.length)||0),width=Math.max(.2,Number(shape.width)||1),start=Math.max(0,Number(shape.start)||0);return enemies.filter(t=>{const dx=t.x-p.x,dz=t.z-p.z,along=dx*dir.x+dz*dir.z,side=Math.abs(dx*dir.z-dz*dir.x);return along>=start&&along<=len&&side<=width/2+.35;});}
+    return [];
+  };
+  const selfEffects=ability.selfEffects||[];
+  if(selfEffects.length)applyEffects(p,selfEffects,p.id);
+  const selfCast=ability.target==="self";
+  let victims=selfCast&&!ability.hits&&!ability.zone?[]:resolve(ability.shape,target);
+  if(ability.shape?.type==="single"&&!victims.length&&ability.target==="enemy"){send(ws,{type:"combat",result:target?"out-of-range":"no-target",abilityId,energy:p.energy});return;}
+  if(!selfCast&&ability.target==="ground"&&!aim&&!ability.dash&&ability.shape?.origin==="aim"){send(ws,{type:"combat",result:"invalid-aim",abilityId,energy:p.energy});return;}
+  p.lastAbility=now;if(!p.testMode){p.energy-=ability.cost;p.abilityCooldowns[abilityId]=now+ability.cooldown*1000;}
+  const hits=Array.isArray(ability.hits)&&ability.hits.length?ability.hits:[{delay:0,damage:0,effects:ability.effects||[]}];
+  for(const hit of hits){
+    setTimeout(()=>{
+      if(p.hp<=0)return;
+      const hitVictims=hit.shape?resolve(hit.shape,target):victims.filter(v=>v.hp>0);
+      const bonus=1+Math.max(0,hitVictims.length-1)*(Number(ability.multiTargetBonus)||0);
+      for(const victim of hitVictims){
+        if(victim.hp<=0||isParryInvulnerable(victim))continue;
+        const reduction=victim.statuses?.resist&&victim.statuses.resist.until>Date.now()?Math.max(0,Math.min(.9,Number(victim.statuses.resist.value)||0)):0;
+        const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
+        const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;
+        const armor=victim.statuses?.armorBreak&&victim.statuses.armorBreak.until>Date.now()?(1+Math.max(0,Number(victim.statuses.armorBreak.value)||0)):1.25;
+        const weak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;
+        const raw=Number(hit.damage)||0,dealt=Math.max(0,Math.round(raw*bonus*(1-reduction)*(1-defenseReduction)*(1-weak)*armor));
+        victim.hp=Math.max(0,victim.hp-dealt);
+        broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hits.indexOf(hit)});
+        if(victim.hp>0)applyEffects(victim,hit.effects||ability.effects||[],p.id);
+        if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
+        broadcast({type:"player",player:publicPlayer(victim)});
+        if(dealt>0&&p.statuses?.lifesteal&&p.statuses.lifesteal.until>Date.now())p.hp=Math.min(PLAYER_MAX_HP,p.hp+Math.round(dealt*(Number(p.statuses.lifesteal.value)||0)));
+      }
+      if(ability.zone?.effects)for(const victim of hitVictims)if(victim.hp>0)applyEffects(victim,ability.zone.effects,p.id);
+      broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:hitVictims.map(v=>v.id),x:center.x,z:center.z,originX:origin.x,originZ:origin.z,aimX:aim?.x??center.x,aimZ:aim?.z??center.z,rotation:p.rotation,weapon:p.weapon});
+    },Math.max(0,Number(hit.delay)||0)*1000);
+  }
+  if(ability.zone?.selfEffects)applyEffects(p,ability.zone.selfEffects,p.id);
+  send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
 }
 function spawnPosition(index) {
   // Prototype starts every player in the left village until team-specific bases are built.
@@ -408,12 +481,35 @@ wss.on("connection", (ws) => {
     if (msg.type === "test-mode") { p.testMode = ALLOW_TEST_MODE && msg.enabled === true; if (p.testMode) { p.energy = 100; p.abilityCooldowns = {}; } send(ws, {type:"test-mode", enabled:p.testMode, energy:p.energy}); return; }
     if (msg.type === "weapon") {
       const weapon = String(msg.weapon || "");
-      if (WEAPON_DAMAGE[weapon]) p.weapon = weapon;
+      if (WEAPON_DAMAGE[weapon]) {
+        p.weapon = weapon;
+        p.branch = ALBION_WEAPONS[weapon]?.branch || null;
+        if (p.branch) {
+          const branch = ALBION_BRANCHES[p.branch], passiveIds = Object.keys(branch.passives);
+          p.loadout = {
+            q: branch.q.includes(p.loadout?.q) ? p.loadout.q : branch.q[0],
+            w: branch.w.includes(p.loadout?.w) ? p.loadout.w : branch.w[0],
+            p: passiveIds.includes(p.loadout?.p) ? p.loadout.p : passiveIds[0]
+          };
+        } else {
+          p.loadout = {
+            q: ["strike","cleave"].includes(p.loadout?.q) ? p.loadout.q : "strike",
+            w: ["cyclone","interrupt","splitting","hamstring","parry","ironwill"].includes(p.loadout?.w) ? p.loadout.w : "cyclone",
+            p: ["deepcuts","weakening","heroicfighting","increaseddef"].includes(p.loadout?.p) ? p.loadout.p : "deepcuts"
+          };
+        }
+        send(ws, { type: "combat-loadout", weapon: p.weapon, branch: p.branch, loadout: p.loadout });
+      }
       return;
     }
     if (msg.type === "loadout") {
       const q = String(msg.q || ""), w = String(msg.w || ""), passive = String(msg.p || "deepcuts");
-      if (Q_ALLOWED.has(q) && W_ALLOWED.has(w) && PASSIVE_ALLOWED.has(passive)) p.loadout = {q,w,p:passive};
+      const branchId = ALBION_WEAPONS[p.weapon]?.branch || null, branch = branchId ? ALBION_BRANCHES[branchId] : null;
+      const valid = branch
+        ? branch.q.includes(q) && branch.w.includes(w) && Object.hasOwn(branch.passives, passive)
+        : ["strike","cleave"].includes(q) && ["cyclone","interrupt","splitting","hamstring","parry","ironwill"].includes(w) && ["deepcuts","weakening","heroicfighting","increaseddef"].includes(passive);
+      if (valid) p.loadout = {q,w,p:passive};
+      else send(ws, { type: "combat-loadout", result: "invalid-loadout", branch: branchId, loadout: p.loadout });
       return;
     }
     if (msg.type === "stop") {
@@ -493,7 +589,8 @@ wss.on("connection", (ws) => {
       if(p.statuses?.silence||p.statuses?.stun||p.statuses?.air){send(ws,{type:"combat",result:"disabled",abilityId:String(msg.abilityId||""),energy:p.energy});return;}
       if(now-p.lastAbility<250)return;
       const targetId=String(msg.targetId||""),target=targetId?players.get(targetId):null,slot=String(msg.slot||""),weapon=p.weapon||"broadsword";
-      const abilityId=String(msg.abilityId||(slot==="e"?WEAPON_E[weapon]:"")),ability=ABILITIES[abilityId];
+      const abilityId=String(msg.abilityId||(slot==="e"?WEAPON_E[weapon]:"")),ability=ABILITIES[abilityId]||ALBION_SPELLS[abilityId];
+      if (ALBION_SPELLS[abilityId]) { handleAlbionAbility(p, ws, msg, ALBION_SPELLS[abilityId], abilityId, slot); return; }
       const areaAbilityIds=new Set(["cleave","cyclone","splitting","parry","spinning","bloodthirsty","carvingDash","soulless","majestic","infinity"]);
       const selfAbilityIds=new Set(["ironwill"]);
       const needsTarget=!areaAbilityIds.has(abilityId)&&!selfAbilityIds.has(abilityId);
