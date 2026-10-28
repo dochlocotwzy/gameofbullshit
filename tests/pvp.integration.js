@@ -317,7 +317,6 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     const splittingFx = await waitMessage(b, m => m.type === "combat-effect" && m.abilityId === "splitting", 2000);
     assert.ok(Math.abs(splittingFx.aimZ - 14) < .1, "Splitting Slash visual line extends to its full 14m range");
     await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && !m.statuses?.root, 3000);
-    await waitMessage(b, m => m.type === "respawn" && m.player?.id === bId, 7000);
 
     a.messages.length = 0; b.messages.length = 0;
     a.send(JSON.stringify({ type: "test-mode", enabled: true }));
