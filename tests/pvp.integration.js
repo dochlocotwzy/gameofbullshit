@@ -69,7 +69,9 @@ assert.ok(serverSource.includes("return isRiverBlocked(candidate.x, candidate.z)
 assert.ok(serverSource.includes("accepted = safeLandPosition(p.x, p.z, accepted.x, accepted.z)"), "server clamps river entry to last valid land point instead of snapping to old position");
 assert.ok(clientHtml.includes("style:base.style||w.id") && clientHtml.includes("function buildWeaponModel(look)"), "weapon families have data-driven visual identities and custom meshes");
 assert.ok(clientHtml.includes("function isRiverBlocked(x, z)"), "client collision system treats the river as an obstacle");
-assert.ok(clientHtml.includes("if (closestRiverPoint(x, z).distance < 5.5) return false;"), "client fallback resource generation excludes river banks");
+assert.ok(!clientHtml.includes("createLocalResourceFallback();"), "resource nodes remain server-authoritative");
+assert.ok(clientHtml.includes("const RIVER_BLOCK_RADIUS = 3.15 * MAP_SCALE;"), "client river collision leaves a narrow, consistent bank margin");
+assert.ok(clientHtml.includes("Math.abs(x - bx) <= 4.15 && Math.abs(z - bz) <= 2.15"), "bridge collision matches the visible bridge deck footprint");
 assert.ok(clientHtml.includes("only the three bridge decks permit crossing"), "client movement collision preserves the three bridge crossings");
 assert.ok(serverSource.includes("const MAP_SCALE = 2.3;") && clientHtml.includes("const MAP_SCALE = 2.3;"), "server and client use the same expanded map scale");
 assert.ok(serverSource.includes("function chooseTeam()") && serverSource.includes("team===p.team"), "server assigns balanced teams and prevents friendly fire");
