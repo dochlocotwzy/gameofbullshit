@@ -1360,6 +1360,7 @@ $('#dreset').addEventListener('click', e => { S.total = S.hits = S.max = 0; S.ev
 addEventListener('keydown', e => {
   if (e.repeat || (e.target && e.target.tagName === 'SELECT')) return;
   if (e.code === 'KeyQ') trySpell('q'); else if (e.code === 'KeyW' && !CFG.WASD_MOVE) trySpell('w'); else if (e.code === 'KeyE') trySpell('e');
+  else if (e.code === 'Space' && window.mpConnected && window.mpTargetId && window.mpStartChase) window.mpStartChase();
   else if (/^Digit[1-8]$/.test(e.code)) setWeapon(WEAPON_ORDER[+e.code.slice(5) - 1]);
 });
 rebuildWeapons(); renderSlots();
@@ -1379,6 +1380,14 @@ function updatePlayer(dt) {
   } else if (order.mode === 'move') {
     const ox = order.x - pos.x, oz = order.z - pos.z, d = Math.hypot(ox, oz);
     if (d < .15) cancelOrder(); else { dx = ox / d; dz = oz / d; moving = true; }
+  } else if (order.mode === 'mp-chase') {
+    const target = window.mpGetTarget && window.mpGetTarget();
+    if (!target) cancelOrder();
+    else {
+      const ox = target.x - pos.x, oz = target.z - pos.z, d = Math.hypot(ox, oz) || 1e-4;
+      if (d > 3.15) { dx = ox / d; dz = oz / d; moving = true; }
+      else targetYaw = Math.atan2(ox, oz);
+    }
   } else if (order.mode === 'gather') {
     const r = order.res;
     if (r.depleted) cancelOrder();
@@ -1499,6 +1508,13 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   window.mpTargetRing = { active:false, x:0, z:0 };
   window.mpTargetId = null;
   window.mpGetTarget = () => { const t = remotes.get(mpTargetId); return t && !t.dead ? {x:t.group.position.x,z:t.group.position.z,name:t.name} : null; };
+  window.mpStartChase = () => {
+    if (!mpTargetId || !window.mpGetTarget()) return false;
+    cancelOrder();
+    order.mode = 'mp-chase';
+    toast('Преследование цели включено');
+    return true;
+  };
   window.mpClearTarget = (notify = false) => {
     mpTargetId = null;
     window.mpTargetId = null;
@@ -1651,13 +1667,30 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         }
       }
       else if (msg.type === 'left') removeRemote(msg.id);
-      else if (msg.type === 'combat-hit') {
+      else if (msg.type === 'combat-windup') {
+        const duration = Math.max(.2, (Number(msg.duration) || 320) / 1000);
+        if (msg.attackerId === mpId) swing(msg.weapon === 'galatine' ? 'chop' : 'slash', msg.weapon === 'galatine' ? .4 : duration + .08);
+        const attacker = remotes.get(msg.attackerId);
+        if (attacker) {
+          attacker.swingT = 1;
+          attacker.swingDuration = duration;
+          attacker.weapon = msg.weapon || attacker.weapon;
+          attacker.attackId = msg.attackId;
+        }
+      } else if (msg.type === 'combat-cancelled') {
+        if (msg.attackerId === mpId) swingS = null;
+        const attacker = remotes.get(msg.attackerId);
+        if (attacker && (!attacker.attackId || attacker.attackId === msg.attackId)) {
+          attacker.swingT = 0;
+          attacker.attackId = null;
+        }
+      } else if (msg.type === 'combat-hit') {
         if (msg.targetId === mpId) { setPlayerHealth(msg.hp); if (msg.hp > 0) toast('Получен урон: ' + msg.damage); }
         const victim = remotes.get(msg.targetId);
         if (victim) { victim.hp = msg.hp; setRemoteDead(victim, msg.hp <= 0); victim.hitT = 1; }
         if (msg.attackerId === mpId) toast('Попадание: -' + msg.damage + ' HP');
         const attacker = remotes.get(msg.attackerId);
-        if (attacker) { attacker.swingT = 1; attacker.abilityT = msg.kind === 'ability' ? 1 : 0; attacker.lastAbilitySlot = msg.slot || null; }
+        if (attacker && msg.kind !== 'auto') { attacker.swingT = 1; attacker.abilityT = msg.kind === 'ability' ? 1 : 0; attacker.lastAbilitySlot = msg.slot || null; }
       } else if (msg.type === 'combat-status') {
         window.mpStatuses = window.mpStatuses || {};
         if (msg.targetId === mpId) window.mpSelfStatuses = msg.statuses || {};
@@ -1847,7 +1880,6 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       if (!target) { mpTargetId = null; window.mpTargetId = null; }
       else if (playerVitals.hp > 0 && !target.dead && Math.hypot(player.position.x - target.group.position.x, player.position.z - target.group.position.z) <= MP_ATTACK_RANGE) {
         faceXZ(target.group.position.x, target.group.position.z);
-        swing(autoN % 2 ? 'slash' : 'chop', .3); autoN++;
         socket.send(JSON.stringify({type:'attack', targetId:mpTargetId, weapon:loadout.weapon}));
         lastAttack = now;
       }
