@@ -9,6 +9,9 @@ const serverSource = fs.readFileSync(path.join(__dirname, "..", "server.js"), "u
 assert.ok(serverSource.includes('const ALLOW_TEST_MODE = process.env.ALLOW_TEST_MODE === "true";'), "server free-cast mode is disabled unless explicitly enabled for tests");
 assert.ok(clientHtml.includes("if (p.id === mpId) {\n      if (Number.isFinite(Number(p.hp))) setPlayerHealth(Number(p.hp));\n      return;\n    }"), "client applies server HP corrections to the local player");
 assert.ok(clientHtml.includes("(buffs.blood.t > 0 ? .3 : 0)"), "local dummy autoattacks include Bloodthirsty damage bonus");
+assert.ok(clientHtml.includes("if (!options.multiplayerCast && !TEST.free) { energy -= sp.en; cd[slot] = sp.cd; }"), "multiplayer casts do not spend energy or start cooldown locally");
+assert.ok(clientHtml.includes("Do not trust local cooldown/energy mirrors in PvP."), "PvP cooldown and energy acceptance are server-authoritative");
+assert.ok(clientHtml.includes("msg.abilityId !== 'splitting' && (msg.phase !== 'cast' || msg.attackerId === mpId)"), "Splitting Slash renders as a line rather than an endpoint damage circle");
 assert.ok(clientHtml.includes("const expiresAt = Number(msg.chargeExpiresAt);"), "client uses the server charge expiry timestamp");
 
 const port = 10187;
@@ -135,6 +138,26 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     a.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "e", abilityId: "majestic", aimX: 0, aimZ: 0 }));
     const majesticKill = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "majestic" && m.hitIndex === 1 && m.hp === 0, 3000);
     assert.equal(majesticKill.damage, 480, "Majestic second impact still lands when the target remains in range");
+    const majesticSecondFx = await waitMessage(b, m => m.type === "combat-effect" && m.phase === "impact" && m.abilityId === "majestic" && m.hitIndex === 1 && m.targetIds?.includes(bId), 2000);
+    assert.ok(majesticSecondFx, "Majestic second hit broadcasts its own impact visual");
+    await waitMessage(b, m => m.type === "respawn" && m.player?.id === bId, 7000);
+
+    // Regression: Splitting Slash damages and roots targets anywhere along the full line,
+    // even if the cursor point used to choose direction is much closer than the target.
+    a.messages.length = 0; b.messages.length = 0;
+    a.send(JSON.stringify({ type: "test-mode", enabled: true }));
+    a.send(JSON.stringify({ type: "loadout", q: "strike", w: "splitting", p: "deepcuts" }));
+    a.send(JSON.stringify({ type: "state", x: 0, z: 0, rotation: 0 }));
+    b.send(JSON.stringify({ type: "state", x: 0, z: 10, rotation: 0 }));
+    await waitMessage(a, m => m.type === "player" && m.player?.id === bId && m.player?.z === 10);
+    a.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "w", abilityId: "splitting", aimX: 0, aimZ: 2 }));
+    const splittingHit = await waitMessage(b, m => m.type === "combat-hit" && m.attackerId === aId && m.targetId === bId && m.abilityId === "splitting", 2000);
+    assert.equal(splittingHit.damage, 432, "Splitting Slash damages targets across the full 14m line");
+    const splittingRoot = await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && m.statuses?.root, 2000);
+    assert.ok(splittingRoot.statuses.root.until > Date.now(), "Splitting Slash roots every target hit by its line");
+    const splittingFx = await waitMessage(b, m => m.type === "combat-effect" && m.abilityId === "splitting", 2000);
+    assert.ok(Math.abs(splittingFx.aimZ - 14) < .1, "Splitting Slash visual line extends to its full 14m range");
+    await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && !m.statuses?.root, 3000);
     await waitMessage(b, m => m.type === "respawn" && m.player?.id === bId, 7000);
 
     a.messages.length = 0; b.messages.length = 0;
