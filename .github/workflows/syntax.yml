@@ -17,8 +17,10 @@ jobs:
       - name: Run PvP integration test
         run: node tests/pvp.integration.js
       - name: Check server JavaScript
+        if: always()
         run: node --check server.js
       - name: Check inline game scripts
+        if: always()
         run: |
           python3 - <<'PY'
           from html.parser import HTMLParser
