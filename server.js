@@ -552,8 +552,16 @@ wss.on("connection", (ws) => {
       const x = Number(msg.x), z = Number(msg.z), rotation = Number(msg.rotation);
       if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(rotation)) return;
       if (Math.abs(x) > WORLD_BOUND || Math.abs(z) > WORLD_BOUND) return;
-      // Reject client position updates inside the river; bridges are the only crossing points.
-      if (isRiverBlocked(x, z)) { send(ws, { type: "player", player: publicPlayer(p) }); return; }
+      // Clamp river entry to the last valid land point; rejecting the packet caused rubber-banding.
+      let accepted = { x, z };
+      if (isRiverBlocked(accepted.x, accepted.z)) accepted = safeLandPosition(p.x, p.z, accepted.x, accepted.z);
+      x = accepted.x; z = accepted.z;
+      if (isRiverBlocked(x, z)) {
+        const river = closestRiverPoint(x, z);
+        const dx = p.x - river.x, dz = p.z - river.z, d = Math.hypot(dx, dz) || 1;
+        x = river.x + dx / d * (RIVER_BLOCK_RADIUS + 0.18);
+        z = river.z + dz / d * (RIVER_BLOCK_RADIUS + 0.18);
+      }
       // Crowd control and dash locks are server-authoritative; clients may update facing but not position;
       const movementLocked = ["root","parryLock","air","stun"].some(key => p.statuses?.[key]?.until > Date.now()) || (p.positionLockUntil && p.positionLockUntil > Date.now());
       if (movementLocked) {
