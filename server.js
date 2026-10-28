@@ -146,6 +146,12 @@ function chooseTeam() { let blue=0,red=0; for(const player of players.values()){
 function isParryInvulnerable(target, now = Date.now()) {
   return !!(target?.statuses?.parryLock && target.statuses.parryLock.until > now);
 }
+function armorBreakMultiplier(target, now = Date.now()) {
+  const status=target?.statuses?.armorBreak;
+  if(!status||status.until<=now)return 1;
+  const value=Number(status.value);
+  return Number.isFinite(value)?1+Math.max(0,value):1.25;
+}
 function isCombatInvulnerable(target, now = Date.now(), spell = false) {
   return isParryInvulnerable(target,now) || !!(target?.statuses?.invuln && target.statuses.invuln.until>now) || (spell && !!(target?.statuses?.spellImmune && target.statuses.spellImmune.until>now));
 }
@@ -280,7 +286,7 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
         const reduction=victim.statuses?.resist&&victim.statuses.resist.until>Date.now()?Math.max(0,Math.min(.9,Number(victim.statuses.resist.value)||0)):0;
         const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;
         const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;
-        const armor=victim.statuses?.armorBreak&&victim.statuses.armorBreak.until>Date.now()?(1+Math.max(0,Number(victim.statuses.armorBreak.value)||0)):1;
+        const armor=armorBreakMultiplier(victim);
         const weak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;
         const outgoingBonus=["attackBuff","damageBuff"].reduce((sum,key)=>{const st=p.statuses?.[key];return sum+(st&&st.until>Date.now()?Math.max(0,Number(st.value)||0):0);},0);
         const raw=Number(hit.damage)||0,dealt=Math.max(0,Math.round(raw*bonus*(1+outgoingBonus)*(1-reduction)*(1-defenseReduction)*(1-weak)*armor));
@@ -640,7 +646,7 @@ wss.on("connection", (ws) => {
       const baseDamage = WEAPON_DAMAGE[weapon] || WEAPON_DAMAGE.broadsword;
       const outgoingWeak = p.statuses?.weak && p.statuses.weak.until > now ? Math.max(0, Math.min(.9, Number(p.statuses.weak.value) || 0)) : 0;
       const attackBonus = ["attackBuff","interruptAttackBuff","bloodthirstAttackBuff","damageBuff"].reduce((sum,key) => { const st=p.statuses?.[key]; return sum + (st && st.until > now ? Math.max(0,Number(st.value)||0) : 0); }, 0);
-      const damage = Math.round(baseDamage * (1 + attackBonus) * (1 - outgoingWeak) * (target.statuses?.armorBreak ? 1.25 : 1));
+      const damage = Math.round(baseDamage * (1 + attackBonus) * (1 - outgoingWeak) * (armorBreakMultiplier(target,now)));
       const defense = target.statuses?.defense && target.statuses.defense.until > now ? Math.max(0, Number(target.statuses.defense.value) || 0) : 0;
       const defenseReduction = defense > 0 ? Math.min(.5, defense / (defense + 200)) : 0;
       const dealt = Math.max(0, Math.round(damage * (1 - (target.statuses?.resist?.value || 0)) * (1 - defenseReduction)));
