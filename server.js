@@ -36,6 +36,8 @@ const MOVE_SPEED = 5.2;
 const RUN_SPEED = 8.0;
 const MAP_SCALE = 2.3;
 const WORLD_BOUND = 126.5;
+const VISION_RADIUS = 20;
+const VISION_SYNC_MS = 250;
 const TICK_MS = 50;
 // Keep server collision/resource rules aligned with the river drawn by the client.
 const RIVER_CENTER = [[0,-55],[3,-42],[0,-28],[-4,-18],[-7,0],[-4,18],[0,28],[3,42],[0,55]].map(([x,z]) => [x*MAP_SCALE,z*MAP_SCALE]);
@@ -104,16 +106,35 @@ const wss = new WebSocket.Server({ server, path: "/multiplayer" });
 function send(ws, payload) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
 }
-function snapshot() {
-  return [...players.values()].map(p => ({
+function isInVision(observer, x, z) { return !!observer && Math.hypot(observer.x - x, observer.z - z) <= VISION_RADIUS; }
+function snapshot(viewer) {
+  return [...players.values()].filter(other => other.id !== viewer?.id && (!viewer || isInVision(viewer, other.x, other.z))).map(p => ({
     id: p.id, name: p.name, team: p.team, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp, statuses: p.statuses || {}, charges: p.charges || 0, chargeExpiresAt: p.chargeExpiresAt || 0, weapon: p.weapon || "broadsword"
   }));
 }
 function broadcast(payload, exceptId) {
-  const message = JSON.stringify(payload);
-  for (const p of players.values()) {
-    if (p.id !== exceptId && p.ws.readyState === WebSocket.OPEN) p.ws.send(message);
+  if ((payload.type === "player" || payload.type === "joined" || payload.type === "respawn") && payload.player) {
+    const subject = payload.player;
+    for (const observer of players.values()) if (observer.id !== exceptId && observer.ws.readyState === WebSocket.OPEN && isInVision(observer, subject.x, subject.z)) send(observer.ws, payload);
+    return;
   }
+  if ((payload.type === "factory-created" || payload.type === "factory-damaged") && payload.factory) {
+    const factory = payload.factory;
+    for (const observer of players.values()) if (observer.id !== exceptId && observer.ws.readyState === WebSocket.OPEN && isInVision(observer, factory.x, factory.z)) send(observer.ws, payload);
+    return;
+  }
+  if (payload.type === "resource-node" && payload.node) {
+    const node = payload.node;
+    for (const observer of players.values()) if (observer.ws.readyState === WebSocket.OPEN && isInVision(observer, node.x, node.z)) send(observer.ws, payload);
+    return;
+  }
+  if (payload.type === "combat-effect" && payload.attackerId) {
+    const attacker = players.get(payload.attackerId);
+    for (const observer of players.values()) if (observer.id !== exceptId && observer.ws.readyState === WebSocket.OPEN && attacker && isInVision(observer, attacker.x, attacker.z)) send(observer.ws, payload);
+    return;
+  }
+  const message = JSON.stringify(payload);
+  for (const p of players.values()) if (p.id !== exceptId && p.ws.readyState === WebSocket.OPEN) p.ws.send(message);
 }
 function publicPlayer(p) { return {id:p.id,name:p.name,team:p.team,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{},charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,weapon:p.weapon||"broadsword"}; }
 function chooseTeam() { let blue=0,red=0; for(const player of players.values()){if(player.team==="blue")blue++;else if(player.team==="red")red++;} if(blue===red)return crypto.randomInt(0,2)?"blue":"red"; return blue<red?"blue":"red"; }
@@ -156,10 +177,14 @@ function generateResourceWorld() {
   for (const [kind, count] of Object.entries(RESOURCE_COUNTS)) {
     let tries = 0;
     while (nodes.filter(n => n.kind === kind).length < count && tries++ < 50000) {
+      const currentKindCount = nodes.filter(n => n.kind === kind).length;
+      const anchors = { wood:[[8,-8],[14,2],[-2,15]], stone:[[4,18],[15,12]], ore:[[0,-18]] };
+      const anchor = anchors[kind]?.[currentKindCount];
+      const baseX = -31 * MAP_SCALE, baseZ = -7 * MAP_SCALE;
       const angle = random() * Math.PI * 2;
       const radius = 17 + random() * 32;
-      const x = Math.round(Math.cos(angle) * radius * MAP_SCALE * 100) / 100;
-      const z = Math.round(Math.sin(angle) * radius * MAP_SCALE * 100) / 100;
+      const x = anchor ? Math.round((baseX + anchor[0] + (random()-.5)*.4) * 100) / 100 : Math.round(Math.cos(angle) * radius * MAP_SCALE * 100) / 100;
+      const z = anchor ? Math.round((baseZ + anchor[1] + (random()-.5)*.4) * 100) / 100 : Math.round(Math.sin(angle) * radius * MAP_SCALE * 100) / 100;
       if (Math.hypot(x, z) > WORLD_BOUND - 6 || Math.hypot(x, z) < 14 * MAP_SCALE) continue;
       // Exclude the river and its sandy banks from every server-generated resource cluster.
       if (closestRiverPoint(x, z).distance < 5.5) continue;
@@ -174,7 +199,7 @@ worldResources.push(...generateResourceWorld());
 function publicResource(node) {
   return { id: node.id, kind: node.kind, x: node.x, z: node.z, scale: node.scale, variant: node.variant, depleted: node.depleted, respawnAt: node.respawnAt };
 }
-function resourceWorldSnapshot() { return worldResources.map(publicResource); }
+function resourceWorldSnapshot(viewer) { return worldResources.filter(node => !viewer || isInVision(viewer,node.x,node.z)).map(publicResource); }
 function broadcastResource(node) { broadcast({ type: "resource-node", node: publicResource(node) }); }
 const ECONOMY_ITEMS = new Set(Object.keys(ITEM_DEFINITIONS).filter(itemId => itemId !== "sword"));
 const ECONOMY_RECIPES = {
@@ -188,6 +213,11 @@ const FACTORY_TYPES = {
   shipyard: { name: "Верфь", cost: { wood: 20, stone: 12, plank: 8 }, recipe: "ship" }
 };
 function publicFactory(f) { return { id:f.id, type:f.type, name:FACTORY_TYPES[f.type]?.name || f.type, recipe:f.recipe, x:f.x, z:f.z, ownerId:f.ownerId, ownerName:f.ownerName, team:f.team, hp:f.hp, buildingUntil:f.buildingUntil || 0, buildingDuration:f.buildingDuration || 5000, running:!!f.running }; }
+function factoryWorldSnapshot(viewer) { return worldFactories.filter(f => !viewer || isInVision(viewer,f.x,f.z)).map(publicFactory); }
+function sendVisionSnapshot(p) {
+  const now=Date.now(); if(now-(p.lastVisionSyncAt||0)<VISION_SYNC_MS)return; p.lastVisionSyncAt=now;
+  send(p.ws,{type:"world-vision",players:snapshot(p),resources:resourceWorldSnapshot(p),factories:factoryWorldSnapshot(p)});
+}
 function economySnapshot(p) {
   const e = p.economy || { items: {}, factories: [] };
   return { items: { ...(e.items || {}) }, activeFactoryId:p.activeFactoryId || null, factories: (e.factories || []).map(f => ({ ...publicFactory(f), progress:Math.max(0,Math.min(1, f.duration ? (Date.now()-f.startedAt)/f.duration : 0)), remainingMs:f.running ? Math.max(0,f.startedAt+f.duration-Date.now()) : 0 })) };
@@ -232,9 +262,9 @@ wss.on("connection", (ws) => {
   let spawnIndex = 0;
   while (occupiedSpawnIndices.has(spawnIndex)) spawnIndex++;
   const spawn = spawnPosition(spawnIndex);
-  const p = { id, ws, spawnIndex, team, economy: { items: Object.fromEntries([...ECONOMY_ITEMS].map(itemId => [itemId, 0])), factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
+  const p = { id, ws, spawnIndex, team, economy: { items: Object.fromEntries([...ECONOMY_ITEMS].map(itemId => [itemId, 0])), factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, lastVisionSyncAt:0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
   players.set(id, p);
-  send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(), resources: resourceWorldSnapshot(), factories:worldFactories.map(publicFactory) });
+  send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(p), resources: resourceWorldSnapshot(p), factories:factoryWorldSnapshot(p) });
   broadcast({ type: "joined", player: publicPlayer(p) }, id);
 
   ws.on("message", raw => {
@@ -245,7 +275,7 @@ wss.on("connection", (ws) => {
     if (msg.type === "hello") {
       p.name = safeName(msg.name);
       broadcast({ type: "player", player: publicPlayer(p) }, p.id);
-      send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(), resources: resourceWorldSnapshot(), factories:worldFactories.map(publicFactory) });
+      send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(p), resources: resourceWorldSnapshot(p), factories:factoryWorldSnapshot(p) });
       return;
     }
     if (msg.type === "latency-ping") {
@@ -354,6 +384,7 @@ wss.on("connection", (ws) => {
         broadcast({type:"combat-cancelled",attackerId:p.id,targetId:cancelledAttack.targetId,attackId:cancelledAttack.id});
       }
       p.x = x; p.z = z; p.rotation = rotation;
+      sendVisionSnapshot(p);
       if (p.activeFactoryId) { const active=worldFactories.find(f=>f.id===p.activeFactoryId); if(!factoryNear(p,active)){p.activeFactoryId=null;send(ws,{type:"factory-menu-closed",message:"Ты отошёл от фабрики. Меню закрыто."});} }
       broadcast({ type: "player", player: publicPlayer(p) }, p.id);
       return;
