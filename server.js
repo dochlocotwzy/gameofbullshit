@@ -141,12 +141,14 @@ const ECONOMY_ITEMS = new Set(Object.keys(ITEM_DEFINITIONS));
 const ECONOMY_RECIPES = {
   plank: { name: "Доски", inputs: { wood: 2 }, output: { plank: 1 }, seconds: 3, station: "sawmill" },
   iron_ingot: { name: "Железный слиток", inputs: { ore: 2, wood: 1 }, output: { iron_ingot: 1 }, seconds: 5, station: "smelter" },
-  sword: { name: "Меч", inputs: { plank: 3, iron_ingot: 2 }, output: { sword: 1 }, seconds: 8, station: "forge" }
+  sword: { name: "Меч", inputs: { plank: 3, iron_ingot: 2 }, output: { sword: 1 }, seconds: 8, station: "forge" },
+  ship: { name: "Корабль", inputs: { plank: 20, iron_ingot: 4 }, output: { ship: 1 }, seconds: 45, station: "shipyard" }
 };
 const FACTORY_TYPES = {
   sawmill: { name: "Лесопилка", cost: { wood: 8, stone: 4 }, recipe: "plank" },
   smelter: { name: "Плавильня", cost: { wood: 6, stone: 8 }, recipe: "iron_ingot" },
-  forge: { name: "Кузница", cost: { plank: 4, iron_ingot: 2, stone: 5 }, recipe: "sword" }
+  forge: { name: "Кузница", cost: { plank: 4, iron_ingot: 2, stone: 5 }, recipe: "sword" },
+  shipyard: { name: "Верфь", cost: { wood: 20, stone: 12, plank: 8 }, recipe: "ship" }
 };
 function economySnapshot(p) {
   const e = p.economy || { items: {}, factories: [] };
