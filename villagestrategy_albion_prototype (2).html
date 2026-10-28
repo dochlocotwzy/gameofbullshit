@@ -720,7 +720,8 @@ function createLocalResourceFallback() {
   n = 0; tries = 0;
   while (n < 12 && tries++ < 3000) { const a = rand() * 6.283, d = rr(30, 50), x = Math.cos(a) * d, z = Math.sin(a) * d; if (!freeSpot(x, z, 1)) continue; const scale = rr(.9, 1.3); spawnRes('ore', pick(oreGeos), x, z, scale, .85 * scale, 1.1 * scale); n++; }
 }
-createLocalResourceFallback();
+// Multiplayer resource nodes must come only from the authoritative server snapshot.
+// No random client-side nodes: every player sees the same shared world.
 
 // Shared world factories: server owns placement, team, health and construction progress.
 const factoryVisuals = new Map();
