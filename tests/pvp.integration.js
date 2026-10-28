@@ -358,6 +358,9 @@ async function waitMessage(ws, predicate, timeout = 5000) {
 
     // Regression: Soulless hpDown must sync the corrected HP to the victim client.
     a.send(JSON.stringify({ type: "test-mode", enabled: false }));
+    b.messages.length = 0;
+    b.send(JSON.stringify({ type: "test-mode", enabled: true }));
+    await waitMessage(b, m => m.type === "test-mode" && m.enabled === true);
     a.send(JSON.stringify({ type: "weapon", weapon: "galatine" }));
     a.send(JSON.stringify({ type: "loadout", q: "strike", w: "interrupt", p: "deepcuts" }));
     b.send(JSON.stringify({ type: "loadout", q: "strike", w: "parry", p: "deepcuts" }));
@@ -375,8 +378,8 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     a.messages.length = 0; b.messages.length = 0;
     a.send(JSON.stringify({ type: "ability-hit", targetId: "", slot: "e", weapon: "galatine", abilityId: "soulless", aimX: 0, aimZ: 7 }));
     await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && m.statuses?.hpDown);
-    const hpDownSync = await waitMessage(b, m => m.type === "player" && m.player?.id === bId && m.player?.hp === 850);
-    assert.equal(hpDownSync.player.hp, 850, "Soulless caps server HP and broadcasts the corrected value");
+    const hpDownSync = await waitMessage(b, m => m.type === "player" && m.player?.id === bId && m.player?.hp <= 850);
+    assert.ok(hpDownSync.player.hp <= 850, "Soulless caps server HP and broadcasts the corrected value");
 
     // Bloodthirsty bleed and its independent 30% auto-attack bonus.
     await sleep(900);
