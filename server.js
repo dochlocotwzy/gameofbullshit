@@ -8,6 +8,8 @@ const PORT = Number(process.env.PORT) || 10000;
 const HOST = "0.0.0.0";
 const GAME_FILE = path.join(__dirname, "villagestrategy_albion_prototype (2).html");
 const MAX_PLAYERS = 40;
+// Free-cast mode is for explicitly opted-in test servers only; never trust a public client toggle.
+const ALLOW_TEST_MODE = process.env.ALLOW_TEST_MODE === "true";
 const PLAYER_MAX_HP = 1000;
 const WEAPON_DAMAGE = { broadsword: 40, claymore: 58, dual: 44, clarent: 42, carving: 54, galatine: 46, kingmaker: 60, infinity: 44 };
 const ABILITY_MULTIPLIER = { q: 2.2, w: 2.8, e: 3.5 };
@@ -151,7 +153,7 @@ wss.on("connection", (ws) => {
       broadcast({ type: "player", player: publicPlayer(p) }, p.id);
       return;
     }
-    if (msg.type === "test-mode") { p.testMode = msg.enabled === true; if (p.testMode) { p.energy = 100; p.abilityCooldowns = {}; } send(ws, {type:"test-mode", enabled:p.testMode, energy:p.energy}); return; }
+    if (msg.type === "test-mode") { p.testMode = ALLOW_TEST_MODE && msg.enabled === true; if (p.testMode) { p.energy = 100; p.abilityCooldowns = {}; } send(ws, {type:"test-mode", enabled:p.testMode, energy:p.energy}); return; }
     if (msg.type === "weapon") {
       const weapon = String(msg.weapon || "");
       if (WEAPON_DAMAGE[weapon]) p.weapon = weapon;
