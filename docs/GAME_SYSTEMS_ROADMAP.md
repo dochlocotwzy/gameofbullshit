@@ -45,6 +45,14 @@ Done when: new item types and weapons can be added through data definitions with
 
 Important: the market is global across teams, not separate per-team shops. The arrival is a pricing boundary.
 
+### World layout, resources, and maritime expansion
+
+- Overall geography: one island with a river running through its central area; villages occupy distinct regions around the island rather than clustering together.
+- Resource nodes should be randomly distributed within authored/valid spawn regions, while keeping the total quantity per resource type balanced across the island. Randomness changes locations, not the intended overall resource budget.
+- Resource depletion and regeneration are server-authoritative. Prototype target respawn is 30 minutes (configurable; balance value to revisit), and the state must remain consistent for all players.
+- Keep river crossings and future boat routes in mind when defining world coordinates and village regions. Do not lock the final shoreline, river bends, bridges, docks, or village placement until a map layout can be reviewed.
+- Future maritime phase: ships, shipbuilding/crafting, materials, docks/harbors, and travel by water. Treat these as future systems, not as existing world interactions yet.
+
 ### Phase 4 — World map, camera, and performance
 1. Wait for the user's map sketch before committing to a major map layout.
 2. Establish a world-coordinate system and separate logical world data from rendered objects.
@@ -86,8 +94,8 @@ Important: the market is global across teams, not separate per-team shops. The a
 ## Interface and interaction conventions
 
 - `I` opens/closes a compact inventory window; inventory, crafting, and factories are separate tabs rather than one oversized panel.
-- `Esc` closes the current panel.
-- `F` is the contextual interaction key. It should act on the nearest valid world object within range and show a clear prompt (for example, a forge, storage, resource node, or travelling merchant).
+- `Esc` closes the current open panel/menu and never clears the selected PvP target. With no panel open, it does not change target selection.
+- `F` is the contextual interaction key, not a universal open-everything key. It only acts when a valid object is within close reach (prototype resource radius: 1.6 world units); among eligible objects, choose the nearest deterministically, then show/perform that object's specific action. If none is close enough, do nothing except show a short hint.
 - Do not pretend a UI-only factory is a world object. Add factory `F` interaction only once a placed building has a world representation and server-validated range/permissions.
 - Reuse a consistent visual system for inventory, crafting, storage, merchant, and factory menus; keep mobile layout compact.
 - UI visibility and interaction are client conveniences only; server validates every action, range, ownership, and permissions where relevant.
