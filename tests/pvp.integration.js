@@ -319,6 +319,8 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     await waitMessage(b, m => m.type === "combat-status" && m.targetId === bId && !m.statuses?.root, 3000);
     a.messages.length = 0; b.messages.length = 0;
     a.send(JSON.stringify({ type: "test-mode", enabled: true }));
+    b.send(JSON.stringify({ type: "test-mode", enabled: true }));
+    await waitMessage(b, m => m.type === "test-mode" && m.enabled === true);
     a.send(JSON.stringify({ type: "loadout", q: "strike", w: "interrupt", p: "deepcuts" }));
     a.send(JSON.stringify({ type: "weapon", weapon: "broadsword" }));
     a.send(JSON.stringify({ type: "state", x: 0, z: 4, rotation: 0 }));
