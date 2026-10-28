@@ -34,6 +34,10 @@ assert.ok(clientHtml.includes(".filter(v=>v.d<=1.6)"), "F requires close interac
 assert.ok(clientHtml.includes(".sort((a,b)=>a.d-b.d||a.index-b.index)[0]"), "F chooses the nearest eligible resource deterministically");
 assert.ok(clientHtml.includes("sp.target === 'enemy' && !groundAoE.has(String(abilityId))"), "multiplayer AoE abilities do not require a selected enemy target");
 assert.ok(clientHtml.includes("sp.target === 'ground' || groundAoE.has(String(abilityId))"), "multiplayer AoE casts face their ground aim point");
+assert.ok(clientHtml.includes("float coastLimit = 0.90"), "world ground is clipped to an irregular island shoreline");
+assert.ok(clientHtml.includes("const riverCenter = [[0,-55]"), "world map includes a central winding river");
+assert.ok(clientHtml.includes("addRiverBridge(2.6, -30)") && clientHtml.includes("addRiverBridge(3.5, 36)"), "river prototype includes two visible crossings");
+assert.ok(clientHtml.includes("color: 0x1b5977"), "island is surrounded by ocean rather than an outer grass plane");
 assert.ok(!clientHtml.includes("window.mpClearTarget(true);"), "Escape never clears the selected PvP target");
 assert.ok(clientHtml.includes("ev.code==='Escape'"), "Escape closes the inventory panel");
 assert.ok(clientHtml.includes("data-econ=\"build\""), "client can request factory construction");
