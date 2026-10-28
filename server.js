@@ -138,8 +138,9 @@ wss.on("connection", (ws) => {
       if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(rotation)) return;
       if (Math.abs(x) > WORLD_BOUND || Math.abs(z) > WORLD_BOUND) return;
       // Root is server-authoritative: accept facing updates, but reject movement until it expires.
-      if ((p.statuses?.root && p.statuses.root.until > Date.now()) || (p.statuses?.parryLock && p.statuses.parryLock.until > Date.now())) {
+      if ((p.statuses?.root && p.statuses.root.until > Date.now()) || (p.statuses?.parryLock && p.statuses.parryLock.until > Date.now()) || (p.positionLockUntil && p.positionLockUntil > Date.now())) {
         p.rotation = rotation;
+        send(ws, { type: "player", player: publicPlayer(p) });
         broadcast({ type: "player", player: publicPlayer(p) }, p.id);
         return;
       }
@@ -243,6 +244,7 @@ wss.on("connection", (ws) => {
         p.rotation=Math.atan2(dx,dz);
         p.x=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+dx/distance*travel));
         p.z=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+dz/distance*travel));
+        p.positionLockUntil = Date.now() + 250;
         distance=Math.hypot(target.x-p.x,target.z-p.z);
         // Replicate server-authoritative dash immediately so clients render the jump, not only the impact.
         broadcast({type:"player",player:publicPlayer(p)});
@@ -251,7 +253,7 @@ wss.on("connection", (ws) => {
         const maxTravel=abilityId==="spinning"?12:abilityId==="carvingDash"?6:7,ax=aimX-p.x,az=aimZ-p.z,len=Math.hypot(ax,az);
         if(len>maxTravel+1)return;
         const travel=Math.min(maxTravel,len);
-        if(len>.01){p.x=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+ax/len*travel));p.z=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+az/len*travel));p.rotation=Math.atan2(ax,az);}
+        if(len>.01){p.x=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.x+ax/len*travel));p.z=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,p.z+az/len*travel));p.rotation=Math.atan2(ax,az);p.positionLockUntil=Date.now()+250;}
       }
       let victims=[];
       if(ability.path&&isArea){
