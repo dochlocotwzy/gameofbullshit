@@ -278,6 +278,7 @@ const circles = [], boxes = [], paths = [];
 const MAP_SCALE = 2.3;
 const riverCenter = [[0,-55],[3,-42],[0,-28],[-4,-18],[-7,0],[-4,18],[0,28],[3,42],[0,55]].map(([x,z])=>[x*MAP_SCALE,z*MAP_SCALE]);
 const riverBridges = [[0,-28],[-7,0],[0,28]].map(([x,z])=>[x*MAP_SCALE,z*MAP_SCALE]);
+const RIVER_BLOCK_RADIUS = 3.15 * MAP_SCALE;
 function closestRiverPoint(x, z) {
   let best = { x: 0, z: 0, distance: Infinity, nx: 1, nz: 0, dx: 0, dz: 0 };
   for (let i = 0; i < riverCenter.length - 1; i++) {
@@ -294,10 +295,10 @@ function closestRiverPoint(x, z) {
   return best;
 }
 function isBridgeCrossing(x, z) {
-  return riverBridges.some(([bx, bz]) => Math.abs(x - bx) <= 4.15 * MAP_SCALE && Math.abs(z - bz) <= 2.15 * MAP_SCALE);
+  return riverBridges.some(([bx, bz]) => Math.abs(x - bx) <= 4.15 && Math.abs(z - bz) <= 2.15);
 }
 function isRiverBlocked(x, z) {
-  return !isBridgeCrossing(x, z) && closestRiverPoint(x, z).distance < 3.45 * MAP_SCALE;
+  return !isBridgeCrossing(x, z) && closestRiverPoint(x, z).distance < RIVER_BLOCK_RADIUS;
 }
 const addCircle = (x, z, r) => { const c = { x, z, r }; circles.push(c); return c; };
 const addBox = (x, z, hx, hz) => boxes.push({ x0: x - hx, x1: x + hx, z0: z - hz, z1: z + hz });
@@ -320,7 +321,7 @@ function resolve(pos, pr) {
     let dx = river.dx, dz = river.dz, d = Math.hypot(dx, dz);
     if (d < 1e-4) { dx = river.nx; dz = river.nz; d = 1; }
     const side = dx * river.nx + dz * river.nz < 0 ? -1 : 1;
-    pos.x = river.x + river.nx * side * (3.45 * MAP_SCALE + pr + .22);
+    pos.x = river.x + river.nx * side * (RIVER_BLOCK_RADIUS + pr + .22);
     pos.z = river.z + river.nz * side * (3.45 * MAP_SCALE + pr + .22);
   }
   const d = Math.hypot(pos.x, pos.z); if (d > CFG.BOUND) { pos.x *= CFG.BOUND / d; pos.z *= CFG.BOUND / d; }
