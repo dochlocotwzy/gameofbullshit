@@ -54,8 +54,9 @@ assert.ok(clientHtml.includes("makeHouse(-13, -37") && clientHtml.includes("make
 assert.ok(clientHtml.includes("[[0, -8], [0, -20], [0, -28], [-5, -34], [-13, -37]]") && clientHtml.includes("[[0, 0], [-7, 0], [-18, -2], [-27, -5], [-37, -7]]"), "road network connects outer villages to river crossings and central hub");
 assert.ok(clientHtml.includes("addRiverBridge(-7, 0)"), "central river route has a crossing near the hub");
 assert.ok(clientHtml.includes("color: 0x1b5977"), "island is surrounded by ocean rather than an outer grass plane");
-assert.ok(!clientHtml.includes("window.mpClearTarget(true);"), "Escape never clears the selected PvP target");
-assert.ok(clientHtml.includes("ev.code==='Escape'"), "Escape closes the inventory panel");
+assert.ok(clientHtml.includes("window.mpClearTarget(true);"), "Escape clears the selected PvP target");
+assert.ok(clientHtml.includes("if (econPanel.classList.contains('open')) return;"), "Escape closes an open inventory panel before clearing the target");
+assert.ok(clientHtml.includes("if (order.mode === 'mp-chase') window.mpStopMovement?.();"), "Escape stops server movement when cancelling target chase");
 assert.ok(clientHtml.includes("data-econ=\"build\""), "client can request factory construction");
 assert.ok(clientHtml.includes("data-econ=\"craft\""), "client can request crafting");
 assert.ok(serverSource.includes("combat-cancelled"), "server cancels auto-attacks interrupted before impact");
