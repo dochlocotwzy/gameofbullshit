@@ -201,9 +201,9 @@ wss.on("connection", (ws) => {
       }
       if (isParryInvulnerable(target, now)) return;
       const attackId = crypto.randomUUID(), startX = p.x, startZ = p.z;
-      p.pendingAttack = { id: attackId, targetId: target.id, startX, startZ };
+      p.pendingAttack = { id: attackId, targetId: target.id, startX, startZ, timer: null };
       broadcast({ type: "combat-windup", attackerId: p.id, targetId: target.id, attackId, weapon: p.weapon || "broadsword", duration: 320 });
-      setTimeout(() => {
+      p.pendingAttack.timer = setTimeout(() => {
         if (!p.pendingAttack || p.pendingAttack.id !== attackId) return;
         p.pendingAttack = null;
         const now = Date.now();
