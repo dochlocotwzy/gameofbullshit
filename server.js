@@ -349,6 +349,7 @@ function generateResourceWorld() {
       const absX = Math.abs(Math.cos(angle) * radius);
       const z = Math.round(Math.sin(angle) * radius * 100) / 100;
       const x = Math.round(absX * 100) / 100;
+      if (x < minDistance / 2) continue;
       const leftX = -x;
       const rightX = x;
       if (Math.hypot(x, z) > WORLD_BOUND - 7 || Math.hypot(x, z) < 10 * MAP_SCALE) continue;
