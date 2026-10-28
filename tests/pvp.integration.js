@@ -24,6 +24,7 @@ assert.ok(serverSource.includes("Math.hypot(p.x - node.x, p.z - node.z) > 3.6"),
 assert.ok(serverSource.includes("closestRiverPoint(x, z).distance < 5.5"), "server resource generation excludes the river and its banks");
 assert.ok(serverSource.includes("function isRiverBlocked(x, z)"), "server blocks player positions inside the river");
 assert.ok(serverSource.includes("function safeLandPosition(fromX, fromZ, toX, toZ)"), "server dash movement cannot cross the river outside bridge corridors");
+assert.ok(serverSource.includes("return isRiverBlocked(candidate.x, candidate.z) ? safeLandPosition(0, 7, candidate.x, candidate.z) : candidate;"), "additional player spawn and respawn positions are kept on dry land");
 assert.ok(serverSource.includes("if (isRiverBlocked(x, z)) { send(ws, { type: \"player\", player: publicPlayer(p) }); return; }"), "server rejects client position updates inside the river");
 assert.ok(clientHtml.includes("function isRiverBlocked(x, z)"), "client collision system treats the river as an obstacle");
 assert.ok(clientHtml.includes("if (closestRiverPoint(x, z).distance < 5.5) return false;"), "client fallback resource generation excludes river banks");
