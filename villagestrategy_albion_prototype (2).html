@@ -1607,7 +1607,7 @@ $('#dreset').addEventListener('click', e => { S.total = S.hits = S.max = 0; S.ev
 addEventListener('keydown', e => {
   if (e.repeat || (e.target && e.target.tagName === 'SELECT')) return;
   if (e.code === 'KeyQ') trySpell('q'); else if (e.code === 'KeyW' && !CFG.WASD_MOVE) trySpell('w'); else if (e.code === 'KeyE') trySpell('e');
-  else if (e.code === 'Space' && window.mpConnected && window.mpTargetId && window.mpStartChase) window.mpStartChase();
+  else if (e.code === 'Space' && window.mpConnected && window.mpStartChase) { if (!window.mpTargetId && window.mpSelectNearestTarget) window.mpSelectNearestTarget(); if (window.mpTargetId) window.mpStartChase(); }
   else if (/^Digit[1-8]$/.test(e.code)) setWeapon(WEAPON_ORDER[+e.code.slice(5) - 1]);
 });
 rebuildWeapons(); renderSlots();
