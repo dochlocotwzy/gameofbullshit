@@ -70,6 +70,22 @@
   .fl.dmg.big{font-size:28px;color:#ffb347}
   .fl.dmg.dot{color:#ff6a5a;font-size:13px}
   .fl.dmg.info{color:#cfa8ff;font-size:14px}
+  #economy-open{position:fixed;left:14px;bottom:144px;z-index:20;padding:8px 12px;font:600 12px system-ui;background:#14201bf0;border:1px solid #d7c18b88;color:#f3efe3;border-radius:9px;cursor:pointer}
+  #economy-panel{position:fixed;inset:50% auto auto 50%;transform:translate(-50%,-50%);z-index:1100;width:min(680px,94vw);max-height:82vh;overflow:auto;padding:16px;background:#101a15f5;border:1px solid #d7c18b88;border-radius:14px;box-shadow:0 16px 60px #000b;display:none}
+  #economy-panel.open{display:block}
+  #economy-panel h2{margin:0 0 8px;font-size:18px}
+  #economy-panel h3{font-size:13px;color:#f1d99a;margin:14px 0 6px}
+  #economy-panel .econ-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+  #economy-panel .econ-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
+  #economy-panel .econ-card{padding:10px;border:1px solid #ffffff24;border-radius:9px;background:#ffffff08}
+  #economy-panel .econ-card b{display:block;margin-bottom:4px}
+  #economy-panel .econ-card small{display:block;color:#c0cfc2;line-height:1.4;margin-bottom:7px}
+  #economy-panel button{font:inherit;font-size:12px;color:#f3efe3;background:#273a2d;border:1px solid #a4c19a66;border-radius:7px;padding:5px 8px;cursor:pointer;margin:2px}
+  #economy-panel button:disabled{opacity:.4;cursor:default}
+  #economy-panel .econ-muted{color:#aab8aa;font-size:11px}
+  #economy-panel #econ-close{background:#392b25;border-color:#c88c7566}
+  @media(max-width:600px){#economy-open{bottom:135px}#economy-panel{max-height:88vh;padding:12px}#inv{gap:3px;padding:5px}.slot{width:60px}}
+
 </style>
 </head>
 <body>
@@ -93,6 +109,15 @@
   <div class="slot"><b>🪨</b><span id="c-stone">0</span><small>Камень</small></div>
   <div class="slot"><b>⛏️</b><span id="c-ore">0</span><small>Руда</small></div>
 </div>
+<button id="economy-open">🎒 Инвентарь · Крафт · Фабрики</button>
+<section id="economy-panel" aria-label="Инвентарь, крафт и фабрики">
+  <div class="econ-head"><div><h2>🎒 Экономика</h2><div class="econ-muted" id="econ-status">Подключение к серверу…</div></div><button id="econ-close">Закрыть ✕</button></div>
+  <h3>Инвентарь и склад</h3><div id="econ-items" class="econ-grid"></div>
+  <h3>Крафт вручную</h3><div id="econ-recipes" class="econ-grid"></div>
+  <h3>Фабрики</h3><div id="econ-buildings" class="econ-grid"></div>
+  <h3>Твои производственные линии</h3><div id="econ-factories" class="econ-grid"></div>
+  <p class="econ-muted">Производство серверное: материалы списываются при запуске цикла, готовые предметы поступают на склад. Пока данные хранятся в памяти игрового сервера и сбрасываются при его перезапуске.</p>
+</section>
 <div id="cpanel" class="glass">
   <h2>⚔️ Бой: ветка мечей</h2>
   <label>Меч <select id="selWeapon"></select></label>
@@ -594,6 +619,52 @@ function spawnRes(type, geo, x, z, s, collR, hitR) {
 
 /* =====================  инвентарь, всплывающие надписи, частицы  ===================== */
 const inv = { wood: 0, stone: 0, ore: 0 };
+const ECON_LABELS = { wood:["🪵","Древесина"], stone:["🪨","Камень"], ore:["⛏️","Руда"], plank:["🪚","Доски"], iron_ingot:["🔩","Железные слитки"], sword:["⚔️","Мечи"] };
+let economyState = { items:{wood:0,stone:0,ore:0,plank:0,iron_ingot:0,sword:0}, factories:[] };
+const econPanel = $('#economy-panel');
+function econSend(payload) {
+  if (window.mpEconomySend) { window.mpEconomySend(payload); return true; }
+  $('#econ-status').textContent = 'Для крафта и фабрик подключись к игровому серверу.';
+  return false;
+}
+function renderEconomyState(data) {
+  if (data && data.economy) { economyState = data.economy; }
+  const items = economyState.items || {};
+  $('#econ-status').textContent = window.mpConnected ? (data?.message || 'Сервер синхронизирован') : 'Оффлайн: экономика доступна только на сервере';
+  $('#econ-items').innerHTML = Object.entries(ECON_LABELS).map(([id,meta])=>`<div class="econ-card"><b>${meta[0]} ${meta[1]}</b><span>${Math.max(0,Number(items[id])||0)}</span></div>`).join('');
+  const recipes = [
+    {id:'plank',name:'Доски',icon:'🪚',inputs:'2 древесины',output:'1 доска',station:'Лесопилка'},
+    {id:'iron_ingot',name:'Железный слиток',icon:'🔩',inputs:'2 руды + 1 древесина',output:'1 слиток',station:'Плавильня'},
+    {id:'sword',name:'Меч',icon:'⚔️',inputs:'3 доски + 2 слитка',output:'1 меч',station:'Кузница'}
+  ];
+  $('#econ-recipes').innerHTML = recipes.map(r=>`<div class="econ-card"><b>${r.icon} ${r.name}</b><small>Расход: ${r.inputs}<br>Выход: ${r.output}<br>Станция: ${r.station}</small><button data-econ="craft" data-id="${r.id}">Создать</button></div>`).join('');
+  const buildings = [
+    {id:'sawmill',name:'Лесопилка',cost:'8 древесины + 4 камня',recipe:'Производит доски'},
+    {id:'smelter',name:'Плавильня',cost:'6 древесины + 8 камня',recipe:'Производит железные слитки'},
+    {id:'forge',name:'Кузница',cost:'4 доски + 2 слитка + 5 камня',recipe:'Производит мечи'}
+  ];
+  $('#econ-buildings').innerHTML = buildings.map(b=>`<div class="econ-card"><b>🏭 ${b.name}</b><small>${b.recipe}<br>Строительство: ${b.cost}</small><button data-econ="build" data-id="${b.id}">Построить</button></div>`).join('');
+  const factories = economyState.factories || [];
+  $('#econ-factories').innerHTML = factories.length ? factories.map(f=>{
+    const progress=Math.max(0,Math.min(100,Math.round((f.progress||0)*100)));
+    const state=f.running ? `Работает · ${Math.ceil((f.remainingMs||0)/1000)} с · ${progress}%` : 'Ожидает запуска';
+    return `<div class="econ-card"><b>🏭 ${f.name} №${f.id}</b><small>${state}<br>Рецепт: ${({plank:'доски',iron_ingot:'железные слитки',sword:'мечи'})[f.recipe]||f.recipe}</small><button data-econ="run" data-id="${f.id}" ${f.running?'disabled':''}>Запустить</button><button data-econ="stop" data-id="${f.id}" ${f.running?'':'disabled'}>Отменить цикл</button></div>`;
+  }).join('') : '<div class="econ-card">Пока нет фабрик. Построй первую выше.</div>';
+  $('#c-wood').textContent = items.wood || 0; $('#c-stone').textContent = items.stone || 0; $('#c-ore').textContent = items.ore || 0;
+}
+window.renderEconomyState = renderEconomyState;
+$('#economy-open').addEventListener('click',()=>{econPanel.classList.add('open');econSend({type:'economy-get'});});
+$('#econ-close').addEventListener('click',()=>econPanel.classList.remove('open'));
+econPanel.addEventListener('click',ev=>{
+  const b=ev.target.closest('button[data-econ]'); if(!b)return;
+  const id=b.dataset.id, action=b.dataset.econ;
+  if(action==='craft')econSend({type:'economy-craft',recipe:id});
+  else if(action==='build')econSend({type:'economy-build',factory:id});
+  else if(action==='run')econSend({type:'economy-run',factoryId:Number(id)});
+  else if(action==='stop')econSend({type:'economy-stop',factoryId:Number(id)});
+});
+renderEconomyState();
+
 const toScreen = (() => { const v = new THREE.Vector3(); return (x, y, z) => { v.set(x, y, z).project(camera); return { x: (v.x * .5 + .5) * innerWidth, y: (-v.y * .5 + .5) * innerHeight }; }; })();
 function floatText(txt, x, y, z) {
   const s = toScreen(x, y, z), d = document.createElement('div'); d.className = 'fl'; d.textContent = txt; d.style.left = s.x + 'px'; d.style.top = s.y + 'px';
@@ -735,8 +806,15 @@ canvas.addEventListener('wheel', e => { e.preventDefault(); distT = clamp(distT 
 /* =====================  добыча  ===================== */
 function renderInv() { $('#c-wood').textContent = inv.wood; $('#c-stone').textContent = inv.stone; $('#c-ore').textContent = inv.ore; }
 function finishGather(r) {
-  const def = RES[r.type]; inv[def.item] += def.yield; renderInv();
-  floatText(`+${def.yield} ${def.icon}`, r.x, 3.2, r.z); burst(r.x, 1.2, r.z, def.chip);
+  const def = RES[r.type];
+  if (window.mpConnected && window.mpEconomySend) {
+    window.mpEconomySend({type:'economy-gather',resource:def.item});
+    floatText(`⏳ ${def.icon}`, r.x, 3.2, r.z);
+  } else {
+    inv[def.item] += def.yield; renderInv();
+    floatText(`+${def.yield} ${def.icon}`, r.x, 3.2, r.z);
+  }
+  burst(r.x, 1.2, r.z, def.chip);
   r.mesh.position.x = r.x; r.mesh.rotation.z = 0; r.depleted = true; r.respawnAt = gameT + def.respawn;
   if (r.type === 'tree') { r.mesh.geometry = stumpGeo; r.collider.r = .35 * r.s; } else { r.mesh.visible = false; r.collider.r = 0; }
   cancelOrder();
@@ -1484,6 +1562,10 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   const remotes = new Map();
   let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0, lastInputSend = 0, lastPingSend = 0, pingMs = null, lastMpFrame = 0;
   window.mpConnected = false;
+  window.mpEconomySend = payload => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify(payload)); return true;
+  };
   window.mpSetWeapon = id => {
     if (socket && socket.readyState === WebSocket.OPEN && WEAPONS[id]) socket.send(JSON.stringify({type:'weapon',weapon:id}));
   };
@@ -1640,7 +1722,9 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     });
     socket.addEventListener('message', event => {
       let msg; try { msg = JSON.parse(event.data); } catch { return; }
-      if (msg.type === 'latency-pong') {
+      if (msg.type === 'economy-state') {
+        if (window.renderEconomyState) window.renderEconomyState(msg);
+      } else if (msg.type === 'latency-pong') {
         const sentAt = Number(msg.sentAt);
         if (Number.isFinite(sentAt)) {
           pingMs = Math.max(0, Math.round(performance.now() - sentAt));
@@ -1649,6 +1733,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       } else if (msg.type === 'welcome') {
         socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free}));
         mpId = msg.id;
+        socket.send(JSON.stringify({type:'economy-get'}));
         (msg.players || []).forEach(p => { if (p.id !== mpId) addRemote(p); });
       } else if (msg.type === 'joined' || msg.type === 'player') {
         const incoming = msg.player;
