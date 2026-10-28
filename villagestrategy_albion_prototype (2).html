@@ -362,23 +362,31 @@ function blobCircle(g, cx, cy, r, color, alpha) {
 function buildGroundTexture() {
   const N = 2048, S = N / CFG.WORLD, c = document.createElement('canvas'); c.width = c.height = N;
   const g = c.getContext('2d'), X = x => (x + CFG.HALF) * S, Z = z => (z + CFG.HALF) * S;
-  g.fillStyle = '#5f8f3d'; g.fillRect(0, 0, N, N);
-  noiseDots(g, N, 1100, ['#4f8034', '#699a43', '#74a64a', '#477734', '#5f9140', '#7aa84d'], 12, 60, .22);
-  // Medieval landscape detailing: irregular meadow clearings, worn earth, damp lowlands,
-  // and scattered limestone/gravel patches. Keep the detail subtle so gameplay remains legible.
-  for (let i = 0; i < 420; i++) {
-    const x = rr(5, N - 5), y = rr(5, N - 5), rx = rr(5, 24) * S, ry = rr(4, 16) * S;
+  // Replace the old bright, almost uniform green carpet with a layered medieval field palette.
+  g.fillStyle = '#596847'; g.fillRect(0, 0, N, N);
+  noiseDots(g, N, 1700, ['#3d5037', '#4b5f3e', '#65764c', '#78815a', '#555f43', '#8b8964'], 10, 55, .42);
+  // Broad, irregular ground cover patches are intentionally stronger and larger than decorative grain.
+  for (let i = 0; i < 1450; i++) {
+    const x = rr(-30, N + 30), y = rr(-30, N + 30);
+    const rx = rr(12, 74) * S, ry = rr(8, 46) * S;
     g.save(); g.translate(x, y); g.rotate(rand() * Math.PI);
-    g.globalAlpha = rr(.035, .12);
-    g.fillStyle = pick(['#2f542b', '#8ca65a', '#b1a06d', '#6b7750', '#9b8b68']);
-    g.beginPath(); g.ellipse(0, 0, Math.max(2, rx), Math.max(2, ry), 0, 0, Math.PI * 2); g.fill(); g.restore();
+    g.globalAlpha = rr(.10, .27);
+    g.fillStyle = pick(['#354b32', '#46583a', '#78805a', '#8a7956', '#6c7250', '#a0926b', '#3b4936']);
+    g.beginPath(); g.ellipse(0, 0, Math.max(3, rx), Math.max(3, ry), 0, 0, Math.PI * 2); g.fill(); g.restore();
   }
-  // Fine stone flecks and moss create a hand-worked, natural terrain rather than a flat green plane.
-  for (let i = 0; i < 12500; i++) {
+  // Small exposed-soil and gravel clusters, like worn ground around old roads and settlements.
+  for (let i = 0; i < 520; i++) {
+    const x = rand() * N, y = rand() * N, r = rr(2, 11) * S;
+    g.globalAlpha = rr(.08, .22);
+    g.fillStyle = pick(['#a08b67', '#b3a17a', '#6e6852', '#343e31']);
+    g.beginPath(); g.ellipse(x, y, r * rr(1.2, 2.8), r, rand() * 3, 0, Math.PI * 2); g.fill();
+  }
+  // Fine grain remains visible up close but no longer dominates the ground material.
+  for (let i = 0; i < 18000; i++) {
     const x = rand() * N, y = rand() * N;
-    g.globalAlpha = rr(.06, .19);
-    g.fillStyle = pick(['#c0b18b', '#d1c49b', '#314f2b', '#7f9d4e', '#6b6347']);
-    const w = rr(.7, 2.6); g.fillRect(x, y, w, w * rr(.5, 1.5));
+    g.globalAlpha = rr(.08, .22);
+    g.fillStyle = pick(['#c0b18b', '#d1c49b', '#314f2b', '#7f875b', '#6b6347', '#b0a17a']);
+    const w = rr(.8, 2.8); g.fillRect(x, y, w, w * rr(.5, 1.5));
   }
   g.globalAlpha = 1;
   g.lineWidth = 1.4;
