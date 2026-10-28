@@ -617,20 +617,43 @@ function spawnRes(type, geo, x, z, s, collR, hitR) {
   const r = { type, mesh: m, x, z, r: hitR, geo, s, collider: addCircle(x, z, collR), cr: collR, depleted: false, respawnAt: 0, pop: 1 };
   m.userData.res = r; resources.push(r); resMeshes.push(m); return r;
 }
-{
-  // деревья кластерами
+// Offline fallback until the server's shared resource-world snapshot arrives.
+function createLocalResourceFallback() {
   const centers = [];
   for (let i = 0; i < 9; i++) { for (let k = 0; k < 40; k++) { const a = rand() * 6.283, d = rr(20, 46), x = Math.cos(a) * d, z = Math.sin(a) * d; if (distToPaths(x, z) > 6) { centers.push([x, z]); break; } } }
   let n = 0, tries = 0;
-  while (n < 62 && tries++ < 5000) {
-    const c = pick(centers), x = c[0] + rr(-8, 8), z = c[1] + rr(-8, 8);
-    if (!freeSpot(x, z, .8)) continue;
-    const s = rr(.85, 1.3); spawnRes('tree', pick(treeGeos), x, z, s, .5 * s, .7 * s); n++;
+  while (n < 62 && tries++ < 5000) { const p = pick(centers), x = p[0] + rr(-8, 8), z = p[1] + rr(-8, 8); if (!freeSpot(x, z, .8)) continue; const scale = rr(.85, 1.3); spawnRes('tree', pick(treeGeos), x, z, scale, .5 * scale, .7 * scale); n++; }
+  n = 0; tries = 0;
+  while (n < 24 && tries++ < 3000) { const a = rand() * 6.283, d = rr(14, 50), x = Math.cos(a) * d, z = Math.sin(a) * d; if (!freeSpot(x, z, 1)) continue; const scale = rr(.8, 1.5); spawnRes('rock', pick(rockGeos), x, z, scale, .85 * scale, 1.1 * scale); n++; }
+  n = 0; tries = 0;
+  while (n < 12 && tries++ < 3000) { const a = rand() * 6.283, d = rr(30, 50), x = Math.cos(a) * d, z = Math.sin(a) * d; if (!freeSpot(x, z, 1)) continue; const scale = rr(.9, 1.3); spawnRes('ore', pick(oreGeos), x, z, scale, .85 * scale, 1.1 * scale); n++; }
+}
+createLocalResourceFallback();
+function setResourceVisual(r, depleted) {
+  r.depleted = !!depleted;
+  if (r.depleted) { if (r.type === 'tree') { r.mesh.geometry = stumpGeo; r.collider.r = .35 * r.s; } else { r.mesh.visible = false; r.collider.r = 0; } }
+  else { r.mesh.geometry = r.geo; r.mesh.visible = true; r.collider.r = r.cr; r.pop = 0; }
+}
+function syncResourceWorld(nodes) {
+  if (!Array.isArray(nodes) || !nodes.length) return;
+  for (const r of resources) { scene.remove(r.mesh); const ci = circles.indexOf(r.collider); if (ci >= 0) circles.splice(ci, 1); }
+  resources.length = 0; resMeshes.length = 0;
+  for (const node of nodes) {
+    const kind = node.kind === 'wood' ? 'tree' : node.kind === 'stone' ? 'rock' : node.kind === 'ore' ? 'ore' : null;
+    if (!kind || !Number.isFinite(Number(node.x)) || !Number.isFinite(Number(node.z))) continue;
+    const scale = Math.max(.7, Math.min(1.6, Number(node.scale) || 1));
+    const geos = kind === 'tree' ? treeGeos : kind === 'rock' ? rockGeos : oreGeos;
+    const geo = geos[Math.abs(Number(node.variant) || 0) % geos.length];
+    const r = spawnRes(kind, geo, Number(node.x), Number(node.z), scale, (kind === 'tree' ? .5 : .85) * scale, (kind === 'tree' ? .7 : 1.1) * scale);
+    r.id = node.id; r.serverManaged = true; r.respawnAt = node.respawnAt ? gameT + Math.max(0, (Number(node.respawnAt) - Date.now()) / 1000) : 0;
+    setResourceVisual(r, node.depleted);
   }
-  n = 0; tries = 0;
-  while (n < 24 && tries++ < 3000) { const a = rand() * 6.283, d = rr(14, 50), x = Math.cos(a) * d, z = Math.sin(a) * d; if (!freeSpot(x, z, 1)) continue; const s = rr(.8, 1.5); spawnRes('rock', pick(rockGeos), x, z, s, .85 * s, 1.1 * s); n++; }
-  n = 0; tries = 0;
-  while (n < 12 && tries++ < 3000) { const a = rand() * 6.283, d = rr(30, 50), x = Math.cos(a) * d, z = Math.sin(a) * d; if (!freeSpot(x, z, 1)) continue; const s = rr(.9, 1.3); spawnRes('ore', pick(oreGeos), x, z, s, .85 * s, 1.1 * s); n++; }
+}
+function applyResourceNode(node) {
+  if (!node || !node.id) return;
+  const r = resources.find(item => item.id === node.id); if (!r) return;
+  r.respawnAt = node.respawnAt ? gameT + Math.max(0, (Number(node.respawnAt) - Date.now()) / 1000) : 0;
+  setResourceVisual(r, node.depleted);
 }
 // фоновый лес по краю: лёгкие модели, разбиты на секторы (невидимые сектора не рисуются), без теней
 {
@@ -694,11 +717,10 @@ function renderEconomyState(data) {
   if (data?.action === 'gather' && data.requestId && pendingHarvests.has(data.requestId)) {
     const resource = pendingHarvests.get(data.requestId); pendingHarvests.delete(data.requestId);
     if (data.ok) {
-      resource.pendingHarvest = false; resource.respawnAt = gameT + RES[resource.type].respawn;
+      resource.pendingHarvest = false;
       burst(resource.x, 1.2, resource.z, RES[resource.type].chip);
       floatText(`+${RES[resource.type].yield} ${RES[resource.type].icon}`, resource.x, 3.2, resource.z);
-      if (resource.type === 'tree') { resource.mesh.geometry = stumpGeo; resource.collider.r = .35 * resource.s; }
-      else { resource.mesh.visible = false; resource.collider.r = 0; }
+      if (!resource.serverManaged) setResourceVisual(resource, true);
     } else {
       resource.depleted = false; resource.pendingHarvest = false; resource.respawnAt = 0;
       if (window.mpToast) window.mpToast(data.message || 'Сбор не подтверждён сервером.');
@@ -919,7 +941,7 @@ function finishGather(r) {
     const requestId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
     r.depleted = true; r.pendingHarvest = true; r.respawnAt = Infinity;
     pendingHarvests.set(requestId, r);
-    const sent = window.mpEconomySend({type:'economy-gather',resource:def.item,requestId});
+    const sent = window.mpEconomySend({type:'economy-gather',resource:def.item,nodeId:r.id,requestId});
     if (!sent) { pendingHarvests.delete(requestId); r.depleted = false; r.pendingHarvest = false; r.respawnAt = 0; }
     else floatText(`⏳ ${def.icon}`, r.x, 3.2, r.z);
     cancelOrder(); return;
@@ -937,7 +959,7 @@ function depleteResource(r) {
   else { r.mesh.visible = false; r.collider.r = 0; }
 }
 function updateRespawn() {
-  for (const r of resources) if (r.depleted && gameT >= r.respawnAt) {
+  for (const r of resources) if (!r.serverManaged && r.depleted && gameT >= r.respawnAt) {
     r.depleted = false; r.mesh.geometry = r.geo; r.mesh.visible = true; r.collider.r = r.cr; r.pop = 0;
   }
 }
@@ -1843,7 +1865,9 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     });
     socket.addEventListener('message', event => {
       let msg; try { msg = JSON.parse(event.data); } catch { return; }
-      if (msg.type === 'economy-state') {
+      if (msg.type === 'resource-node') {
+        applyResourceNode(msg.node);
+      } else if (msg.type === 'economy-state') {
         if (window.renderEconomyState) window.renderEconomyState(msg);
       } else if (msg.type === 'latency-pong') {
         const sentAt = Number(msg.sentAt);
@@ -1855,6 +1879,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free}));
         mpId = msg.id;
         socket.send(JSON.stringify({type:'economy-get'}));
+        syncResourceWorld(msg.resources);
         (msg.players || []).forEach(p => { if (p.id !== mpId) addRemote(p); });
       } else if (msg.type === 'joined' || msg.type === 'player') {
         const incoming = msg.player;
