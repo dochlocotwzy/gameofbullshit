@@ -1410,9 +1410,9 @@ function configureBranchOptions(id){
  Q_LIST=b?b.q.slice():['strike','cleave']; W_LIST=b?b.w.slice():['cyclone','interrupt','splitting','hamstring','parry','ironwill'];
  const ps=b?Object.keys(b.passives):['deepcuts','weakening','heroicfighting','increaseddef'];
  if(!Q_LIST.includes(loadout.q))loadout.q=Q_LIST[0];if(!W_LIST.includes(loadout.w))loadout.w=W_LIST[0];if(!ps.includes(loadout.p))loadout.p=ps[0];
- if(H.selQ)fillSelect(H.selQ,Q_LIST.map(k=>[k,SPELLS[k].name]),loadout.q);
- if(H.selW)fillSelect(H.selW,W_LIST.map(k=>[k,SPELLS[k].name]),loadout.w);
- if(H.selP)fillSelect(H.selP,ps.map(k=>[k,PASSIVES[k].name]),loadout.p);
+ if($('#selQ'))fillSelect($('#selQ'),Q_LIST.map(k=>[k,SPELLS[k].name]),loadout.q);
+ if($('#selW'))fillSelect($('#selW'),W_LIST.map(k=>[k,SPELLS[k].name]),loadout.w);
+ if($('#selP'))fillSelect($('#selP'),ps.map(k=>[k,PASSIVES[k].name]),loadout.p);
 }
 
 let loadout = { weapon: 'broadsword', q: 'strike', w: 'cyclone', p: 'deepcuts' };
