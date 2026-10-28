@@ -121,10 +121,12 @@
     <button type="button" class="active" data-econ-tab="items" role="tab" aria-selected="true">🎒 Предметы</button>
     <button type="button" data-econ-tab="craft" role="tab" aria-selected="false">⚒ Крафт</button>
     <button type="button" data-econ-tab="factories" role="tab" aria-selected="false">🏭 Фабрики</button>
+    <button type="button" data-econ-tab="trade" role="tab" aria-selected="false">🪙 Торговец</button>
   </div>
   <div data-econ-view="items"><div id="econ-items" class="econ-grid"></div></div>
-  <div data-econ-view="craft" hidden><h3>Создание предметов</h3><div id="econ-recipes" class="econ-grid"></div></div>
+  <div data-econ-view="craft" hidden><h3>Чертежи и производство</h3><div id="econ-recipes" class="econ-grid"></div></div>
   <div data-econ-view="factories" hidden><h3>Построить производство</h3><div id="econ-buildings" class="econ-grid"></div><h3>Твои производственные линии</h3><div id="econ-factories" class="econ-grid"></div></div>
+  <div data-econ-view="trade" hidden><h3>Торговая лавка</h3><p class="econ-muted">Купи недостающие материалы или продай излишки. Покупка по полной цене, продажа — за 70% цены. Торговля серверная.</p><div id="econ-trader" class="econ-grid"></div></div>
   <p class="econ-muted">Прототип: производство серверное, сохранение между перезапусками пока не подключено.</p>
 </section>
 <div id="cpanel" class="glass">
@@ -838,8 +840,8 @@ function applyResourceNode(node) {
 
 /* =====================  инвентарь, всплывающие надписи, частицы  ===================== */
 const inv = { wood: 0, stone: 0, ore: 0 };
-const ECON_LABELS = { wood:["🪵","Древесина"], stone:["🪨","Камень"], ore:["⛏️","Руда"], plank:["🪚","Доски"], iron_ingot:["🔩","Железные слитки"], ship:["⛵","Корабли"] };
-let economyState = { items:{wood:0,stone:0,ore:0,plank:0,iron_ingot:0,ship:0}, factories:[] };
+const ECON_LABELS = { gold:["🪙","Золото"], wood:["🪵","Древесина"], stone:["🪨","Камень"], ore:["⛏️","Руда"], plank:["🪚","Доски"], charcoal:["⚫","Древесный уголь"], stone_block:["🧱","Каменный блок"], iron_ingot:["🔩","Железный слиток"], steel_ingot:["⚙️","Стальной слиток"], tool_kit:["🧰","Набор инструментов"], ship:["⛵","Корабль"] };
+let economyState = { items:{gold:100,wood:0,stone:0,ore:0,plank:0,charcoal:0,stone_block:0,iron_ingot:0,steel_ingot:0,tool_kit:0,ship:0}, factories:[] };
 const pendingHarvests = new Map();
 const econPanel = $('#economy-panel');
 function econSend(payload) {
@@ -867,16 +869,22 @@ function renderEconomyState(data) {
   const activeFactory = (economyState.factories || []).find(f => Number(f.id) === Number(economyState.activeFactoryId));
   const recipes = [
     {id:'plank',name:'Доски',icon:'🪚',inputs:'2 древесины',output:'1 доска',station:'Лесопилка',stationId:'sawmill'},
+    {id:'stone_block',name:'Каменный блок',icon:'🧱',inputs:'3 камня',output:'1 блок',station:'Лесопилка',stationId:'sawmill'},
+    {id:'tool_kit',name:'Набор инструментов',icon:'🧰',inputs:'2 доски + 1 железный слиток',output:'1 набор',station:'Лесопилка',stationId:'sawmill'},
+    {id:'charcoal',name:'Древесный уголь',icon:'⚫',inputs:'3 древесины',output:'2 угля',station:'Плавильня',stationId:'smelter'},
     {id:'iron_ingot',name:'Железный слиток',icon:'🔩',inputs:'2 руды + 1 древесина',output:'1 слиток',station:'Плавильня',stationId:'smelter'},
-    {id:'ship',name:'Корабль',icon:'⛵',inputs:'20 досок + 4 слитка',output:'1 корабль',station:'Верфь',stationId:'shipyard'}
+    {id:'steel_ingot',name:'Стальной слиток',icon:'⚙️',inputs:'2 железных слитка + 2 угля',output:'1 стальной слиток',station:'Плавильня',stationId:'smelter'},
+    {id:'ship',name:'Корабль',icon:'⛵',inputs:'20 досок + 4 железных + 2 стальных слитка',output:'1 корабль',station:'Верфь',stationId:'shipyard'}
   ];
   $('#econ-recipes').innerHTML = recipes.map(r=>{const enabled=!!activeFactory&&activeFactory.type===r.stationId&&!activeFactory.running&&Number(activeFactory.buildingUntil||0)<=Date.now();return `<div class="econ-card"><b>${r.icon} ${r.name}</b><small>Расход: ${r.inputs}<br>Выход: ${r.output}<br>Станция: ${r.station}</small><button data-econ="craft" data-id="${r.id}" ${enabled?'':'disabled'}>Запустить производство</button></div>`;}).join('');
   const buildings = [
     {id:'sawmill',name:'Лесопилка',cost:'8 древесины + 4 камня',recipe:'Производит доски'},
     {id:'smelter',name:'Плавильня',cost:'6 древесины + 8 камня',recipe:'Производит железные слитки'},
-    {id:'shipyard',name:'Верфь',cost:'20 древесины + 12 камня + 8 досок',recipe:'Строит корабли'}
+    {id:'shipyard',name:'Верфь',cost:'20 древесины + 12 камня + 8 досок + 4 стальных слитка',recipe:'Строит корабли'}
   ];
   $('#econ-buildings').innerHTML = buildings.map(b=>`<div class="econ-card"><b>🏭 ${b.name}</b><small>${b.recipe}<br>Строительство: ${b.cost}</small><button data-econ="build" data-id="${b.id}">Построить</button></div>`).join('');
+  const traderItems = Object.entries({wood:2,stone:3,ore:5,plank:5,charcoal:4,stone_block:7,iron_ingot:12,steel_ingot:28,tool_kit:18,ship:120});
+  $('#econ-trader').innerHTML = traderItems.map(([id,price])=>{const meta=ECON_LABELS[id]||['📦',id],stock=Number(items[id])||0;return `<div class="econ-card"><b>${meta[0]} ${meta[1]}</b><small>Купить: ${price} золота · продать: ${Math.floor(price*.7)} золота<br>В инвентаре: ${stock}</small><button data-econ="trade-buy" data-id="${id}" data-amount="1">Купить 1</button><button data-econ="trade-buy" data-id="${id}" data-amount="5">Купить 5</button><button data-econ="trade-sell" data-id="${id}" data-amount="1" ${stock<1?'disabled':''}>Продать 1</button><button data-econ="trade-sell" data-id="${id}" data-amount="5" ${stock<5?'disabled':''}>Продать 5</button></div>`}).join('');
   const factories = economyState.factories || [];
   $('#econ-factories').innerHTML = factories.length ? factories.map(f=>{
     const progress=Math.max(0,Math.min(100,Math.round((f.progress||0)*100)));
@@ -888,7 +896,7 @@ function renderEconomyState(data) {
 window.renderEconomyState = renderEconomyState;
 const econTabs = [...econPanel.querySelectorAll('[data-econ-tab]')];
 function setEconomyTab(tab) {
-  const titles = {items:'🎒 Инвентарь',craft:'⚒ Крафт',factories:'🏭 Фабрики'};
+  const titles = {items:'🎒 Инвентарь',craft:'📐 Чертежи и крафт',factories:'🏭 Фабрики',trade:'🪙 Торговец'};
   econPanel.querySelectorAll('[data-econ-view]').forEach(view=>{view.hidden=view.dataset.econView!==tab;});
   econTabs.forEach(button=>{const active=button.dataset.econTab===tab;button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));});
   $('#econ-title').textContent=titles[tab]||titles.items;
@@ -912,6 +920,7 @@ econPanel.addEventListener('click',ev=>{
   else if(action==='build'){pendingFactoryType=id;closeEconomy();if(window.mpToast)window.mpToast('Выбери свободное место на суше кликом по земле.');}
   else if(action==='run')econSend({type:'economy-run',factoryId:Number(id)});
   else if(action==='stop')econSend({type:'economy-stop',factoryId:Number(id)});
+  else if(action==='trade-buy'||action==='trade-sell')econSend({type:'economy-trade',side:action==='trade-buy'?'buy':'sell',item:id,amount:Number(b.dataset.amount)||1});
 });
 renderEconomyState();
 
@@ -1766,13 +1775,51 @@ function buildWeaponModel(look){
     add(new THREE.OctahedronGeometry(.065),gemMat,0,headY,.13);
   }
  }else{
-  add(new THREE.BoxGeometry(.18,.34,.17),dark,0,len*.79,0);
-  if(style==='morningstar'){add(new THREE.IcosahedronGeometry(.19,1),metal,0,len*.92,0);for(let i=0;i<8;i++){const a=i*Math.PI/4;add(new THREE.ConeGeometry(.045,.2,6),metal,Math.cos(a)*.18,len*.92+Math.sin(a)*.18,0,0,0,-a);}add(new THREE.CylinderGeometry(.018,.018,.3,6),grip,0,len*.86,0);}
-  else if(style==='heavy'||style==='bedrock'){add(new THREE.BoxGeometry(style==='heavy'?.38:.32,.42,.32),metal,0,len*.9,0);for(const z of [-.17,.17])add(new THREE.BoxGeometry(.4,.08,.06),dark,0,len*.9,z);}
-  else if(style==='oathkeepers'){add(new THREE.TorusGeometry(.16,.055,8,16),metal,0,len*.9,0,Math.PI/2,0,0);add(new THREE.OctahedronGeometry(.13),metal,0,len*.9,0);}
-  else if(style==='dreadstorm'||style==='incubus'){add(new THREE.OctahedronGeometry(.22),metal,0,len*.9,0);add(new THREE.TorusGeometry(.22,.025,6,20),dark,0,len*.9,0,Math.PI/2,0,0);}
-  else if(style==='camlann'){add(new THREE.BoxGeometry(.32,.48,.25),metal,0,len*.9,0);add(new THREE.ConeGeometry(.13,.22,6),metal,0,len*1.18,0);}
-  else{add(new THREE.SphereGeometry(.16,12,10),metal,0,len*.9,0);for(let i=0;i<6;i++){const a=i*Math.PI/3;add(new THREE.ConeGeometry(.035,.15,6),metal,Math.cos(a)*.15,len*.9+Math.sin(a)*.15,0,0,0,-a);}}
+  // Distinct Albion-inspired mace heads: sculpted flanges, wrapped collars,
+  // inset cores and family-specific silhouettes rather than a generic ball.
+  const hy=len*.9, hz=0;
+  const steel=new THREE.MeshStandardMaterial({color:0xd5dce0,metalness:.94,roughness:.2});
+  const bright=new THREE.MeshStandardMaterial({color:0xf3f1df,metalness:.98,roughness:.16});
+  const accent=new THREE.MeshStandardMaterial({color:look.glow||0x40352d,metalness:.68,roughness:.3,emissive:look.glow||0,emissiveIntensity:look.glow?.3:0});
+  const coreMat=new THREE.MeshStandardMaterial({color:look.glow||look.blade||0x8b9ba5,metalness:.75,roughness:.22,emissive:look.glow||0,emissiveIntensity:look.glow?.4:0});
+  add(new THREE.CylinderGeometry(.095,.075,.14,10),steel,0,len*.82,0);
+  add(new THREE.CylinderGeometry(.115,.09,.075,10),dark,0,len*.86,0);
+  const addFlange=(angle,rad=.18,w=.1,d=.12)=>{const fin=add(new THREE.BoxGeometry(w,.36,d),steel,Math.cos(angle)*rad,hy+Math.sin(angle)*rad,0,0,0,-angle);fin.rotation.z=-angle;return fin;};
+  const makeSpikes=(count,radius,length,mat)=>{for(let i=0;i<count;i++){const a=i*Math.PI*2/count;const x=Math.cos(a)*radius,y=hy+Math.sin(a)*radius;const spike=add(new THREE.ConeGeometry(.045,length,6),mat,x,y,0,0,0,-a);spike.rotation.z=-a;spike.rotation.x=Math.PI/2; }};
+  if(style==='morningstar'){
+    add(new THREE.IcosahedronGeometry(.22,1),coreMat,0,hy,0);
+    for(let i=0;i<12;i++){const a=i*Math.PI/6;const dir=new THREE.Vector3(Math.cos(a),Math.sin(a),0);const spike=add(new THREE.ConeGeometry(.045,.24,6),bright,dir.x*.19,hy+dir.y*.19,0,0,0,-a);spike.rotation.z=-a;}
+    for(let i=0;i<8;i++){const a=i*Math.PI/4;add(new THREE.SphereGeometry(.025,8,6),accent,Math.cos(a)*.16,hy+Math.sin(a)*.16,.12);}
+  }else if(style==='heavy'||style==='bedrock'){
+    const size=style==='heavy'?.38:.34;
+    add(new THREE.BoxGeometry(size,.44,size*.88),dark,0,hy,0);
+    add(new THREE.BoxGeometry(size*.84,.35,size*.72),metal,0,hy,.015);
+    for(let i=0;i<4;i++){const a=i*Math.PI/2;const fin=add(new THREE.BoxGeometry(.09,.52,.11),steel,Math.cos(a)*.17,hy+Math.sin(a)*.17,0);fin.rotation.z=-a;}
+    add(new THREE.OctahedronGeometry(.105),coreMat,0,hy,.17);
+  }else if(style==='oathkeepers'){
+    add(new THREE.TorusGeometry(.2,.045,8,20),steel,0,hy,0,Math.PI/2,0,0);
+    add(new THREE.OctahedronGeometry(.15,1),coreMat,0,hy,0);
+    add(new THREE.TorusGeometry(.12,.018,6,16),accent,0,hy,.12,Math.PI/2,0,0);
+    for(let i=0;i<4;i++){const a=i*Math.PI/2;add(new THREE.BoxGeometry(.08,.25,.08),bright,Math.cos(a)*.14,hy+Math.sin(a)*.14,.02,0,0,-a);}
+  }else if(style==='dreadstorm'||style==='incubus'){
+    add(new THREE.OctahedronGeometry(style==='incubus'?.25:.22,1),coreMat,0,hy,0);
+    add(new THREE.TorusGeometry(.24,.035,8,24),accent,0,hy,0,Math.PI/2,0,0);
+    add(new THREE.TorusGeometry(.15,.022,6,20),steel,0,hy,0,0,Math.PI/2,0);
+    for(let i=0;i<6;i++){const a=i*Math.PI/3;const spike=add(new THREE.ConeGeometry(.045,.22,6),steel,Math.cos(a)*.21,hy+Math.sin(a)*.21,0,0,0,-a);spike.rotation.z=-a;}
+  }else if(style==='camlann'){
+    add(new THREE.BoxGeometry(.32,.5,.25),dark,0,hy,0);
+    add(new THREE.BoxGeometry(.24,.42,.2),steel,0,hy,.03);
+    add(new THREE.ConeGeometry(.13,.24,6),bright,0,len*1.18,0);
+    add(new THREE.ConeGeometry(.1,.2,6),bright,0,len*.68,0,Math.PI,0);
+    add(new THREE.OctahedronGeometry(.1),coreMat,0,hy,.15);
+  }else{
+    add(new THREE.SphereGeometry(.17,12,10),coreMat,0,hy,0);
+    for(let i=0;i<8;i++){const a=i*Math.PI/4;const fin=add(new THREE.BoxGeometry(.085,.3,.12),steel,Math.cos(a)*.13,hy+Math.sin(a)*.13,0);fin.rotation.z=-a;}
+    add(new THREE.OctahedronGeometry(.075),bright,0,hy,.15);
+  }
+  // Riveted cap rings and a pommel make the weapon read as a finished game asset.
+  for(let i=0;i<8;i++){const a=i*Math.PI/4;add(new THREE.SphereGeometry(.022,7,5),bright,Math.cos(a)*.1,hy+Math.sin(a)*.1,.13);}
+  add(new THREE.CylinderGeometry(.07,.085,.09,8),dark,0,len*.78,0);
  }
  return g;
 }
