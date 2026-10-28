@@ -108,6 +108,35 @@ function spawnPosition(index) {
   return { x: Math.round(Math.cos(angle) * radius * 100) / 100, z: Math.round((7 + Math.sin(angle) * radius) * 100) / 100 };
 }
 function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{const spawn=spawnPosition(target.spawnIndex);target.hp=PLAYER_MAX_HP;target.x=spawn.x;target.z=spawn.z;target.rotation=0;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.moveTarget=null;target.input={x:0,z:0,running:false};target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
+const RESOURCE_RESPAWN_MS = 30 * 60 * 1000;
+const RESOURCE_COUNTS = { wood: 62, stone: 24, ore: 12 };
+const RESOURCE_YIELDS = { wood: 3, stone: 2, ore: 2 };
+const worldResources = [];
+function generateResourceWorld() {
+  const nodes = [];
+  const random = () => crypto.randomInt(0, 1_000_000) / 1_000_000;
+  const minDistance = 2.8;
+  for (const [kind, count] of Object.entries(RESOURCE_COUNTS)) {
+    let tries = 0;
+    while (nodes.filter(n => n.kind === kind).length < count && tries++ < 50000) {
+      const angle = random() * Math.PI * 2;
+      const radius = 17 + random() * 32;
+      const x = Math.round(Math.cos(angle) * radius * 100) / 100;
+      const z = Math.round(Math.sin(angle) * radius * 100) / 100;
+      if (Math.hypot(x, z) > WORLD_BOUND - 6 || Math.hypot(x, z) < 14) continue;
+      if (nodes.some(n => Math.hypot(n.x - x, n.z - z) < minDistance)) continue;
+      nodes.push({ id: `res-${nodes.length + 1}`, kind, x, z, scale: Math.round((0.85 + random() * 0.55) * 100) / 100, variant: Math.floor(random() * 4), depleted: false, respawnAt: 0, lastGatherAt: 0 });
+    }
+    if (nodes.filter(n => n.kind === kind).length !== count) throw new Error(`Unable to generate resource nodes: ${kind}`);
+  }
+  return nodes;
+}
+worldResources.push(...generateResourceWorld());
+function publicResource(node) {
+  return { id: node.id, kind: node.kind, x: node.x, z: node.z, scale: node.scale, variant: node.variant, depleted: node.depleted, respawnAt: node.respawnAt };
+}
+function resourceWorldSnapshot() { return worldResources.map(publicResource); }
+function broadcastResource(node) { broadcast({ type: "resource-node", node: publicResource(node) }); }
 const ECONOMY_ITEMS = new Set(Object.keys(ITEM_DEFINITIONS));
 const ECONOMY_RECIPES = {
   plank: { name: "Доски", inputs: { wood: 2 }, output: { plank: 1 }, seconds: 3, station: "sawmill" },
@@ -153,7 +182,7 @@ wss.on("connection", (ws) => {
   const spawn = spawnPosition(spawnIndex);
   const p = { id, ws, spawnIndex, economy: { items: Object.fromEntries([...ECONOMY_ITEMS].map(itemId => [itemId, 0])), factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
   players.set(id, p);
-  send(ws, { type: "welcome", id, players: snapshot() });
+  send(ws, { type: "welcome", id, players: snapshot(), resources: resourceWorldSnapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
 
   ws.on("message", raw => {
@@ -174,15 +203,21 @@ wss.on("connection", (ws) => {
     }
     if (msg.type === "economy-get") { sendEconomy(p, ""); return; }
     if (msg.type === "economy-gather") {
-      const kind = String(msg.resource || ""), requestId = String(msg.requestId || "").slice(0, 80);
-      const yieldByKind = { wood: { yield:3, cooldown:3000 }, stone:{yield:2,cooldown:3500}, ore:{yield:2,cooldown:4500} };
-      const def = yieldByKind[kind], now = Date.now();
-      if (!def || p.hp <= 0 || Math.abs(p.x) > WORLD_BOUND || Math.abs(p.z) > WORLD_BOUND) { sendEconomy(p, "Нельзя добыть этот ресурс.", {action:"gather",requestId,ok:false}); return; }
-      const last = p.economy.lastGatherAt[kind] || 0;
-      if (now - last < def.cooldown - 250) { sendEconomy(p, "Слишком быстро — добыча ещё не завершена.", {action:"gather",requestId,ok:false}); return; }
-      p.economy.lastGatherAt[kind] = now;
-      p.economy.items[kind] = (p.economy.items[kind] || 0) + def.yield;
-      sendEconomy(p, `+${def.yield} ${kind === "wood" ? "древесины" : kind === "stone" ? "камня" : "руды"}`, {action:"gather",requestId,ok:true,resource:kind});
+      const kind = String(msg.resource || ""), nodeId = String(msg.nodeId || ""), requestId = String(msg.requestId || "").slice(0, 80);
+      const node = worldResources.find(n => n.id === nodeId);
+      const now = Date.now();
+      if (!node || node.kind !== kind || p.hp <= 0 || Math.hypot(p.x - node.x, p.z - node.z) > 3.6) {
+        sendEconomy(p, "Подойди ближе к доступному ресурсу.", {action:"gather",requestId,ok:false,nodeId}); return;
+      }
+      if (node.depleted || now - node.lastGatherAt < 2500) {
+        sendEconomy(p, "Этот ресурс уже добывают или он восстанавливается.", {action:"gather",requestId,ok:false,nodeId}); return;
+      }
+      node.lastGatherAt = now;
+      node.depleted = true;
+      node.respawnAt = now + RESOURCE_RESPAWN_MS;
+      p.economy.items[kind] = (p.economy.items[kind] || 0) + RESOURCE_YIELDS[kind];
+      broadcastResource(node);
+      sendEconomy(p, `+${RESOURCE_YIELDS[kind]} ${kind === "wood" ? "древесины" : kind === "stone" ? "камня" : "руды"}`, {action:"gather",requestId,ok:true,resource:kind,nodeId,respawnAt:node.respawnAt});
       return;
     }
     if (msg.type === "economy-craft") {
@@ -489,6 +524,13 @@ const heartbeat = setInterval(() => {
   }
 }, 15000);
 const gameTick = setInterval(() => {
+  const resourceNow = Date.now();
+  for (const node of worldResources) {
+    if (node.depleted && node.respawnAt && node.respawnAt <= resourceNow) {
+      node.depleted = false; node.respawnAt = 0;
+      broadcastResource(node);
+    }
+  }
   const dt = TICK_MS / 1000;
   for (const p of players.values()) {
     p.energy = Math.min(100, (p.energy ?? 100) + 4 * dt);
