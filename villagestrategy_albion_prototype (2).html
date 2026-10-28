@@ -737,7 +737,7 @@ function setResourceVisual(r, depleted) {
   else { r.mesh.geometry = r.geo; r.mesh.visible = true; r.collider.r = r.cr; r.pop = 0; }
 }
 function syncResourceWorld(nodes) {
-  if (!Array.isArray(nodes) || !nodes.length) return;
+  if (!Array.isArray(nodes)) return;
   for (const r of resources) { scene.remove(r.mesh); const ci = circles.indexOf(r.collider); if (ci >= 0) circles.splice(ci, 1); }
   resources.length = 0; resMeshes.length = 0;
   for (const node of nodes) {
@@ -1051,6 +1051,7 @@ function renderInv() { $('#c-wood').textContent = inv.wood; $('#c-stone').textCo
 function finishGather(r) {
   const def = RES[r.type];
   if (window.mpConnected && window.mpEconomySend) {
+    if (!r.serverManaged) { if (window.mpToast) window.mpToast('Жду синхронизации ресурсов с сервером.'); return; }
     const requestId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random());
     if (r.serverManaged) { r.pendingHarvest = true; } else { r.depleted = true; r.pendingHarvest = true; r.respawnAt = Infinity; }
     pendingHarvests.set(requestId, r);
@@ -1972,6 +1973,8 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     socket = new WebSocket(proto + '//' + location.host + '/multiplayer');
     socket.addEventListener('open', () => {
       window.mpConnected = true;
+      // Stop exposing/gathering client-generated fallback nodes once multiplayer connects.
+      syncResourceWorld([]);
       mpStatus.textContent = 'Мультиплеер: подключён · ' + mpName;
       socket.send(JSON.stringify({type:'hello', name:mpName}));
       socket.send(JSON.stringify({type:'weapon',weapon:loadout.weapon}));
@@ -1985,6 +1988,10 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         removeFactoryVisual(msg.factoryId);
       } else if (msg.type === 'factory-menu-closed') {
         closeEconomy(); if(window.mpToast && msg.message) window.mpToast(msg.message);
+      } else if (msg.type === 'world-vision') {
+        // Reconcile the visible resource set whenever the server updates vision.
+        // Empty snapshots are meaningful: don't leave client-only fallback resources on the map.
+        syncResourceWorld(Array.isArray(msg.resources) ? msg.resources : []);
       } else if (msg.type === 'resource-node') {
         applyResourceNode(msg.node);
       } else if (msg.type === 'economy-state') {
