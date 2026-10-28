@@ -738,16 +738,29 @@ function setResourceVisual(r, depleted) {
 }
 function syncResourceWorld(nodes) {
   if (!Array.isArray(nodes)) return;
-  for (const r of resources) { scene.remove(r.mesh); const ci = circles.indexOf(r.collider); if (ci >= 0) circles.splice(ci, 1); }
-  resources.length = 0; resMeshes.length = 0;
+  const visibleIds = new Set(nodes.filter(node => node && node.id).map(node => String(node.id)));
+  // Drop local fallback nodes and server nodes that left current vision.
+  // Keep still-visible server nodes alive so gather orders and mesh references remain stable.
+  for (let i = resources.length - 1; i >= 0; i--) {
+    const r = resources[i];
+    if (r.serverManaged && visibleIds.has(String(r.id))) continue;
+    scene.remove(r.mesh);
+    const ci = circles.indexOf(r.collider); if (ci >= 0) circles.splice(ci, 1);
+    const mi = resMeshes.indexOf(r.mesh); if (mi >= 0) resMeshes.splice(mi, 1);
+    resources.splice(i, 1);
+  }
   for (const node of nodes) {
     const kind = node.kind === 'wood' ? 'tree' : node.kind === 'stone' ? 'rock' : node.kind === 'ore' ? 'ore' : null;
-    if (!kind || !Number.isFinite(Number(node.x)) || !Number.isFinite(Number(node.z))) continue;
-    const scale = Math.max(.7, Math.min(1.6, Number(node.scale) || 1));
-    const geos = kind === 'tree' ? treeGeos : kind === 'rock' ? rockGeos : oreGeos;
-    const geo = geos[Math.abs(Number(node.variant) || 0) % geos.length];
-    const r = spawnRes(kind, geo, Number(node.x), Number(node.z), scale, (kind === 'tree' ? .5 : .85) * scale, (kind === 'tree' ? .7 : 1.1) * scale);
-    r.id = node.id; r.serverManaged = true; r.respawnAt = node.respawnAt ? gameT + Math.max(0, (Number(node.respawnAt) - Date.now()) / 1000) : 0;
+    if (!kind || !node.id || !Number.isFinite(Number(node.x)) || !Number.isFinite(Number(node.z))) continue;
+    let r = resources.find(item => item.serverManaged && String(item.id) === String(node.id));
+    if (!r) {
+      const scale = Math.max(.7, Math.min(1.6, Number(node.scale) || 1));
+      const geos = kind === 'tree' ? treeGeos : kind === 'rock' ? rockGeos : oreGeos;
+      const geo = geos[Math.abs(Number(node.variant) || 0) % geos.length];
+      r = spawnRes(kind, geo, Number(node.x), Number(node.z), scale, (kind === 'tree' ? .5 : .85) * scale, (kind === 'tree' ? .7 : 1.1) * scale);
+      r.id = node.id; r.serverManaged = true;
+    }
+    r.respawnAt = node.respawnAt ? gameT + Math.max(0, (Number(node.respawnAt) - Date.now()) / 1000) : 0;
     setResourceVisual(r, node.depleted);
   }
 }
