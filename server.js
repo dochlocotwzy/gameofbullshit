@@ -282,7 +282,8 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
         const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;
         const armor=victim.statuses?.armorBreak&&victim.statuses.armorBreak.until>Date.now()?(1+Math.max(0,Number(victim.statuses.armorBreak.value)||0)):1;
         const weak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;
-        const raw=Number(hit.damage)||0,dealt=Math.max(0,Math.round(raw*bonus*(1-reduction)*(1-defenseReduction)*(1-weak)*armor));
+        const outgoingBonus=["attackBuff","damageBuff","attackSpeed"].reduce((sum,key)=>{const st=p.statuses?.[key];return sum+(st&&st.until>Date.now()?Math.max(0,Number(st.value)||0):0);},0);
+        const raw=Number(hit.damage)||0,dealt=Math.max(0,Math.round(raw*bonus*(1+outgoingBonus)*(1-reduction)*(1-defenseReduction)*(1-weak)*armor));
         const actualDealt=absorbShield(victim,dealt);
         victim.hp=Math.max(0,victim.hp-actualDealt);
         broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:actualDealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hits.indexOf(hit)});
