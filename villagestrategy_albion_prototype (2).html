@@ -1277,7 +1277,10 @@ function trySpell(slot) {
   // In multiplayer, all player-targeted PvP effects are server-owned.
   if (window.mpConnected && typeof window.mpAbilityHit === 'function') {
     const abilityId = slot === 'e' ? WEAPONS[loadout.weapon].e : loadout[slot];
-    const needsTarget = sp.target === 'enemy';
+    // Several abilities are marked "enemy" in their tooltip metadata but are
+    // actually ground/area casts in PvP. Do not block them on target selection.
+    const groundAoE = new Set(['cleave','cyclone','splitting','parry','spinning','bloodthirsty','carvingDash','soulless','majestic','infinity']);
+    const needsTarget = sp.target === 'enemy' && !groundAoE.has(String(abilityId));
     const target = window.mpGetTarget && window.mpGetTarget();
     const localDummyTarget = needsTarget && (!window.mpTargetId || !target) ? pickTarget() : null;
     const aim = aimPoint();
@@ -1290,7 +1293,7 @@ function trySpell(slot) {
       if (needsTarget && (!window.mpTargetId || !target)) return toast('Сначала выбери живую цель');
       // Do not trust local cooldown/energy mirrors in PvP. Send the request and let the server accept or reject it.
       if (needsTarget) faceXZ(target.x, target.z);
-      else if (sp.target === 'ground') faceXZ(aim.x, aim.z);
+      else if (sp.target === 'ground' || groundAoE.has(String(abilityId))) faceXZ(aim.x, aim.z);
       return castSlot(slot, null, {
         multiplayerCast: true,
         multiplayerTargetId: needsTarget ? window.mpTargetId : null,
