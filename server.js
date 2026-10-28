@@ -146,6 +146,15 @@ function chooseTeam() { let blue=0,red=0; for(const player of players.values()){
 function isParryInvulnerable(target, now = Date.now()) {
   return !!(target?.statuses?.parryLock && target.statuses.parryLock.until > now);
 }
+function absorbShield(target, amount) {
+  const now=Date.now(), shield=target?.statuses?.shield;
+  if(!shield||shield.until<=now||Number(shield.value)<=0)return Math.max(0,amount);
+  const absorbed=Math.min(Number(shield.value)||0,Math.max(0,amount));
+  shield.value=Math.max(0,(Number(shield.value)||0)-absorbed);
+  if(shield.value<=0)delete target.statuses.shield;
+  broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
+  return Math.max(0,amount-absorbed);
+}
 function applyEffects(target,effects,sourceId) {
   if(!target.statuses)target.statuses={};
   const now=Date.now();
@@ -251,12 +260,13 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
         const armor=victim.statuses?.armorBreak&&victim.statuses.armorBreak.until>Date.now()?(1+Math.max(0,Number(victim.statuses.armorBreak.value)||0)):1;
         const weak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;
         const raw=Number(hit.damage)||0,dealt=Math.max(0,Math.round(raw*bonus*(1-reduction)*(1-defenseReduction)*(1-weak)*armor));
-        victim.hp=Math.max(0,victim.hp-dealt);
-        broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:dealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hits.indexOf(hit)});
+        const actualDealt=absorbShield(victim,dealt);
+        victim.hp=Math.max(0,victim.hp-actualDealt);
+        broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:actualDealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hits.indexOf(hit)});
         if(victim.hp>0)applyEffects(victim,hit.effects||ability.effects||[],p.id);
         if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
         broadcast({type:"player",player:publicPlayer(victim)});
-        if(dealt>0&&p.statuses?.lifesteal&&p.statuses.lifesteal.until>Date.now())p.hp=Math.min(PLAYER_MAX_HP,p.hp+Math.round(dealt*(Number(p.statuses.lifesteal.value)||0)));
+        if(actualDealt>0&&p.statuses?.lifesteal&&p.statuses.lifesteal.until>Date.now())p.hp=Math.min(PLAYER_MAX_HP,p.hp+Math.round(actualDealt*(Number(p.statuses.lifesteal.value)||0)));
       }
       if(ability.zone?.effects)for(const victim of hitVictims)if(victim.hp>0)applyEffects(victim,ability.zone.effects,p.id);
       broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:hitVictims.map(v=>v.id),x:center.x,z:center.z,originX:origin.x,originZ:origin.z,aimX:aim?.x??center.x,aimZ:aim?.z??center.z,rotation:p.rotation,weapon:p.weapon});
@@ -614,9 +624,10 @@ wss.on("connection", (ws) => {
           sourceId: p.id
         };
       }
-      target.hp = Math.max(0, target.hp - dealt);
+      const actualDealt = absorbShield(target, dealt);
+      target.hp = Math.max(0, target.hp - actualDealt);
       const autoLeech = p.statuses?.lifestealAuto;
-      if (dealt > 0 && autoLeech && autoLeech.until > now) p.hp = Math.min(PLAYER_MAX_HP, p.hp + Math.round(dealt * (Number(autoLeech.value)||0)));
+      if (actualDealt > 0 && autoLeech && autoLeech.until > now) p.hp = Math.min(PLAYER_MAX_HP, p.hp + Math.round(actualDealt * (Number(autoLeech.value)||0)));
       broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
       send(ws,{type:"combat-resource",energy:p.energy,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
       broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: dealt, hp: target.hp, kind: "auto" });
