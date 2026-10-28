@@ -21,6 +21,13 @@ assert.ok(clientHtml.includes("addPortDock(-49, -1); addPortDock(49, 1)"), "map 
 assert.ok(clientHtml.includes("addPrototypeBoat(1.5, -42.5, 0)"), "map includes prototype ship visuals");
 assert.ok(clientHtml.includes("{id:'shipyard',name:'Верфь'") && clientHtml.includes("{id:'ship',name:'Корабль'"), "economy UI exposes shipyard construction and ship production");
 assert.ok(serverSource.includes("Math.hypot(p.x - node.x, p.z - node.z) > 3.6"), "resource gathering validates server-side proximity");
+assert.ok(serverSource.includes("closestRiverPoint(x, z).distance < 5.5"), "server resource generation excludes the river and its banks");
+assert.ok(serverSource.includes("function isRiverBlocked(x, z)"), "server blocks player positions inside the river");
+assert.ok(serverSource.includes("function safeLandPosition(fromX, fromZ, toX, toZ)"), "server dash movement cannot cross the river outside bridge corridors");
+assert.ok(serverSource.includes("if (isRiverBlocked(x, z)) { send(ws, { type: \"player\", player: publicPlayer(p) }); return; }"), "server rejects client position updates inside the river");
+assert.ok(clientHtml.includes("function isRiverBlocked(x, z)"), "client collision system treats the river as an obstacle");
+assert.ok(clientHtml.includes("if (closestRiverPoint(x, z).distance < 5.5) return false;"), "client fallback resource generation excludes river banks");
+assert.ok(clientHtml.includes("only the three bridge decks permit crossing"), "client movement collision preserves the three bridge crossings");
 assert.ok(serverSource.includes('type: "resource-node"'), "resource depletion and respawn are broadcast");
 assert.ok(clientHtml.includes("nodeId:r.id"), "client sends the selected resource node ID");
 assert.ok(clientHtml.includes("syncResourceWorld(msg.resources)"), "client renders the shared resource layout");
