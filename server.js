@@ -201,9 +201,21 @@ function publicResource(node) {
 }
 function resourceWorldSnapshot(viewer) { return worldResources.filter(node => !viewer || isInVision(viewer,node.x,node.z)).map(publicResource); }
 function broadcastResource(node) {
-  const payload = { type: "resource-node", node: publicResource(node) };
-  // Resource state is authoritative on the server, but never reveal hidden node coordinates through updates.
-  for (const viewer of players.values()) if (isInVision(viewer, node.x, node.z)) send(viewer.ws, payload);
+  const fullNode = publicResource(node);
+  // Every client learns the global depletion/respawn state, but hidden nodes never leak coordinates.
+  // Clients without the node locally ignore this ID-only event and receive its current state on entering vision.
+  for (const viewer of players.values()) {
+    const visible = isInVision(viewer, node.x, node.z);
+    send(viewer.ws, {
+      type: "resource-node",
+      node: visible ? fullNode : {
+        id: node.id,
+        kind: node.kind,
+        depleted: node.depleted,
+        respawnAt: node.respawnAt
+      }
+    });
+  }
 }
 const ECONOMY_ITEMS = new Set(Object.keys(ITEM_DEFINITIONS).filter(itemId => itemId !== "sword"));
 const ECONOMY_RECIPES = {
