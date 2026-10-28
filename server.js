@@ -82,6 +82,11 @@ function isParryInvulnerable(target, now = Date.now()) {
 }
 function applyEffects(target,effects,sourceId) {
   if(!target.statuses)target.statuses={};
+  if (target.pendingAttack && effects.some(e => e.type === "stun" || e.type === "air")) {
+    const cancelledAttack = target.pendingAttack;
+    target.pendingAttack = null;
+    broadcast({type:"combat-cancelled",attackerId:target.id,targetId:cancelledAttack.targetId,attackId:cancelledAttack.id});
+  }
   for(const e of effects){if(e.type==="charge"){target.charges=Math.min(3,(target.charges||0)+(e.amount||1));target.chargeExpiresAt=Date.now()+6000;continue;}
     if(e.type==="interrupt"){target.statuses.casting={value:false,until:Date.now()+500};continue;}
     const key=e.type,old=target.statuses[key]||{},appliedAt=Date.now();
