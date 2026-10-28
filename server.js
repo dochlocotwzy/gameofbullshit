@@ -107,6 +107,34 @@ function spawnPosition(index) {
   return { x: Math.round(Math.cos(angle) * radius * 100) / 100, z: Math.round((7 + Math.sin(angle) * radius) * 100) / 100 };
 }
 function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{const spawn=spawnPosition(target.spawnIndex);target.hp=PLAYER_MAX_HP;target.x=spawn.x;target.z=spawn.z;target.rotation=0;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.moveTarget=null;target.input={x:0,z:0,running:false};target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
+const ECONOMY_ITEMS = new Set(["wood","stone","ore","plank","iron_ingot","sword"]);
+const ECONOMY_RECIPES = {
+  plank: { name: "Доски", inputs: { wood: 2 }, output: { plank: 1 }, seconds: 3, station: "sawmill" },
+  iron_ingot: { name: "Железный слиток", inputs: { ore: 2, wood: 1 }, output: { iron_ingot: 1 }, seconds: 5, station: "smelter" },
+  sword: { name: "Меч", inputs: { plank: 3, iron_ingot: 2 }, output: { sword: 1 }, seconds: 8, station: "forge" }
+};
+const FACTORY_TYPES = {
+  sawmill: { name: "Лесопилка", cost: { wood: 8, stone: 4 }, recipe: "plank" },
+  smelter: { name: "Плавильня", cost: { wood: 6, stone: 8 }, recipe: "iron_ingot" },
+  forge: { name: "Кузница", cost: { plank: 4, iron_ingot: 2, stone: 5 }, recipe: "sword" }
+};
+function economySnapshot(p) {
+  const e = p.economy || { items: {}, factories: [] };
+  return { items: { ...(e.items || {}) }, factories: (e.factories || []).map(f => ({ id:f.id, type:f.type, name:FACTORY_TYPES[f.type]?.name || f.type, recipe:f.recipe, running:!!f.running, progress:Math.max(0,Math.min(1, f.duration ? (Date.now()-f.startedAt)/f.duration : 0)), remainingMs:f.running ? Math.max(0,f.startedAt+f.duration-Date.now()) : 0 })) };
+}
+function sendEconomy(p, message = "Склад обновлён.") {
+  send(p.ws, { type:"economy-state", economy:economySnapshot(p), message });
+}
+function hasItems(items, cost) { return Object.entries(cost).every(([k,v]) => (items[k] || 0) >= v); }
+function takeItems(items, cost) { for (const [k,v] of Object.entries(cost)) items[k] -= v; }
+function addItems(items, output) { for (const [k,v] of Object.entries(output)) items[k] = (items[k] || 0) + v; }
+function startFactoryJob(p, factory) {
+  const recipe = ECONOMY_RECIPES[factory.recipe];
+  if (!recipe || !hasItems(p.economy.items, recipe.inputs)) return false;
+  takeItems(p.economy.items, recipe.inputs);
+  factory.running = true; factory.startedAt = Date.now(); factory.duration = recipe.seconds * 1000;
+  return true;
+}
 function safeName(value) {
   return String(value || "Player").replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 18) || "Player";
 }
@@ -121,7 +149,7 @@ wss.on("connection", (ws) => {
   let spawnIndex = 0;
   while (occupiedSpawnIndices.has(spawnIndex)) spawnIndex++;
   const spawn = spawnPosition(spawnIndex);
-  const p = { id, ws, spawnIndex, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
+  const p = { id, ws, spawnIndex, economy: { items: { wood:0, stone:0, ore:0, plank:0, iron_ingot:0, sword:0 }, factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
   players.set(id, p);
   send(ws, { type: "welcome", id, players: snapshot() });
   broadcast({ type: "joined", player: { id, name: p.name, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp } }, id);
@@ -140,6 +168,54 @@ wss.on("connection", (ws) => {
     if (msg.type === "latency-ping") {
       const sentAt = Number(msg.sentAt);
       if (Number.isFinite(sentAt)) send(ws, { type: "latency-pong", sentAt });
+      return;
+    }
+    if (msg.type === "economy-get") { sendEconomy(p, ""); return; }
+    if (msg.type === "economy-gather") {
+      const kind = String(msg.resource || "");
+      const yieldByKind = { wood: { yield:3, cooldown:3000 }, stone:{yield:2,cooldown:3500}, ore:{yield:2,cooldown:4500} };
+      const def = yieldByKind[kind], now = Date.now();
+      if (!def || p.hp <= 0 || Math.abs(p.x) > WORLD_BOUND || Math.abs(p.z) > WORLD_BOUND) { sendEconomy(p, "Нельзя добыть этот ресурс."); return; }
+      const last = p.economy.lastGatherAt[kind] || 0;
+      if (now - last < def.cooldown - 250) { sendEconomy(p, "Слишком быстро — добыча ещё не завершена."); return; }
+      p.economy.lastGatherAt[kind] = now;
+      p.economy.items[kind] = (p.economy.items[kind] || 0) + def.yield;
+      sendEconomy(p, `+${def.yield} ${kind === "wood" ? "древесины" : kind === "stone" ? "камня" : "руды"}`);
+      return;
+    }
+    if (msg.type === "economy-craft") {
+      const recipeId = String(msg.recipe || ""), recipe = ECONOMY_RECIPES[recipeId];
+      if (!recipe || !hasItems(p.economy.items, recipe.inputs)) { sendEconomy(p, "Не хватает материалов для крафта."); return; }
+      takeItems(p.economy.items, recipe.inputs); addItems(p.economy.items, recipe.output);
+      sendEconomy(p, `Изготовлено: ${recipe.name}`);
+      return;
+    }
+    if (msg.type === "economy-build") {
+      const type = String(msg.factory || ""), def = FACTORY_TYPES[type], items = p.economy.items;
+      if (!def) { sendEconomy(p, "Неизвестный тип фабрики."); return; }
+      if (p.economy.factories.length >= 8) { sendEconomy(p, "Можно построить не более 8 фабрик."); return; }
+      if (!hasItems(items, def.cost)) { sendEconomy(p, "Не хватает ресурсов для строительства."); return; }
+      takeItems(items, def.cost);
+      const factory = { id:p.economy.nextFactoryId++, type, recipe:def.recipe, running:false, startedAt:0, duration:0 };
+      p.economy.factories.push(factory);
+      sendEconomy(p, `Построено: ${def.name}`);
+      return;
+    }
+    if (msg.type === "economy-run") {
+      const id = Number(msg.factoryId), factory = p.economy.factories.find(f => f.id === id);
+      if (!factory) { sendEconomy(p, "Фабрика не найдена."); return; }
+      if (factory.running) { sendEconomy(p, "Фабрика уже работает."); return; }
+      if (!startFactoryJob(p, factory)) { sendEconomy(p, "Не хватает материалов для производства."); return; }
+      sendEconomy(p, "Производство запущено.");
+      return;
+    }
+    if (msg.type === "economy-stop") {
+      const id = Number(msg.factoryId), factory = p.economy.factories.find(f => f.id === id);
+      if (!factory || !factory.running) { sendEconomy(p, "Нет активного производства."); return; }
+      const recipe = ECONOMY_RECIPES[factory.recipe];
+      if (recipe) addItems(p.economy.items, recipe.inputs);
+      factory.running = false; factory.startedAt = 0; factory.duration = 0;
+      sendEconomy(p, "Производство отменено, материалы возвращены.");
       return;
     }
     if (msg.type === "state") {
@@ -413,6 +489,15 @@ const gameTick = setInterval(() => {
   for (const p of players.values()) {
     p.energy = Math.min(100, (p.energy ?? 100) + 4 * dt);
     const now = Date.now();
+    if (p.economy?.factories) {
+      let economyChanged = false;
+      for (const factory of p.economy.factories) if (factory.running && now >= factory.startedAt + factory.duration) {
+        const recipe = ECONOMY_RECIPES[factory.recipe];
+        if (recipe) addItems(p.economy.items, recipe.output);
+        factory.running = false; factory.startedAt = 0; factory.duration = 0; economyChanged = true;
+      }
+      if (economyChanged) sendEconomy(p, "Производство завершено.");
+    }
     if (!p.statuses) p.statuses = {};
     if ((p.charges || 0) > 0 && p.chargeExpiresAt && p.chargeExpiresAt <= now) {
       p.charges = 0; p.chargeExpiresAt = 0;
