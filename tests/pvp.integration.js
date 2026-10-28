@@ -339,7 +339,7 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     a.messages.length = 0; b.messages.length = 0;
     a.send(JSON.stringify({ type: "ability-hit", targetId: bId, slot: "w", weapon: "broadsword", abilityId: "interrupt", aimX: 0, aimZ: 7 }));
     const interruptBuff = await waitMessage(a, m => m.type === "combat-status" && m.targetId === aId && m.statuses?.interruptAttackBuff);
-    assert.equal(interruptBuff.statuses.interruptAttackBuff.value, 0.6, "three charges grant a 60% Interrupt auto-attack bonus");
+    assert.ok(Math.abs(interruptBuff.statuses.interruptAttackBuff.value - 0.6) < 1e-9, "three charges grant a 60% Interrupt auto-attack bonus");
     assert.ok(interruptBuff.statuses.interruptAttackBuff.until > Date.now(), "scaled Interrupt buff has server expiry");
 
     await sleep(900);
