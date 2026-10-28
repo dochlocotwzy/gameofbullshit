@@ -170,9 +170,9 @@ function applyEffects(target,effects,sourceId) {
     if(e.type==="knockback"||e.type==="pull"){
       const source=players.get(String(sourceId||""));if(!source||target.id===source.id)continue;
       let dx=target.x-source.x,dz=target.z-source.z,d=Math.hypot(dx,dz)||1;
-      if(e.type==="pull"||e.toCaster){dx=-dx;dz=-dz;}
-      else if(!e.away){dx/=d;dz/=d;}else{dx/=d;dz/=d;}
-      const distance=Math.max(0,Number(e.distance)||0),travel=Math.min(distance,Number(e.speed)>0?distance:distance);
+      const sign=(e.type==="pull"||e.toCaster)?-1:1;
+      dx=dx/d*sign;dz=dz/d*sign;
+      const distance=Math.max(0,Number(e.distance)||0),travel=distance;
       const land=safeLandPosition(target.x,target.z,Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,target.x+dx*travel)),Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,target.z+dz*travel)));
       target.x=land.x;target.z=land.z;target.positionLockUntil=now+350;
       broadcast({type:"player",player:publicPlayer(target)});continue;
