@@ -16,6 +16,8 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Run PvP integration test
         run: node tests/pvp.integration.js
+      - name: Run lobby integration test
+        run: node tests/lobby.integration.js
       - name: Check server JavaScript
         if: always()
         run: node --check server.js
