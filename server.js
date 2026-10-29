@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const WebSocket = require("ws");
+const { createLobby } = require("./lobby/lobby-server");
 const { ITEM_DEFINITIONS } = require("./game-data/catalog");
 const ALBION_PACK = require("./albion-weapon-branches.json");
 const ALBION_BRANCHES = ALBION_PACK.branches;
@@ -84,6 +85,14 @@ function safeLandPosition(fromX, fromZ, toX, toZ) {
 const players = new Map();
 
 const server = http.createServer((req, res) => {
+  if (req.url === "/lobby/lobby-client.js") {
+    fs.readFile(path.join(__dirname, "lobby", "lobby-client.js"), (err, data) => {
+      if (err) { res.writeHead(500, { "content-type": "text/plain; charset=utf-8" }); return res.end("Lobby client not found."); }
+      res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-cache" });
+      res.end(data);
+    });
+    return;
+  }
   if (req.url === "/healthz") {
     res.writeHead(200, { "content-type": "text/plain; charset=utf-8" });
     return res.end("ok");
@@ -141,6 +150,8 @@ function broadcast(payload, exceptId) {
   const message = JSON.stringify(payload);
   for (const p of players.values()) if (p.id !== exceptId && p.ws.readyState === WebSocket.OPEN) p.ws.send(message);
 }
+const lobby = createLobby({ players, send, broadcast, maxPlayers: MAX_PLAYERS, minPlayers: 1 });
+
 function publicPlayer(p) { return {id:p.id,name:p.name,team:p.team,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{},charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,weapon:p.weapon||"broadsword"}; }
 function chooseTeam() { let blue=0,red=0; for(const player of players.values()){if(player.team==="blue")blue++;else if(player.team==="red")red++;} if(blue===red)return crypto.randomInt(0,2)?"blue":"red"; return blue<red?"blue":"red"; }
 function isParryInvulnerable(target, now = Date.now()) {
@@ -454,6 +465,7 @@ wss.on("connection", (ws) => {
   const spawn = spawnPosition(spawnIndex);
   const p = { id, ws, spawnIndex, team, economy: { items: Object.fromEntries([...ECONOMY_ITEMS].map(itemId => [itemId, itemId === "gold" ? 100 : 0])), factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, lastVisionSyncAt:0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
   players.set(id, p);
+  lobby.onConnect(p);
   send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(p), resources: resourceWorldSnapshot(p), factories:factoryWorldSnapshot(p) });
   broadcast({ type: "joined", player: publicPlayer(p) }, id);
 
@@ -462,8 +474,11 @@ wss.on("connection", (ws) => {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (!msg || typeof msg.type !== "string") return;
+    if (lobby.handle(p, msg)) return;
+    if (lobby.phase === "lobby" && !["hello", "latency-ping", "weapon", "loadout", "economy-get", "test-mode"].includes(msg.type)) return;
     if (msg.type === "hello") {
       p.name = safeName(msg.name);
+      lobby.refresh();
       broadcast({ type: "player", player: publicPlayer(p) }, p.id);
       send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(p), resources: resourceWorldSnapshot(p), factories:factoryWorldSnapshot(p) });
       return;
@@ -868,6 +883,7 @@ wss.on("connection", (ws) => {
   });
   ws.on("close", () => {
     players.delete(id);
+    lobby.onDisconnect();
     broadcast({ type: "left", id });
   });
   ws.on("error", () => {});
