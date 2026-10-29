@@ -91,6 +91,7 @@
   @media(max-width:600px){#economy-open{bottom:135px}#economy-panel{left:8px;bottom:174px;width:min(380px,calc(100vw - 16px));max-height:58vh;padding:9px}#economy-panel .econ-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#inv{gap:3px;padding:5px}.slot{width:60px}}
 
 </style>
+<script src="/lobby/lobby-client.js"></script>
 </head>
 <body>
 <canvas id="game"></canvas>
@@ -2047,7 +2048,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   mpPingBadge.textContent = 'ПИНГ: ожидание соединения…';
   document.body.appendChild(mpPingBadge);
 
-  const mpName = 'Игрок-' + Math.floor(100 + Math.random() * 900);
+  let mpName = 'Игрок-' + Math.floor(100 + Math.random() * 900);
   const remotes = new Map();
   let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0, lastInputSend = 0, lastPingSend = 0, pingMs = null, lastMpFrame = 0;
   window.mpConnected = false;
@@ -2067,8 +2068,9 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   };
   // Mouse-click movement is the primary control. Forward world clicks to the
   // authoritative multiplayer server instead of relying on the local mover.
+  function gameActive() { const root = document.getElementById("lb"); return !root || root.classList.contains("hidden"); }
   window.mpSendMoveTarget = (x, z) => {
-    if (!socket || socket.readyState !== WebSocket.OPEN || !Number.isFinite(x) || !Number.isFinite(z)) return false;
+    if (!gameActive() || !socket || socket.readyState !== WebSocket.OPEN || !Number.isFinite(x) || !Number.isFinite(z)) return false;
     socket.send(JSON.stringify({type:'move-target', x, z}));
     return true;
   };
@@ -2198,13 +2200,12 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     });
     remotes.delete(id); remoteMeshes.delete(id); if (mpTargetId === id) window.mpClearTarget(false);
   }
-  function connect() {
-    if (!/^https?:$/.test(location.protocol)) {
-      mpStatus.textContent = 'Мультиплеер: откройте через Render';
-      return;
-    }
+  function connect(url, name) {
+    if (!/^https?:$/.test(location.protocol)) return Promise.reject(new Error('Откройте игру через Render'));
+    mpName = name || mpName;
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    socket = new WebSocket(proto + '//' + location.host + '/multiplayer');
+    return new Promise((resolve, reject) => {
+    socket = new WebSocket(url || (proto + '//' + location.host + '/multiplayer'));
     socket.addEventListener('open', () => {
       window.mpConnected = true;
       // Stop exposing/gathering client-generated fallback nodes once multiplayer connects.
@@ -2213,9 +2214,18 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       socket.send(JSON.stringify({type:'hello', name:mpName}));
       socket.send(JSON.stringify({type:'weapon',weapon:loadout.weapon}));
       socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w,p:loadout.p}));
+      socket.send(JSON.stringify({type:'lobby-get'}));
+      resolve();
     });
     socket.addEventListener('message', event => {
       let msg; try { msg = JSON.parse(event.data); } catch { return; }
+      if (window.Lobby && window.Lobby.handle(msg)) {
+        if (msg.type === 'lobby-state') {
+          const self = msg.players?.find(p => p.id === msg.you);
+          if (self) { window.mpTeam = self.team; mpStatus.textContent = 'Команда: ' + (self.team === 'blue' ? 'Синие' : 'Красные') + ' · ' + mpName; }
+        }
+        return;
+      }
       if (msg.type === 'factory-created' || msg.type === 'factory-damaged') {
         syncFactoryVisual(msg.factory);
       } else if (msg.type === 'factory-destroyed') {
@@ -2373,10 +2383,13 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     });
     socket.addEventListener('close', () => {
       window.mpConnected = false;
-      mpStatus.textContent = 'Мультиплеер: отключён · обновите страницу';
+      mpStatus.textContent = 'Мультиплеер: отключён';
+      if (window.Lobby) window.Lobby.show('connect');
     });
     socket.addEventListener('error', () => {
       mpStatus.textContent = 'Мультиплеер: ошибка соединения';
+      reject(new Error('Нет соединения с сервером'));
+    });
     });
   }
   // Space selects the nearest living multiplayer opponent. This is independent of mouse picking.
@@ -2480,7 +2493,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       window.mpTargetRing.x = selectedTarget.group.position.x;
       window.mpTargetRing.z = selectedTarget.group.position.z;
     } else window.mpTargetRing.active = false;
-    if (socket && socket.readyState === WebSocket.OPEN && player && mpTargetId) {
+    if (gameActive() && socket && socket.readyState === WebSocket.OPEN && player && mpTargetId) {
       const target = remotes.get(mpTargetId);
       if (!target || target.dead) { mpTargetId = null; window.mpTargetId = null; wasInAttackRange = false; }
       else {
@@ -2499,12 +2512,18 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       lastPingSend = now;
       socket.send(JSON.stringify({type:'latency-ping', sentAt:performance.now()}));
     }
-    if (socket && socket.readyState === WebSocket.OPEN && player && now - lastInputSend > 80) {
+    if (gameActive() && socket && socket.readyState === WebSocket.OPEN && player && now - lastInputSend > 80) {
       lastInputSend = now;
       socket.send(JSON.stringify({type:'state', x:player.position.x, z:player.position.z, rotation:player.rotation.y}));
     }
   }
-  connect();
+  Lobby.mount({
+    defaultServer: location.host,
+    send: m => socket?.readyState === WebSocket.OPEN && socket.send(JSON.stringify(m)),
+    onConnect: (url, name) => connect(url, name),
+    onLeave: () => socket?.close(),
+    onStart: () => { if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({type:'economy-get'})); }
+  });
   requestAnimationFrame(mpFrame);
 })();
 
