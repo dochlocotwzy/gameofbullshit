@@ -1,0 +1,201 @@
+GAME OF BULLSHIT — AGENT HANDOFF / PROJECT MASTER PROMPT
+Updated: 2026-10-29
+Language: Russian UI and collaboration; be direct, technical, and honest.
+
+========================
+1. PROJECT IDENTITY
+========================
+This is Game of Bullshit / VillageStrategy, a browser-based 3D multiplayer village/economy/PvP prototype inspired by Albion Online. It is an evolving prototype, not a finished MMO. The goal is to grow it into a persistent-feeling shared world with resource gathering, refining, crafting, trade, production stations, combat, teams, ships, and eventually player-controlled sailing and transport.
+
+Live service URL supplied by the user:
+https://gameofbullshit-1.onrender.com
+
+Repository:
+https://github.com/dochlocotwzy/gameofbullshit
+Primary branch: main
+Runtime: Node.js >=18, npm start -> node server.js
+Dependency: ws (WebSocket)
+HTTP health endpoint: /healthz
+WebSocket endpoint: /multiplayer
+Render owns the existing deployment. Do not create a replacement service or new infrastructure unless the user explicitly asks. A code commit to main may trigger Render auto-deploy, but verify service state rather than assuming deployment completed.
+
+========================
+2. IMPORTANT WORKING AGREEMENT
+========================
+The user expects real code changes, not only plans. When asked to implement:
+- Inspect the current main branch and related tests before editing.
+- Create a backup branch from the freshly fetched main commit BEFORE each substantial batch. Naming pattern:
+  backup/<short-topic>-YYYY-MM-DD
+- Make intended changes directly in main unless the user says otherwise.
+- Prefer small, coherent commits with clear messages.
+- Run/check the existing CI and add focused tests for new server logic.
+- After writing, poll CI to completion. Report exact results and links.
+- Do not claim browser playtesting, live Render health, multiplayer testing, or production deployment unless actually performed.
+- Distinguish: source-code change, syntax/automated test success, deployment status, and live gameplay verification.
+- Never expose secrets. Do not ask for Render password or API token in chat.
+- Avoid overwriting unrelated user/agent work; re-fetch current file SHA immediately before update.
+- Preserve existing functionality and server-authoritative validation.
+- Do not invent a service URL; use the live URL above only because the user supplied it.
+- Explain regressions clearly and repair failed CI before declaring completion.
+
+========================
+3. CODEBASE MAP
+========================
+- server.js
+  Main Node HTTP + WebSocket server, authoritative multiplayer state, movement, vision, combat, resources, economy, factories and crafting. Uses PORT environment variable (fallback 10000), binds 0.0.0.0.
+- villagestrategy_albion_prototype (2).html
+  Main browser game: Three.js world, character and weapon visuals, controls, HUD, resource nodes, factory UI, economy/trader, combat client, WebSocket client.
+- game-data/catalog.js
+  Item definitions and catalog.
+- albion-weapon-branches.json
+  Data for axe and mace weapon branches, spells and passives.
+- lobby/lobby-client.js
+  Browser lobby: connection screen, player name/server address, team list, ready button, host/start UI.
+- lobby/lobby-server.js
+  Lobby state machine; team choice, ready state, host election, match start.
+- tests/pvp.integration.js
+  WebSocket integration tests for economy, vision, combat and server validation.
+- .github/workflows/syntax.yml
+  CI: install dependencies, run PvP integration tests, syntax-check server and inline game scripts.
+- INTEGRATION.md
+  Historical notes on weapon branch data/integration; may describe earlier work. Confirm against current source before treating as current truth.
+- docs/GAME_SYSTEMS_ROADMAP.md
+  Game roadmap, if present.
+
+========================
+4. GAME ARCHITECTURE / RULES
+========================
+Server is authoritative for shared multiplayer actions:
+- WebSocket players, teams, position updates, nearby vision snapshots.
+- Combat damage, ability validation, cooldowns, energy, statuses, death/respawn.
+- Resource-node availability, harvesting validation, respawn timers.
+- Player economy inventory, crafting recipes, factories/production, trader transactions.
+- Factories and world resource updates are broadcast to relevant players.
+The browser renders the world and sends requests; do not trust client-provided damage, item quantities, ownership, recipe outputs, movement claims, or team privileges. Keep server and client item/recipe identifiers aligned.
+
+The HTTP server serves the main HTML at / and the health probe at /healthz. The multiplayer WebSocket is at /multiplayer. When adding browser assets, explicitly add HTTP routes; files in the repository are not automatically served.
+
+The map includes a river. Server-side movement/resource rules include river blocking and bridge crossings. Keep client visuals and server collision rules aligned.
+
+========================
+5. CURRENT GAMEPLAY SYSTEMS
+========================
+Combat:
+- Multiplayer PvP, auto attacks, target selection, weapon selection/loadouts, Q/W/E abilities, energy, cooldowns, status effects, vision-filtered remote player updates.
+- Server validates abilities and combat outcomes.
+- Weapon data includes legacy sword setup and data-driven axe/mace branches. Axe/mace visuals are procedural Three.js geometry, not exact ripped Albion assets or Blender models.
+- Test server mode is opt-in via server environment variable ALLOW_TEST_MODE=true; never let a public client toggle bypass authoritative combat rules.
+
+World/economy:
+- Gatherable resources include wood, stone and ore, with node visibility/availability controlled by server.
+- Production/crafting chain includes planks, charcoal, stone blocks, iron ingots, steel ingots, tool kits and ships.
+- Trader supports buy/sell with server-defined prices; do not let client define prices or inventory results.
+- Factories and shipyard construction/crafting are represented in the server economy.
+- Existing ship recipe compatibility is intentional: ship consumes 20 planks + 4 iron ingots; shipyard cost is 20 wood + 12 stone + 8 planks. Do not casually change these because integration tests assert them.
+- Ship is currently an economy item and the map has prototype boat visuals. Sailing controls, boarding, ownership, cargo and actual transport have not been implemented yet. Treat “crafted ship” and “usable boat” as separate features.
+
+========================
+6. LOBBY DESIGN AND PROTOCOL
+========================
+The supplied lobby prototype is a simple pre-match lobby:
+- Connection view asks for display name and server address; defaults to current host.
+- Room view lists Blue/Red teams, player readiness, team changes, host and Start button.
+- First connected player is host; host can start once all other players are ready.
+- Lobby is not a room browser: no multiple rooms, invite codes, password-protected rooms, chat, account persistence, or reconnect identity yet.
+- Team cap is derived from max players / 2; current max is 40 (20 per team).
+- Client API: Lobby.mount({ defaultServer, send, onConnect, onLeave, onStart }) and Lobby.handle(message).
+- WebSocket URL is /multiplayer; lobby client normalizes host or ws/wss URL.
+- Lobby protocol:
+  client -> server:
+    lobby-get
+    lobby-team { team: "blue" | "red" | "auto" }
+    lobby-ready { ready: boolean }
+    lobby-start (host only)
+    lobby-reset (host only)
+  server -> client:
+    lobby-state { phase, hostId, you, maxPerTeam, canStart, players:[{id,name,team,ready,host}] }
+    lobby-started
+    lobby-error { message }
+- Server should reject gameplay actions while phase is lobby; allow only connection/setup/lobby messages and any intentionally allowed harmless setup requests. Client should not send position state, movement, or attack commands while the lobby overlay is visible.
+- Team changes must update both the lobby list and the in-game team/friendly-fire visuals/target filtering. Be careful: the generic broadcast function vision-filters player payloads and expects x/z; a partial player object without coordinates may not reach clients. Use lobby-state as authoritative team information or broadcast a complete public-player snapshot.
+- If host disconnects, choose a new host and publish state.
+- A late join during a running match needs a deliberate UX: either allow it into game and hide lobby, or reject it. Keep server and client behavior consistent.
+- On match start, hide lobby and trigger any deferred initial economy request. Avoid duplicate state changes if lobby-started and lobby-state(phase=playing) both invoke start callbacks.
+- Avoid calling localStorage when embedding this client in non-browser tests; it runs in the browser, so this is currently okay.
+
+========================
+7. LOBBY INTEGRATION STATUS / CAUTION
+========================
+A lobby prototype was provided in lobby.zip. It was added to the repository and integrated into server.js and the main HTML on 2026-10-29.
+Changes included:
+- Add lobby/lobby-server.js and lobby/lobby-client.js.
+- Serve /lobby/lobby-client.js from server.js.
+- Initialize lobby around the existing players Map and WebSocket callbacks.
+- Intercept lobby-* messages, reject gameplay messages before match start, and start the match from lobby.
+- Replace automatic client connection with a lobby connection screen and add movement/attack gating while the lobby is open.
+- Update PvP integration test to start the match through lobby before testing gameplay.
+
+IMPORTANT: at the time this document was written, the two first CI runs after wiring the lobby failed because the pre-existing integration test sent gameplay messages before starting the lobby. The test was then updated to ready the second player and have the host start the match. Re-check current Actions status before assuming it is fixed. Syntax checks passed in those runs, but the WebSocket integration test did not. Do not claim the lobby works in the browser until live browser testing has been done.
+
+Review for likely edge cases before declaring the lobby complete:
+1. Ensure current tests pass with the lobby gate.
+2. Verify /lobby/lobby-client.js returns JavaScript (not 404) on Render after deployment.
+3. Verify one-player flow: host connects, Start button enabled, clicking Start hides lobby and gameplay begins.
+4. Verify two-player flow: second player joins, can switch teams and click Ready; host starts; both clients enter game.
+5. Verify host disconnect transfers host role.
+6. Verify reconnect after close returns to connection screen and can connect again.
+7. Ensure current test suite doesn't depend on old no-lobby assumptions.
+8. Check that lobby client and server file content in main matches current integration behavior, not just the original uploaded prototype.
+
+========================
+8. CURRENT LIVE URL AND OPERATIONS
+========================
+Live game URL:
+https://gameofbullshit-1.onrender.com
+
+Render Dashboard:
+https://dashboard.render.com/
+
+Do not infer live service health from GitHub CI. To verify deployment:
+- Check the live page and /healthz if a network/browser tool is available.
+- Check /lobby/lobby-client.js after deployment.
+- Check Render service deploy status/logs if authorized access exists.
+- If no Render connector or account access is available, say so explicitly and ask the user for a screenshot/log excerpt. Do not ask for passwords or secrets.
+- A successful CI run only proves the tested code passes the configured checks, not that Render deployed or that gameplay is correct.
+
+========================
+9. HOW TO CONTINUE DEVELOPMENT
+========================
+When implementing a new feature:
+1. State the intended scope briefly.
+2. Fetch latest main SHA and inspect relevant code/tests.
+3. Create a backup branch from that exact SHA.
+4. Implement server-authoritative behavior first, then client visuals/UI.
+5. Add tests for validation, failure cases and multiplayer consistency.
+6. Run existing tests and syntax checks; poll GitHub Actions until complete.
+7. Review failures, fix them, and re-run.
+8. If deployment auto-triggers, verify Render deployment and the live route only if tools permit.
+9. Report commits, backup branch, CI results, live verification level, known limitations, and test instructions.
+10. Do not bundle unrelated refactors into a feature batch.
+
+Priorities suggested by user:
+- Improve weapon visual fidelity, especially axes and maces, with clear distinct silhouettes.
+- Flesh out economy, resources, crafting, trade and production.
+- Make ships actually usable: approach, board, control boat over water, server-authoritative boat movement, ownership, cargo/transport and multiplayer replication.
+- Preserve existing combat, economy and multiplayer while adding systems.
+- Improve the game’s UI/visual polish.
+
+========================
+10. MASTER PROMPT FOR A NEW AGENT
+========================
+You are working on the existing Game of Bullshit / VillageStrategy multiplayer game, not a fresh project. Start by reading this handoff file and inspecting the latest main branch. The existing live Render service is https://gameofbullshit-1.onrender.com and the repo is https://github.com/dochlocotwzy/gameofbullshit. Do not recreate infrastructure.
+
+The game is a Three.js browser prototype with a Node.js + ws authoritative server. Preserve existing features and backward compatibility. Server owns combat, resource gathering, economy, recipes, production, inventory, movement restrictions, and lobby phase. Client should present and request; server validates. The map has a river and bridges. Economy includes resource gathering, refining, crafting, trading, factories, shipyard and ship item; the ship is not yet a controllable boat.
+
+The user wants implementation, not vague plans. Before each meaningful batch, create a backup branch from the freshly fetched main SHA. Commit changes directly to main unless asked otherwise. Test server logic, update integration tests, wait for GitHub Actions, and report exact links and results. Never claim live browser testing or Render health without actually checking. Be candid when a tool cannot access Render. Do not create a new Render service unless the user explicitly asks.
+
+Before extending the lobby, verify the current CI result and test the integration assumptions. The lobby is a pre-match screen for name/server, Blue/Red teams, ready state and host-controlled start. It shares the existing /multiplayer WebSocket. Keep server and client phase handling aligned; do not permit combat/economy/movement mutations before match start. Make sure team changes propagate to in-game target filtering and visuals. Test one-player and two-player flows.
+
+For future ship controls, do not implement client-only boat movement. Design server-authoritative boat entities and boarding state, validate proximity/ownership/crew, constrain boats to water, replicate boat transform to nearby players, and define what happens to the character while aboard. Only then add client interaction prompts, boarding/disembarking, steering and cargo UI. Do not call a ship “usable” until this works in a live multiplayer test.
+
+Always finish with: what changed, commits/backup branch, tests actually run, CI links/results, deployment status if verified, and explicit remaining limitations.
