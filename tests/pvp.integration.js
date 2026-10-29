@@ -186,6 +186,11 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     assert.ok(Array.isArray(wa.resources) && wa.resources.length > 0 && wa.resources.length <= 98, "server sends only resource nodes currently inside the player's vision");
     assert.ok(Array.isArray(wb.resources) && wb.resources.length <= 98, "each player receives their own vision-filtered resource set");
     assert.ok(serverSource.includes("const RESOURCE_COUNTS = { wood: 124, stone: 48, ore: 24 };"), "server owns the full 196-node world regardless of each client's visible subset");
+    // Enter the match through the same lobby gate used by the browser client.
+    b.send(JSON.stringify({ type: "lobby-ready", ready: true }));
+    a.send(JSON.stringify({ type: "lobby-start" }));
+    await waitMessage(a, m => m.type === "lobby-started");
+    await waitMessage(b, m => m.type === "lobby-started");
     a.messages.length = 0; b.messages.length = 0;
     a.send(JSON.stringify({type:"economy-get"}));
     const initialEconomy = await waitMessage(a, m => m.type === "economy-state");
