@@ -1132,6 +1132,11 @@ addEventListener('keydown',ev=>{
   if(tag==='input'||tag==='textarea'||tag==='select'||ev.target?.isContentEditable) return;
   if(ev.code==='KeyI'){ev.preventDefault();econPanel.classList.contains('open')?closeEconomy():openEconomy('items');}
   else if(ev.code==='Escape'&&econPanel.classList.contains('open')){ev.preventDefault();closeEconomy();}
+  else if(ev.code==='KeyE'){
+    ev.preventDefault();
+    if(Math.hypot(pos.x-merchantWorldPosition.x,pos.z-merchantWorldPosition.z)<=5.5){econPanel.classList.add('open');setEconomyTab('trade');econSend({type:'economy-merchant-open'});}
+    else {const loot=nearestLoot();if(loot)econSend({type:'loot-pickup',lootId:loot.id});}
+  }
 });
 econPanel.addEventListener('click',ev=>{
   const b=ev.target.closest('button[data-econ]'); if(!b)return;
@@ -1198,6 +1203,61 @@ function damagePlayer(amount) { setPlayerHealth(playerVitals.hp - Math.max(0, Nu
 function healPlayer(amount) { setPlayerHealth(playerVitals.hp + Math.max(0, Number(amount) || 0)); }
 setPlayerHealth(PLAYER_MAX_HP);
 const pos = player.position; pos.set(-31 * MAP_SCALE, 0, -7 * MAP_SCALE);
+const merchantWorldPosition = new THREE.Vector3(20.7, 0, 0);
+const merchantGroup = new THREE.Group();
+const merchantRobe = new THREE.Mesh(new THREE.CylinderGeometry(.48,.62,1.55,9),new THREE.MeshStandardMaterial({color:0x493c32,roughness:1}));
+merchantRobe.position.y=.82; merchantRobe.castShadow=true; merchantGroup.add(merchantRobe);
+const merchantHead = new THREE.Mesh(new THREE.SphereGeometry(.34,12,10),new THREE.MeshStandardMaterial({color:0xc99a72,roughness:.9}));
+merchantHead.position.y=1.82; merchantHead.castShadow=true; merchantGroup.add(merchantHead);
+const merchantHood = new THREE.Mesh(new THREE.ConeGeometry(.43,.55,9),new THREE.MeshStandardMaterial({color:0x263a31,roughness:1}));
+merchantHood.position.y=2.18; merchantHood.castShadow=true; merchantGroup.add(merchantHood);
+const merchantBelt = new THREE.Mesh(new THREE.TorusGeometry(.48,.055,6,12),new THREE.MeshStandardMaterial({color:0xc49a4a,metalness:.25,roughness:.65}));
+merchantBelt.rotation.x=Math.PI/2; merchantBelt.position.y=.72; merchantGroup.add(merchantBelt);
+const merchantTable = new THREE.Mesh(new THREE.BoxGeometry(1.35,.18,.72),new THREE.MeshStandardMaterial({color:0x62462d,roughness:1}));
+merchantTable.position.set(1.05,.68,.15); merchantTable.castShadow=true; merchantGroup.add(merchantTable);
+const merchantPost = new THREE.Mesh(new THREE.CylinderGeometry(.055,.07,.95,7),new THREE.MeshStandardMaterial({color:0x49321f}));
+merchantPost.position.set(1.48,1.15,.15); merchantGroup.add(merchantPost);
+const merchantSign = new THREE.Mesh(new THREE.BoxGeometry(.72,.42,.08),new THREE.MeshStandardMaterial({color:0x8a6336,roughness:1}));
+merchantSign.position.set(1.48,1.68,.15); merchantGroup.add(merchantSign);
+const merchantHalo = new THREE.Mesh(new THREE.TorusGeometry(1.35,.045,8,48),new THREE.MeshBasicMaterial({color:0xd7b35c,transparent:true,opacity:.72}));
+merchantHalo.rotation.x=Math.PI/2; merchantHalo.position.y=.08; merchantGroup.add(merchantHalo);
+merchantGroup.position.copy(merchantWorldPosition); scene.add(merchantGroup);
+const lootVisuals = new Map();
+function removeLootVisual(id){const entry=lootVisuals.get(String(id));if(!entry)return;scene.remove(entry.group);lootVisuals.delete(String(id));}
+function upsertLootVisual(drop){
+  if(!drop?.id||!Number.isFinite(Number(drop.x))||!Number.isFinite(Number(drop.z)))return;
+  removeLootVisual(drop.id);
+  const tierColor={T1:0xb6a88b,T2:0x78b7a0,T3:0x6ca8dc,T4:0xb27bdf,T5:0xe2b94f}[drop.item?.tier]||0xd5c49a;
+  const group=new THREE.Group();
+  const box=new THREE.Mesh(new THREE.BoxGeometry(.52,.28,.38),new THREE.MeshStandardMaterial({color:0x68482a,metalness:.08,roughness:.8}));
+  box.position.y=.22;box.castShadow=true;group.add(box);
+  const glow=new THREE.Mesh(new THREE.TorusGeometry(.48,.035,6,24),new THREE.MeshBasicMaterial({color:tierColor,transparent:true,opacity:.9}));
+  glow.rotation.x=Math.PI/2;glow.position.y=.06;group.add(glow);
+  group.position.set(Number(drop.x),0,Number(drop.z));scene.add(group);
+  lootVisuals.set(String(drop.id),{group,drop});
+}
+function syncLootWorld(drops){
+  if(!Array.isArray(drops))return;
+  const ids=new Set(drops.map(d=>String(d.id)));
+  for(const id of [...lootVisuals.keys()])if(!ids.has(id))removeLootVisual(id);
+  for(const drop of drops)upsertLootVisual(drop);
+}
+function nearestLoot(){
+  let best=null,dist=3.6;
+  for(const [id,entry] of lootVisuals){const d=Math.hypot(pos.x-entry.group.position.x,pos.z-entry.group.position.z);if(d<dist){best={id,entry};dist=d;}}
+  return best;
+}
+function updateInteractionHint(){
+  const hint=document.getElementById('interact-hint');
+  const merchantDistance=Math.hypot(pos.x-merchantWorldPosition.x,pos.z-merchantWorldPosition.z);
+  const loot=nearestLoot();
+  if(merchantDistance<=5.5){hint.textContent='E · Нейтральный торговец';hint.style.display='block';}
+  else if(loot){hint.textContent='E · Подобрать экипировку';hint.style.display='block';}
+  else hint.style.display='none';
+  requestAnimationFrame(updateInteractionHint);
+}
+requestAnimationFrame(updateInteractionHint);
+
 let mixer = null, actions = {}, active = null, hasAnim = false;
 const loader = new GLTFLoader();
 const MODEL_URLS = ['https://threejs.org/examples/models/gltf/Soldier.glb', 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r166/examples/models/gltf/Soldier.glb'];
@@ -1609,6 +1669,7 @@ for (const w of Object.values(ALBION_WEAPON_META)) {
     look:{len:base.len||(w.hands===2?1.55:1.15),w:axe?.19:.15,blade:base.blade||(axe?0x9ca7ae:0x8e9ba2),guard:base.guard||0x65472e,type:base.type||(axe?'axe':'mace'),style:base.style||w.id,glow:base.glow||0}};
 }
 const WEAPON_ORDER = Object.keys(WEAPONS);
+window.mpWeaponCatalog = Object.fromEntries(WEAPON_ORDER.map(id=>[id,{name:WEAPONS[id].name||ALBION_WEAPON_META[id]?.name||id}]));
 
 /* ---- вспомогательное ---- */
 const dist2 = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
@@ -2655,7 +2716,11 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         }
         return;
       }
-      if (msg.type === 'factory-created' || msg.type === 'factory-damaged') {
+      if (msg.type === 'loot-created') {
+        upsertLootVisual(msg.loot);
+      } else if (msg.type === 'loot-removed') {
+        removeLootVisual(msg.lootId);
+      } else if (msg.type === 'factory-created' || msg.type === 'factory-damaged') {
         syncFactoryVisual(msg.factory);
       } else if (msg.type === 'factory-destroyed') {
         removeFactoryVisual(msg.factoryId);
@@ -2666,6 +2731,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         // Reconcile the visible resource set whenever the server updates vision.
         // Empty snapshots are meaningful: don't leave client-only fallback resources on the map.
         syncResourceWorld(Array.isArray(msg.resources) ? msg.resources : []);
+        syncLootWorld(Array.isArray(msg.loot) ? msg.loot : []);
       } else if (msg.type === 'resource-node') {
         applyResourceNode(msg.node);
       } else if (msg.type === 'economy-state') {
@@ -2683,6 +2749,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         if (msg.player && Number.isFinite(Number(msg.player.x)) && Number.isFinite(Number(msg.player.z))) player.position.set(Number(msg.player.x), 0, Number(msg.player.z));
         window.mpId = msg.id; window.mpTeam = msg.team || msg.player?.team || null;
         if (Array.isArray(msg.factories)) syncFactoryWorld(msg.factories);
+        syncLootWorld(Array.isArray(msg.loot) ? msg.loot : []);
         if (window.mpTeam) mpStatus.textContent = 'Команда: ' + (window.mpTeam === 'blue' ? 'Синие' : 'Красные') + ' · ' + mpName;
         socket.send(JSON.stringify({type:'economy-get'}));
         syncResourceWorld(msg.resources);
