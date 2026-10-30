@@ -1140,7 +1140,7 @@ addEventListener('keydown',ev=>{
   if(tag==='input'||tag==='textarea'||tag==='select'||ev.target?.isContentEditable) return;
   if(ev.code==='KeyI'){ev.preventDefault();econPanel.classList.contains('open')?closeEconomy():openEconomy('items');}
   else if(ev.code==='Escape'&&econPanel.classList.contains('open')){ev.preventDefault();closeEconomy();}
-  else if(ev.code==='KeyE'){
+  else if(ev.code==='KeyF'){
     ev.preventDefault();
     if(Math.hypot(pos.x-merchantWorldPosition.x,pos.z-merchantWorldPosition.z)<=5.5){econPanel.classList.add('open');setEconomyTab('trade');econSend({type:'economy-merchant-open'});}
     else {const loot=nearestLoot();if(loot)econSend({type:'loot-pickup',lootId:loot.id});}
@@ -1260,8 +1260,8 @@ function updateInteractionHint(){
   const hint=document.getElementById('interact-hint');
   const merchantDistance=Math.hypot(pos.x-merchantWorldPosition.x,pos.z-merchantWorldPosition.z);
   const loot=nearestLoot();
-  if(merchantDistance<=5.5){hint.textContent='E · Нейтральный торговец';hint.style.display='block';}
-  else if(loot){hint.textContent='E · Подобрать экипировку';hint.style.display='block';}
+  if(merchantDistance<=5.5){hint.textContent='F · Нейтральный торговец';hint.style.display='block';}
+  else if(loot){hint.textContent='F · Подобрать экипировку';hint.style.display='block';}
   else hint.style.display='none';
   requestAnimationFrame(updateInteractionHint);
 }
