@@ -16,6 +16,7 @@
 `;
   const T = { blue: "Синие", red: "Красные" };
   let opts = {}, root, st = null, el = {};
+  let retryTimer = null, retryAttempt = 0, connecting = false;
   const h = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); kids.flat().forEach(k => n.append(k)); return n; };
   function mount(o = {}) {
     opts = o;
@@ -23,7 +24,7 @@
     const defServer = o.defaultServer || (/^https?:$/.test(location.protocol) ? location.host : "localhost:10000");
     el.name = h("input", { maxLength: 18, value: localStorage.getItem("lb_name") || "Игрок-" + Math.floor(100 + Math.random() * 900) });
     el.server = h("input", { value: localStorage.getItem("lb_server") || defServer, placeholder: "host:port или wss://…" });
-    el.connectBtn = h("button", { textContent: "Подключиться", onclick: connect });
+    el.connectBtn = h("button", { textContent: "Подключиться", onclick: () => connect(false) });
     el.err = h("div", { className: "err" });
     el.connectView = h("div", {}, h("h1", { textContent: "Game of Bullshit" }), h("label", { textContent: "Имя" }), el.name, h("label", { textContent: "Сервер" }), el.server, h("div", { className: "row" }, el.connectBtn), el.err);
     el.teams = h("div", { className: "teams" });
@@ -36,22 +37,45 @@
     root = h("div", { id: "lb" }, h("div", { className: "card" }, el.connectView, el.roomView));
     document.head.append(style); document.body.append(root);
     if (o.autoShow !== false) show("connect");
+    if (o.autoConnect === true) startAutoConnect();
   }
   const send = m => opts.send ? opts.send(m) : null;
   const me = () => st?.players.find(p => p.id === st.you);
-  function connect() {
+  function connect(isAutomatic = false) {
+    if (connecting) return Promise.reject(new Error("Подключение уже выполняется"));
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
     const name = el.name.value.trim() || "Игрок", server = el.server.value.trim();
-    if (!server) { el.err.textContent = "Укажи адрес сервера"; return; }
+    if (!server) { el.err.textContent = "Укажи адрес сервера"; return Promise.reject(new Error("Укажи адрес сервера")); }
     localStorage.setItem("lb_name", name); localStorage.setItem("lb_server", server);
-    el.err.textContent = ""; el.connectBtn.disabled = true; el.connectBtn.textContent = "Подключение…";
-    Promise.resolve(opts.onConnect?.(normalizeUrl(server), name)).then(
-      () => { el.connectBtn.disabled = false; el.connectBtn.textContent = "Подключиться"; show("room"); send({ type: "lobby-get" }); },
-      e => { el.connectBtn.disabled = false; el.connectBtn.textContent = "Подключиться"; el.err.textContent = String(e?.message || "Не удалось подключиться"); });
+    connecting = true;
+    el.err.textContent = isAutomatic ? "Пробуждаем сервер и устанавливаем соединение…" : "";
+    el.connectBtn.disabled = true; el.connectBtn.textContent = "Подключение…";
+    return Promise.resolve(opts.onConnect?.(normalizeUrl(server), name)).then(
+      () => {
+        connecting = false; retryAttempt = 0;
+        el.connectBtn.disabled = false; el.connectBtn.textContent = "Подключиться";
+        el.err.textContent = ""; show("room"); send({ type: "lobby-get" });
+      },
+      e => {
+        connecting = false;
+        el.connectBtn.disabled = false; el.connectBtn.textContent = "Подключиться";
+        el.err.textContent = String(e?.message || "Не удалось подключиться");
+        throw e;
+      });
+  }
+  function startAutoConnect() {
+    if (connecting || st?.phase === "playing") return;
+    retryAttempt++;
+    connect(true).catch(() => {
+      const delay = Math.min(15000, 1500 * (2 ** Math.min(retryAttempt - 1, 3)));
+      el.err.textContent = "Сервер пока не отвечает. Повторяем подключение через " + Math.ceil(delay / 1000) + " с…";
+      retryTimer = setTimeout(startAutoConnect, delay);
+    });
   }
   function normalizeUrl(s) {
     if (/^wss?:\/\//.test(s)) return s.replace(/\/?$/, "").replace(/\/multiplayer$/, "") + "/multiplayer";
     if (/^https?:\/\//.test(s)) { const u = new URL(s); return (u.protocol === "https:" ? "wss:" : "ws:") + "//" + u.host + "/multiplayer"; }
-    const secure = location.protocol === "https:" && !/^(localhost|127\.|192\.168\.)/.test(s);
+    const secure = (location.protocol === "https:" || location.protocol === "file:") && !/^(localhost|127\.|192\.168\.)/.test(s);
     return (secure ? "wss://" : "ws://") + s.replace(/\/$/, "") + "/multiplayer";
   }
   function show(view) { root.classList.remove("hidden"); el.connectView.style.display = view === "connect" ? "" : "none"; el.roomView.style.display = view === "room" ? "" : "none"; }
