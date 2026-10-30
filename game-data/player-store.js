@@ -22,6 +22,7 @@ function createDefaultProfile() {
     items: { ...DEFAULT_ITEMS },
     equipment: { main_hand: { id: "starter-broadsword", kind: "weapon", weaponId: "broadsword", tier: "T1", quality: "ordinary", durability: 100, maxDurability: 100 } },
     gear: [],
+    craftJobs: [],
     factories: [],
     blueprints: {},
     createdAt: Date.now(),
@@ -66,6 +67,7 @@ function createPlayerStore(options = {}) {
       items: { ...DEFAULT_ITEMS, ...(value.items || {}) },
       equipment: { ...createDefaultProfile().equipment, ...(value.equipment || {}) },
       gear: Array.isArray(value.gear) ? value.gear : [],
+      craftJobs: Array.isArray(value.craftJobs) ? value.craftJobs : [],
       factories: Array.isArray(value.factories) ? value.factories : [],
       blueprints: { ...(value.blueprints || {}) },
       createdAt: value.createdAt || Date.now(),
@@ -81,6 +83,7 @@ function createPlayerStore(options = {}) {
       items: { ...DEFAULT_ITEMS, ...(profile?.items || {}) },
       equipment: { ...(profile?.equipment || {}) },
       gear: Array.isArray(profile?.gear) ? profile.gear : [],
+      craftJobs: Array.isArray(profile?.craftJobs) ? profile.craftJobs : [],
       factories: Array.isArray(profile?.factories) ? profile.factories : [],
       blueprints: { ...(profile?.blueprints || {}) },
       createdAt: profiles[token]?.createdAt || profile?.createdAt || Date.now(),
@@ -97,6 +100,7 @@ function createPlayerStore(options = {}) {
     current.items = { ...DEFAULT_ITEMS };
     current.equipment = { ...createDefaultProfile().equipment };
     current.gear = [];
+    current.craftJobs = [];
     current.factories = [];
     current.blueprints = {};
     return save(token, current);
