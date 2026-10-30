@@ -56,6 +56,7 @@
   #cpanel{position:fixed;right:14px;top:196px;width:190px;padding:9px 11px;font-size:12px;line-height:1.5}
   #cpanel h2{font-size:13px;margin:0 0 5px}
   #cpanel label{display:flex;justify-content:space-between;align-items:center;gap:6px;margin:3px 0}
+  #cpanel label:has(#selWeapon){display:none}
   #cpanel select{width:128px;font:inherit;font-size:11.5px;background:#0a120e;color:#f3efe3;border:1px solid #fff4;border-radius:6px;padding:2px}
   #cpanel .chk{justify-content:flex-start;margin-top:6px;color:#ffd9a0}
   #cpanel .st{margin-top:6px;padding-top:5px;border-top:1px solid #ffffff20;color:#cfd8cf}
@@ -71,7 +72,15 @@
   .fl.dmg.dot{color:#ff6a5a;font-size:13px}
   .fl.dmg.info{color:#cfa8ff;font-size:14px}
   #economy-open{position:fixed;left:14px;bottom:144px;z-index:20;padding:7px 10px;font:600 12px system-ui;background:#14201be8;border:1px solid #d7c18b66;color:#f3efe3;border-radius:9px;cursor:pointer}
-  #economy-panel{position:fixed;left:16px;bottom:190px;transform:none;z-index:1100;width:min(430px,calc(100vw - 32px));max-height:min(64vh,560px);overflow:auto;padding:12px;background:#101a15f5;border:1px solid #d7c18b88;border-radius:12px;box-shadow:0 12px 40px #000a;display:none;backdrop-filter:blur(12px)}
+  #economy-panel{position:fixed;left:18px;top:50%;bottom:auto;transform:translateY(-50%);z-index:1100;width:min(460px,calc(100vw - 36px));max-height:72vh;overflow:auto;padding:12px;background:linear-gradient(145deg,#17251df5,#0b120ff7);border:1px solid #d7c18b99;border-radius:13px;box-shadow:0 14px 44px #000b;display:none;backdrop-filter:blur(14px)}
+  #economy-panel .econ-tabs{display:flex;gap:4px;flex-wrap:wrap;margin:10px 0 8px;position:sticky;top:-12px;padding:6px 0;background:#101a15f5;z-index:2}
+  #economy-panel .econ-tabs button{flex:1 1 21%;min-width:76px;font-size:10px;padding:7px 4px}
+  #economy-panel .econ-card{background:linear-gradient(145deg,#ffffff0b,#00000018);border-color:#d7c18b30}
+  #economy-panel .econ-card .durability{height:5px;border-radius:5px;background:#0009;overflow:hidden;margin:5px 0}
+  #economy-panel .econ-card .durability i{display:block;height:100%;background:linear-gradient(90deg,#a84a38,#d8bd64,#7fbd79)}
+  #economy-panel .econ-card .tier{color:#e9d39a;font-size:10px}
+  #economy-panel .econ-card .rarity{font-size:10px;color:#9fc5a4}
+  #economy-panel .rarity.common{color:#c5c5c5}#economy-panel .rarity.uncommon{color:#65bd79}#economy-panel .rarity.rare{color:#5c9ee8}#economy-panel .rarity.epic{color:#b47be8}
   #economy-panel.open{display:block}
   #economy-panel h2{margin:0 0 4px;font-size:16px}
   #economy-panel h3{font-size:12px;color:#f1d99a;margin:10px 0 6px}
@@ -88,7 +97,7 @@
   #economy-panel .econ-muted{color:#aab8aa;font-size:10px;line-height:1.4}
   #economy-panel #econ-close{background:#392b25;border-color:#c88c7566}
   #interact-hint{position:fixed;left:50%;bottom:104px;transform:translateX(-50%);z-index:25;padding:6px 10px;background:#101a15e8;border:1px solid #d7c18b77;border-radius:8px;color:#f3efe3;font-size:12px;pointer-events:none;display:none}
-  @media(max-width:600px){#economy-open{bottom:135px}#economy-panel{left:8px;bottom:174px;width:min(380px,calc(100vw - 16px));max-height:58vh;padding:9px}#economy-panel .econ-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#inv{gap:3px;padding:5px}.slot{width:60px}}
+  @media(max-width:600px){#economy-open{bottom:135px}#economy-panel{left:8px;top:48%;bottom:auto;transform:translateY(-50%);width:min(390px,calc(100vw - 16px));max-height:62vh;padding:9px}#economy-panel .econ-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#inv{gap:3px;padding:5px}.slot{width:60px}}
 
 </style>
 <script src="/lobby/lobby-client.js"></script>
@@ -98,7 +107,7 @@
 <canvas id="game"></canvas>
 <div id="panel" class="glass">
   <h1>VillageStrategy — прототип</h1>
-  <p>ЛКМ — идти / добывать ресурс / атаковать манекен. Стрелки — ходить, Shift — бег. Колесо — масштаб. Q, W, E — скиллы (целятся в курсор), 1–8 — смена меча. R свободна.</p>
+  <p>ЛКМ — идти / добывать ресурс / атаковать игрока. Стрелки — ходить, Shift — бег. Колесо — масштаб. Q, W, E — навыки; F — взаимодействие; I — инвентарь.</p>
   <div id="status">Загрузка персонажа…</div>
   <p id="err"></p>
   <div id="perf"></div>
@@ -120,19 +129,22 @@
 <section id="economy-panel" aria-label="Инвентарь, крафт и фабрики">
   <div class="econ-head"><div><h2 id="econ-title">🎒 Инвентарь</h2><div class="econ-muted" id="econ-status">Подключение к серверу…</div></div><button id="econ-close" title="Закрыть (Esc)">✕</button></div>
   <div class="econ-tabs" role="tablist" aria-label="Разделы">
-    <button type="button" class="active" data-econ-tab="items" role="tab" aria-selected="true">🎒 Предметы</button>
+    <button type="button" class="active" data-econ-tab="items" role="tab" aria-selected="true">🎒 Склад</button>
+    <button type="button" data-econ-tab="equipment" role="tab" aria-selected="false">🛡 Экипировка</button>
     <button type="button" data-econ-tab="craft" role="tab" aria-selected="false">⚒ Крафт</button>
     <button type="button" data-econ-tab="factories" role="tab" aria-selected="false">🏭 Фабрики</button>
     <button type="button" data-econ-tab="trade" role="tab" aria-selected="false">🪙 Торговец</button>
   </div>
   <div data-econ-view="items"><div id="econ-items" class="econ-grid"></div></div>
+  <div data-econ-view="equipment" hidden><h3>Надето</h3><div id="econ-equipped" class="econ-grid"></div><h3>Сумка</h3><div id="econ-gear" class="econ-grid"></div></div>
   <div data-econ-view="craft" hidden><h3>Чертежи и производство</h3><div id="econ-recipes" class="econ-grid"></div></div>
   <div data-econ-view="factories" hidden><h3>Построить производство</h3><div id="econ-buildings" class="econ-grid"></div><h3>Твои производственные линии</h3><div id="econ-factories" class="econ-grid"></div></div>
   <div data-econ-view="trade" hidden><h3>Торговая лавка</h3><p class="econ-muted">Купи недостающие материалы или продай излишки. Покупка по полной цене, продажа — за 70% цены. Торговля серверная.</p><div id="econ-trader" class="econ-grid"></div></div>
-  <p class="econ-muted">Прототип: производство серверное, сохранение между перезапусками пока не подключено.</p>
+  <p class="econ-muted">Предметы и экипировка хранятся на сервере. Раунд сбрасывает склад и снаряжение.</p>
 </section>
 <div id="cpanel" class="glass">
-  <h2>⚔️ Бой: ветка мечей</h2>
+  <h2>⚔️ Боевая подготовка</h2>
+  <div class="st">Экипировано: <b id="econ-current-weapon">Меч</b></div>
   <label>Меч <select id="selWeapon"></select></label>
   <label>Q <select id="selQ"></select></label>
   <label>W <select id="selW"></select></label>
@@ -1041,7 +1053,7 @@ function applyResourceNode(node) {
 
 /* =====================  инвентарь, всплывающие надписи, частицы  ===================== */
 const inv = { wood: 0, stone: 0, ore: 0 };
-const ECON_LABELS = { gold:["🪙","Золото"], wood:["🪵","Древесина"], stone:["🪨","Камень"], ore:["⛏️","Руда"], plank:["🪚","Доски"], charcoal:["⚫","Древесный уголь"], stone_block:["🧱","Каменный блок"], iron_ingot:["🔩","Железный слиток"], steel_ingot:["⚙️","Стальной слиток"], tool_kit:["🧰","Набор инструментов"], ship:["⛵","Корабль"] };
+const ECON_LABELS = { gold:["🪙","Золото"], wood:["🪵","Древесина"], stone:["🪨","Камень"], ore:["⛏️","Руда"], plank:["🪚","Доски"], charcoal:["⚫","Древесный уголь"], stone_block:["🧱","Каменный блок"], iron_ingot:["🔩","Железный слиток"], steel_ingot:["⚙️","Стальной слиток"], mithril_ingot:["💠","Мифриловый слиток"], adamantite_ingot:["🔷","Адамантитовый слиток"], minor_healing_potion:["🧪","Малое лечебное зелье"], minor_energy_potion:["🔮","Малое зелье энергии"], battle_stew:["🍲","Походное рагу"], greater_healing_potion:["🧴","Большое лечебное зелье"], tool_kit:["🧰","Набор инструментов"], ship:["⛵","Корабль"] };
 let economyState = { items:{gold:100,wood:0,stone:0,ore:0,plank:0,charcoal:0,stone_block:0,iron_ingot:0,steel_ingot:0,tool_kit:0,ship:0}, factories:[] };
 const pendingHarvests = new Map();
 const econPanel = $('#economy-panel');
@@ -1065,8 +1077,18 @@ function renderEconomyState(data) {
   }
   if (data && data.economy) { economyState = data.economy; }
   const items = economyState.items || {};
+  const equippedMainHand = economyState.equipment?.main_hand;
+  const currentWeaponLabel = $('#econ-current-weapon');
+  if(currentWeaponLabel)currentWeaponLabel.textContent=equippedMainHand ? ((window.mpWeaponCatalog?.[equippedMainHand.weaponId]?.name)||equippedMainHand.weaponId)+' · '+(equippedMainHand.tier||'T1') : 'Нет оружия';
   $('#econ-status').textContent = window.mpConnected ? (data?.message || 'Сервер синхронизирован') : 'Оффлайн: экономика доступна только на сервере';
-  $('#econ-items').innerHTML = Object.entries(ECON_LABELS).map(([id,meta])=>`<div class="econ-card"><b>${meta[0]} ${meta[1]}</b><span>${Math.max(0,Number(items[id])||0)}</span></div>`).join('');
+  const consumableRarities={minor_healing_potion:['common','Обычный'],minor_energy_potion:['uncommon','Необычный'],battle_stew:['rare','Редкий'],greater_healing_potion:['epic','Эпический']};
+  const consumableIds=new Set(Object.keys(consumableRarities));
+  $('#econ-items').innerHTML = Object.entries(ECON_LABELS).map(([id,meta])=>{const count=Math.max(0,Number(items[id])||0),rarity=consumableRarities[id];return `<div class="econ-card"><b>${meta[0]} ${meta[1]}</b>${rarity?`<small class="rarity ${rarity[0]}">${rarity[1]}</small>`:''}<span>${count}</span>${consumableIds.has(id)?`<button data-econ="use" data-id="${id}" ${count<1?'disabled':''}>Использовать</button>`:''}</div>`;}).join('');
+  const equipped = economyState.equipment || {};
+  const gear = economyState.gear || [];
+  const gearCard = (item, equippedSlot = false) => { const name=(window.mpWeaponCatalog?.[item.weaponId]?.name)||item.weaponId||item.itemId||'Снаряжение'; const pct=Math.max(0,Math.min(100,Number(item.durability||0)/Math.max(1,Number(item.maxDurability||1))*100)); const tierOrder={T1:1,T2:2,T3:3,T4:4,T5:5}[item.tier]||1,qualityFactor={ordinary:1,good:1.15,excellent:1.35,outstanding:1.7}[item.quality]||1,qualityLabel={ordinary:'Обычное',good:'Хорошее',excellent:'Отличное',outstanding:'Выдающееся'}[item.quality]||'Обычное',power=Number(item.powerMultiplier)||1,sellPrice=Math.max(1,Math.floor(20*tierOrder*tierOrder*qualityFactor*(pct/100)*.55)); const id=String(item.id||'').replace(/[^a-zA-Z0-9_-]/g,''); return `<div class="econ-card"><b>${name}</b><small class="tier">${item.tier||'T1'} · ${qualityLabel}</small><small>Модификатор урона: ×${power.toFixed(2)}</small><div class="durability"><i style="width:${pct}%"></i></div><small>Прочность: ${item.durability||0}/${item.maxDurability||0}</small>${equippedSlot?' <span class="rarity">Надето</span>':`<button data-econ="equip" data-id="${id}">Экипировать</button><button data-econ="gear-sell" data-id="${id}">Продать · ${sellPrice} золота</button>`}</div>`; };
+  $('#econ-equipped').innerHTML = Object.entries(equipped).length ? Object.entries(equipped).map(([slot,item])=>gearCard(item,true)).join('') : '<div class="econ-card">Экипировка пуста</div>';
+  $('#econ-gear').innerHTML = gear.length ? gear.map(item=>gearCard(item,false)).join('') : '<div class="econ-card">В сумке пока нет экипировки</div>';
   const activeFactory = (economyState.factories || []).find(f => Number(f.id) === Number(economyState.activeFactoryId));
   const recipes = [
     {id:'plank',name:'Доски',icon:'🪚',inputs:'2 древесины',output:'1 доска',station:'Лесопилка',stationId:'sawmill'},
@@ -1077,27 +1099,34 @@ function renderEconomyState(data) {
     {id:'steel_ingot',name:'Стальной слиток',icon:'⚙️',inputs:'2 железных слитка + 2 угля',output:'1 стальной слиток',station:'Плавильня',stationId:'smelter'},
     {id:'ship',name:'Корабль',icon:'⛵',inputs:'20 досок + 4 железных слитка',output:'1 корабль',station:'Верфь',stationId:'shipyard'}
   ];
-  $('#econ-recipes').innerHTML = recipes.map(r=>{const enabled=!!activeFactory&&activeFactory.type===r.stationId&&!activeFactory.running&&Number(activeFactory.buildingUntil||0)<=Date.now();return `<div class="econ-card"><b>${r.icon} ${r.name}</b><small>Расход: ${r.inputs}<br>Выход: ${r.output}<br>Станция: ${r.station}</small><button data-econ="craft" data-id="${r.id}" ${enabled?'':'disabled'}>Запустить производство</button></div>`;}).join('');
+  const basicRecipes = recipes.map(r=>{const enabled=!!activeFactory&&activeFactory.type===r.stationId&&!activeFactory.running&&Number(activeFactory.buildingUntil||0)<=Date.now();return `<div class="econ-card"><b>${r.icon} ${r.name}</b><small>Расход: ${r.inputs}<br>Выход: ${r.output}<br>Станция: ${r.station}</small><button data-econ="craft" data-id="${r.id}" ${enabled?'':'disabled'}>Запустить производство</button></div>`;}).join('');
+  const activeCraftJob=(economyState.craftJobs||[]).find(job=>Number(job.stationId)===Number(activeFactory?.id));
+  const weaponCards = Object.entries(window.mpWeaponCatalog||{}).flatMap(([weaponId,meta])=>['T1','T2','T3','T4','T5'].map(tier=>{const bp=`blueprint:${weaponId}:${tier}`,count=Number(items[bp]||0),enabled=!!activeFactory&&activeFactory.type==='forge'&&!activeFactory.running&&!activeCraftJob&&Number(activeFactory.buildingUntil||0)<=Date.now()&&count>0;return `<div class="econ-card"><b>⚔️ ${meta.name} · ${tier}</b><small>Одноразовый чертёж: ${count}<br>Станция: Кузница · качество случайное</small><button data-econ="craft-weapon" data-id="${weaponId}" data-tier="${tier}" ${enabled?'':'disabled'}>Изготовить</button></div>`;})).join('');
+  const craftJobCards=(economyState.craftJobs||[]).map(job=>{const left=Math.max(0,Math.ceil((Number(job.finishAt)-Date.now())/1000));return `<div class="econ-card"><b>⚒ Изготовление оружия</b><small>${job.item?.weaponId||'Оружие'} · ${job.item?.tier||''} · ${job.item?.quality||''}<br>${left>0?'Осталось: '+left+' сек.':'Готово к выдаче'}</small></div>`;}).join('');
+  $('#econ-recipes').innerHTML = craftJobCards + basicRecipes + '<h3>Оружие</h3>' + weaponCards;
   const buildings = [
+    {id:'forge',name:'Кузница',cost:'14 древесины + 10 камня + 6 железных слитков',recipe:'Изготавливает оружие T1–T5'},
     {id:'sawmill',name:'Лесопилка',cost:'8 древесины + 4 камня',recipe:'Производит доски'},
     {id:'smelter',name:'Плавильня',cost:'6 древесины + 8 камня',recipe:'Производит железные слитки'},
     {id:'shipyard',name:'Верфь',cost:'20 древесины + 12 камня + 8 досок',recipe:'Строит корабли'}
   ];
   $('#econ-buildings').innerHTML = buildings.map(b=>`<div class="econ-card"><b>🏭 ${b.name}</b><small>${b.recipe}<br>Строительство: ${b.cost}</small><button data-econ="build" data-id="${b.id}">Построить</button></div>`).join('');
-  const traderItems = Object.entries({wood:2,stone:3,ore:5,plank:5,charcoal:4,stone_block:7,iron_ingot:12,steel_ingot:28,tool_kit:18,ship:120});
-  $('#econ-trader').innerHTML = traderItems.map(([id,price])=>{const meta=ECON_LABELS[id]||['📦',id],stock=Number(items[id])||0;return `<div class="econ-card"><b>${meta[0]} ${meta[1]}</b><small>Купить: ${price} золота · продать: ${Math.floor(price*.7)} золота<br>В инвентаре: ${stock}</small><button data-econ="trade-buy" data-id="${id}" data-amount="1">Купить 1</button><button data-econ="trade-buy" data-id="${id}" data-amount="5">Купить 5</button><button data-econ="trade-sell" data-id="${id}" data-amount="1" ${stock<1?'disabled':''}>Продать 1</button><button data-econ="trade-sell" data-id="${id}" data-amount="5" ${stock<5?'disabled':''}>Продать 5</button></div>`}).join('');
+  const traderItems = Object.entries({wood:2,stone:3,ore:5,plank:5,charcoal:4,stone_block:7,iron_ingot:12,steel_ingot:28,mithril_ingot:55,adamantite_ingot:95,minor_healing_potion:18,minor_energy_potion:28,battle_stew:55,greater_healing_potion:110,tool_kit:18,ship:120});
+  const resourceShop = traderItems.map(([id,price])=>{const meta=ECON_LABELS[id]||['📦',id],stock=Number(items[id])||0;return `<div class="econ-card"><b>${meta[0]} ${meta[1]}</b><small>Купить: ${price} золота · продать: ${Math.floor(price*.7)} золота<br>В инвентаре: ${stock}</small><button data-econ="trade-buy" data-id="${id}" data-amount="1">Купить 1</button><button data-econ="trade-sell" data-id="${id}" data-amount="1" ${stock<1?'disabled':''}>Продать 1</button></div>`}).join('');
+  const blueprintShop = Object.entries(window.mpWeaponCatalog||{}).flatMap(([weaponId,meta])=>['T1','T2','T3','T4','T5'].map(tier=>{const price=35*({T1:1,T2:2,T3:3,T4:4,T5:5}[tier]**2);return `<div class="econ-card"><b>📜 ${meta.name} · ${tier}</b><small>Одноразовый чертёж · ${price} золота</small><button data-econ="blueprint-buy" data-id="${weaponId}" data-tier="${tier}">Купить чертёж</button></div>`;})).join('');
+  $('#econ-trader').innerHTML = '<h3>Материалы и расходники</h3>' + resourceShop + '<h3>Чертежи оружия</h3>' + blueprintShop;
   const factories = economyState.factories || [];
   $('#econ-factories').innerHTML = factories.length ? factories.map(f=>{
     const progress=Math.max(0,Math.min(100,Math.round((f.progress||0)*100)));
     const state=Number(f.buildingUntil||0)>Date.now() ? `Строится · ${Math.ceil((Number(f.buildingUntil)-Date.now())/1000)} с` : f.running ? `Работает · ${Math.ceil((f.remainingMs||0)/1000)} с · ${progress}%` : 'Ожидает запуска';
-    return `<div class="econ-card"><b>🏭 ${f.name} №${f.id}</b><small>${state}<br>Рецепт: ${({plank:'доски',iron_ingot:'железные слитки',sword:'мечи',ship:'корабли'})[f.recipe]||f.recipe}</small><button data-econ="run" data-id="${f.id}" ${f.running?'disabled':''}>Запустить</button><button data-econ="stop" data-id="${f.id}" ${f.running?'':'disabled'}>Отменить цикл</button></div>`;
+    const isForge=f.type==='forge';const pending=(economyState.craftJobs||[]).some(job=>Number(job.stationId)===Number(f.id));return `<div class="econ-card"><b>🏭 ${f.name} №${f.id}</b><small>${state}<br>Рецепт: ${({plank:'доски',iron_ingot:'железные слитки',sword:'мечи',ship:'корабли',forge:'оружие T1–T5'})[f.recipe]||f.recipe}</small>${isForge?`<span class="rarity">${pending?'Занята изготовлением':'Готова к работе'}</span>`:`<button data-econ="run" data-id="${f.id}" ${f.running?'disabled':''}>Запустить</button><button data-econ="stop" data-id="${f.id}" ${f.running?'':'disabled'}>Отменить цикл</button>`}</div>`;
   }).join('') : '<div class="econ-card">Пока нет фабрик. Построй первую выше.</div>';
   $('#c-wood').textContent = items.wood || 0; $('#c-stone').textContent = items.stone || 0; $('#c-ore').textContent = items.ore || 0;
 }
 window.renderEconomyState = renderEconomyState;
 const econTabs = [...econPanel.querySelectorAll('[data-econ-tab]')];
 function setEconomyTab(tab) {
-  const titles = {items:'🎒 Инвентарь',craft:'📐 Чертежи и крафт',factories:'🏭 Фабрики',trade:'🪙 Торговец'};
+  const titles = {items:'🎒 Склад',equipment:'🛡 Экипировка',craft:'📐 Чертежи и крафт',factories:'🏭 Фабрики',trade:'🪙 Торговец'};
   econPanel.querySelectorAll('[data-econ-view]').forEach(view=>{view.hidden=view.dataset.econView!==tab;});
   econTabs.forEach(button=>{const active=button.dataset.econTab===tab;button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));});
   $('#econ-title').textContent=titles[tab]||titles.items;
@@ -1113,11 +1142,21 @@ addEventListener('keydown',ev=>{
   if(tag==='input'||tag==='textarea'||tag==='select'||ev.target?.isContentEditable) return;
   if(ev.code==='KeyI'){ev.preventDefault();econPanel.classList.contains('open')?closeEconomy():openEconomy('items');}
   else if(ev.code==='Escape'&&econPanel.classList.contains('open')){ev.preventDefault();closeEconomy();}
+  else if(ev.code==='KeyF'){
+    ev.preventDefault();
+    if(Math.hypot(pos.x-merchantWorldPosition.x,pos.z-merchantWorldPosition.z)<=5.5){econPanel.classList.add('open');setEconomyTab('trade');econSend({type:'economy-merchant-open'});}
+    else {const loot=nearestLoot();if(loot)econSend({type:'loot-pickup',lootId:loot.id});}
+  }
 });
 econPanel.addEventListener('click',ev=>{
   const b=ev.target.closest('button[data-econ]'); if(!b)return;
   const id=b.dataset.id, action=b.dataset.econ;
   if(action==='craft')econSend({type:'economy-craft',recipe:id});
+  else if(action==='use')econSend({type:'economy-use',item:id});
+  else if(action==='equip')econSend({type:'economy-equip',itemId:id});
+  else if(action==='gear-sell')econSend({type:'economy-gear-sell',itemId:id});
+  else if(action==='craft-weapon')econSend({type:'economy-craft-weapon',weaponId:id,tier:b.dataset.tier});
+  else if(action==='blueprint-buy')econSend({type:'economy-blueprint-buy',weaponId:id,tier:b.dataset.tier});
   else if(action==='build'){pendingFactoryType=id;closeEconomy();if(window.mpToast)window.mpToast('Выбери свободное место на суше кликом по земле.');}
   else if(action==='run')econSend({type:'economy-run',factoryId:Number(id)});
   else if(action==='stop')econSend({type:'economy-stop',factoryId:Number(id)});
@@ -1176,6 +1215,61 @@ function damagePlayer(amount) { setPlayerHealth(playerVitals.hp - Math.max(0, Nu
 function healPlayer(amount) { setPlayerHealth(playerVitals.hp + Math.max(0, Number(amount) || 0)); }
 setPlayerHealth(PLAYER_MAX_HP);
 const pos = player.position; pos.set(-31 * MAP_SCALE, 0, -7 * MAP_SCALE);
+const merchantWorldPosition = new THREE.Vector3(20.7, 0, 0);
+const merchantGroup = new THREE.Group();
+const merchantRobe = new THREE.Mesh(new THREE.CylinderGeometry(.48,.62,1.55,9),new THREE.MeshStandardMaterial({color:0x493c32,roughness:1}));
+merchantRobe.position.y=.82; merchantRobe.castShadow=true; merchantGroup.add(merchantRobe);
+const merchantHead = new THREE.Mesh(new THREE.SphereGeometry(.34,12,10),new THREE.MeshStandardMaterial({color:0xc99a72,roughness:.9}));
+merchantHead.position.y=1.82; merchantHead.castShadow=true; merchantGroup.add(merchantHead);
+const merchantHood = new THREE.Mesh(new THREE.ConeGeometry(.43,.55,9),new THREE.MeshStandardMaterial({color:0x263a31,roughness:1}));
+merchantHood.position.y=2.18; merchantHood.castShadow=true; merchantGroup.add(merchantHood);
+const merchantBelt = new THREE.Mesh(new THREE.TorusGeometry(.48,.055,6,12),new THREE.MeshStandardMaterial({color:0xc49a4a,metalness:.25,roughness:.65}));
+merchantBelt.rotation.x=Math.PI/2; merchantBelt.position.y=.72; merchantGroup.add(merchantBelt);
+const merchantTable = new THREE.Mesh(new THREE.BoxGeometry(1.35,.18,.72),new THREE.MeshStandardMaterial({color:0x62462d,roughness:1}));
+merchantTable.position.set(1.05,.68,.15); merchantTable.castShadow=true; merchantGroup.add(merchantTable);
+const merchantPost = new THREE.Mesh(new THREE.CylinderGeometry(.055,.07,.95,7),new THREE.MeshStandardMaterial({color:0x49321f}));
+merchantPost.position.set(1.48,1.15,.15); merchantGroup.add(merchantPost);
+const merchantSign = new THREE.Mesh(new THREE.BoxGeometry(.72,.42,.08),new THREE.MeshStandardMaterial({color:0x8a6336,roughness:1}));
+merchantSign.position.set(1.48,1.68,.15); merchantGroup.add(merchantSign);
+const merchantHalo = new THREE.Mesh(new THREE.TorusGeometry(1.35,.045,8,48),new THREE.MeshBasicMaterial({color:0xd7b35c,transparent:true,opacity:.72}));
+merchantHalo.rotation.x=Math.PI/2; merchantHalo.position.y=.08; merchantGroup.add(merchantHalo);
+merchantGroup.position.copy(merchantWorldPosition); scene.add(merchantGroup);
+const lootVisuals = new Map();
+function removeLootVisual(id){const entry=lootVisuals.get(String(id));if(!entry)return;scene.remove(entry.group);lootVisuals.delete(String(id));}
+function upsertLootVisual(drop){
+  if(!drop?.id||!Number.isFinite(Number(drop.x))||!Number.isFinite(Number(drop.z)))return;
+  removeLootVisual(drop.id);
+  const tierColor={T1:0xb6a88b,T2:0x78b7a0,T3:0x6ca8dc,T4:0xb27bdf,T5:0xe2b94f}[drop.item?.tier]||0xd5c49a;
+  const group=new THREE.Group();
+  const box=new THREE.Mesh(new THREE.BoxGeometry(.52,.28,.38),new THREE.MeshStandardMaterial({color:0x68482a,metalness:.08,roughness:.8}));
+  box.position.y=.22;box.castShadow=true;group.add(box);
+  const glow=new THREE.Mesh(new THREE.TorusGeometry(.48,.035,6,24),new THREE.MeshBasicMaterial({color:tierColor,transparent:true,opacity:.9}));
+  glow.rotation.x=Math.PI/2;glow.position.y=.06;group.add(glow);
+  group.position.set(Number(drop.x),0,Number(drop.z));scene.add(group);
+  lootVisuals.set(String(drop.id),{group,drop});
+}
+function syncLootWorld(drops){
+  if(!Array.isArray(drops))return;
+  const ids=new Set(drops.map(d=>String(d.id)));
+  for(const id of [...lootVisuals.keys()])if(!ids.has(id))removeLootVisual(id);
+  for(const drop of drops)upsertLootVisual(drop);
+}
+function nearestLoot(){
+  let best=null,dist=3.6;
+  for(const [id,entry] of lootVisuals){const d=Math.hypot(pos.x-entry.group.position.x,pos.z-entry.group.position.z);if(d<dist){best={id,entry};dist=d;}}
+  return best;
+}
+function updateInteractionHint(){
+  const hint=document.getElementById('interact-hint');
+  const merchantDistance=Math.hypot(pos.x-merchantWorldPosition.x,pos.z-merchantWorldPosition.z);
+  const loot=nearestLoot();
+  if(merchantDistance<=5.5){hint.textContent='F · Нейтральный торговец';hint.style.display='block';}
+  else if(loot){hint.textContent='F · Подобрать экипировку';hint.style.display='block';}
+  else hint.style.display='none';
+  requestAnimationFrame(updateInteractionHint);
+}
+requestAnimationFrame(updateInteractionHint);
+
 let mixer = null, actions = {}, active = null, hasAnim = false;
 const loader = new GLTFLoader();
 const MODEL_URLS = ['https://threejs.org/examples/models/gltf/Soldier.glb', 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r166/examples/models/gltf/Soldier.glb'];
@@ -1587,6 +1681,7 @@ for (const w of Object.values(ALBION_WEAPON_META)) {
     look:{len:base.len||(w.hands===2?1.55:1.15),w:axe?.19:.15,blade:base.blade||(axe?0x9ca7ae:0x8e9ba2),guard:base.guard||0x65472e,type:base.type||(axe?'axe':'mace'),style:base.style||w.id,glow:base.glow||0}};
 }
 const WEAPON_ORDER = Object.keys(WEAPONS);
+window.mpWeaponCatalog = Object.fromEntries(WEAPON_ORDER.map(id=>[id,{name:WEAPONS[id].name||ALBION_WEAPON_META[id]?.name||id}]));
 
 /* ---- вспомогательное ---- */
 const dist2 = (ax, az, bx, bz) => Math.hypot(ax - bx, az - bz);
@@ -1805,6 +1900,7 @@ function configureBranchOptions(id){
  if($('#selP'))fillSelect($('#selP'),ps.map(k=>[k,PASSIVES[k].name]),loadout.p);
 }
 
+window.mpHasEquippedWeapon = true;
 let loadout = { weapon: 'broadsword', q: 'strike', w: 'cyclone', p: 'deepcuts' };
 try { const s = JSON.parse(localStorage.getItem('vs_loadout') || 'null'); if (s) loadout = { ...loadout, ...s }; } catch (e) { }
 if (!WEAPONS[loadout.weapon]) loadout.weapon = 'broadsword';
@@ -2305,6 +2401,7 @@ function renderHud() {
 function fillSelect(sel, items, cur) { sel.innerHTML = ''; for (const [id, n] of items) { const o = document.createElement('option'); o.value = id; o.textContent = n; sel.appendChild(o); } sel.value = cur; }
 const saveLoadout = () => { try { localStorage.setItem('vs_loadout', JSON.stringify(loadout)); } catch (e) { } };
 function setWeapon(id) {
+  if (window.mpConnected) { toast("Оружие меняется через экипировку в инвентаре."); return; }
   if (!WEAPONS[id]) return; loadout.weapon = id; configureBranchOptions(id); $('#selWeapon').value = id; takeCharges(); cd.q = cd.w = cd.e = 0; swingS = null;
   if (window.mpConnected && typeof window.mpSetWeapon === 'function') window.mpSetWeapon(id);
   rebuildWeapons(); renderSlots(); saveLoadout(); toast(WEAPONS[id].name + (WEAPONS[id].hands === 2 ? ' (двуручный)' : ' (одноручный)'));
@@ -2493,6 +2590,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (notify) toast('Цель снята');
   };
   window.mpAbilityHit = (slot, weapon, requestedTargetId = mpTargetId, abilityId = (slot === 'e' ? WEAPONS[weapon]?.e : loadout[slot])) => {
+    if(!window.mpHasEquippedWeapon){toast('Сначала экипируй оружие в инвентаре');return false;}
     const targetId = String(requestedTargetId || '');
     const target = targetId ? remotes.get(targetId) : null;
     const groundAoE = multiplayerAreaAbilityIds();
@@ -2614,7 +2712,9 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       // Stop exposing/gathering client-generated fallback nodes once multiplayer connects.
       syncResourceWorld([]);
       mpStatus.textContent = 'Мультиплеер: подключён · ' + mpName;
-      socket.send(JSON.stringify({type:'hello', name:mpName}));
+      let profileToken = localStorage.getItem('gob_profile_token');
+      if (!profileToken) { profileToken = (crypto.randomUUID ? crypto.randomUUID() : 'gob_' + Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2,'0')).join('')); localStorage.setItem('gob_profile_token', profileToken); }
+      socket.send(JSON.stringify({type:'hello', name:mpName, profileToken}));
       socket.send(JSON.stringify({type:'weapon',weapon:loadout.weapon}));
       socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w,p:loadout.p}));
       socket.send(JSON.stringify({type:'lobby-get'}));
@@ -2631,7 +2731,11 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         }
         return;
       }
-      if (msg.type === 'factory-created' || msg.type === 'factory-damaged') {
+      if (msg.type === 'loot-created') {
+        upsertLootVisual(msg.loot);
+      } else if (msg.type === 'loot-removed') {
+        removeLootVisual(msg.lootId);
+      } else if (msg.type === 'factory-created' || msg.type === 'factory-damaged') {
         syncFactoryVisual(msg.factory);
       } else if (msg.type === 'factory-destroyed') {
         removeFactoryVisual(msg.factoryId);
@@ -2642,6 +2746,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         // Reconcile the visible resource set whenever the server updates vision.
         // Empty snapshots are meaningful: don't leave client-only fallback resources on the map.
         syncResourceWorld(Array.isArray(msg.resources) ? msg.resources : []);
+        syncLootWorld(Array.isArray(msg.loot) ? msg.loot : []);
       } else if (msg.type === 'resource-node') {
         applyResourceNode(msg.node);
       } else if (msg.type === 'economy-state') {
@@ -2652,6 +2757,11 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
           pingMs = Math.max(0, Math.round(performance.now() - sentAt));
           mpPingBadge.textContent = 'ПИНГ: ' + pingMs + ' мс';
         }
+      } else if (msg.type === 'combat-loadout') {
+        window.mpHasEquippedWeapon = !!WEAPONS[msg.weapon];
+        loadout.weapon = window.mpHasEquippedWeapon ? msg.weapon : 'broadsword';
+        if(msg.loadout){loadout.q=msg.loadout.q||loadout.q;loadout.w=msg.loadout.w||loadout.w;loadout.p=msg.loadout.p||loadout.p;}
+        configureBranchOptions(loadout.weapon);$('#selWeapon').value=loadout.weapon;rebuildWeapons();weaponR.visible=window.mpHasEquippedWeapon;weaponL.visible=window.mpHasEquippedWeapon&&!!WEAPONS[loadout.weapon].dual;renderSlots();renderHud();saveLoadout();
       } else if (msg.type === 'welcome') {
         succeed();
         socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free}));
@@ -2659,6 +2769,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         if (msg.player && Number.isFinite(Number(msg.player.x)) && Number.isFinite(Number(msg.player.z))) player.position.set(Number(msg.player.x), 0, Number(msg.player.z));
         window.mpId = msg.id; window.mpTeam = msg.team || msg.player?.team || null;
         if (Array.isArray(msg.factories)) syncFactoryWorld(msg.factories);
+        syncLootWorld(Array.isArray(msg.loot) ? msg.loot : []);
         if (window.mpTeam) mpStatus.textContent = 'Команда: ' + (window.mpTeam === 'blue' ? 'Синие' : 'Красные') + ' · ' + mpName;
         socket.send(JSON.stringify({type:'economy-get'}));
         syncResourceWorld(msg.resources);
@@ -2922,7 +3033,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         // Fire as soon as the player enters melee range; don't carry a stale interval from a previous target/range state.
         if (inAttackRange && !wasInAttackRange) lastAttack = 0;
         wasInAttackRange = inAttackRange;
-        if (inAttackRange && now - lastAttack > MP_ATTACK_INTERVAL) {
+        if (inAttackRange && window.mpHasEquippedWeapon && now - lastAttack > MP_ATTACK_INTERVAL) {
           faceXZ(target.group.position.x, target.group.position.z);
           socket.send(JSON.stringify({type:'attack', targetId:mpTargetId, weapon:loadout.weapon}));
           lastAttack = now;

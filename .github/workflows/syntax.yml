@@ -16,9 +16,11 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Run lobby and siege integration tests
         run: npm test
-      - name: Check server JavaScript
+      - name: Check server and economy JavaScript
         if: always()
-        run: node --check server.js
+        run: |
+          node --check server.js
+          for file in game-data/*.js tests/*.js; do node --check "$file"; done
       - name: Check siege client JavaScript
         if: always()
         run: node --check siege/siege-client.js
