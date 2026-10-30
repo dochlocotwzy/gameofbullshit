@@ -31,6 +31,9 @@ try {
   assert.equal(reloaded.items.wood, 17);
   assert.equal(reloaded.equipment.main_hand.durability, 80);
   assert.equal(reloaded.craftJobs[0].id, "job-1");
+  const unarmedToken = "unarmed_profile_token_123456789";
+  const unarmed = store.get(unarmedToken); unarmed.equipment = {}; store.save(unarmedToken, unarmed);
+  assert.deepEqual(createPlayerStore({ dataDir: dir }).get(unarmedToken).equipment, {}, "death loss must not restore a free starter weapon on reconnect");
   const reset = createPlayerStore({ dataDir: dir });
   assert.equal(reset.resetRound(token), true);
   const afterReset = createPlayerStore({ dataDir: dir }).get(token);
