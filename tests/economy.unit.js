@@ -36,6 +36,10 @@ try {
   const afterReset = createPlayerStore({ dataDir: dir }).get(token);
   assert.equal(afterReset.items.wood, 0);
   assert.deepEqual(afterReset.craftJobs, []);
+  const secondToken = "second_profile_token_123456789";
+  const secondProfile = reset.get(secondToken); secondProfile.items.gold = 999; reset.save(secondToken, secondProfile);
+  reset.resetAllProfiles();
+  assert.equal(createPlayerStore({ dataDir: dir }).get(secondToken).items.gold, 100);
   assert.equal(afterReset.equipment.main_hand.weaponId, "broadsword");
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });
