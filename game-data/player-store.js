@@ -65,7 +65,7 @@ function createPlayerStore(options = {}) {
     return {
       version: 1,
       items: { ...DEFAULT_ITEMS, ...(value.items || {}) },
-      equipment: { ...createDefaultProfile().equipment, ...(value.equipment || {}) },
+      equipment: value.equipment && typeof value.equipment === "object" ? { ...value.equipment } : { ...createDefaultProfile().equipment },
       gear: Array.isArray(value.gear) ? value.gear : [],
       craftJobs: Array.isArray(value.craftJobs) ? value.craftJobs : [],
       factories: Array.isArray(value.factories) ? value.factories : [],
