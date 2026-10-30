@@ -187,7 +187,7 @@ function broadcast(payload, exceptId) {
 const lobby = createLobby({ players, send, broadcast, maxPlayers: MAX_PLAYERS, minPlayers: 1,
   onTeamChange: p => placeAtBase(p, true),
   onReset: () => resetMatch() });
-siege = createSiege({ players, send, broadcast, attackRange: ATTACK_RANGE, cooldownMs: ATTACK_COOLDOWN_MS, damageFor: p => p.equipment?.main_hand && Number(p.equipment.main_hand.durability)>0 ? (WEAPON_DAMAGE[p.weapon] || 0) : 0 });
+siege = createSiege({ players, send, broadcast, attackRange: ATTACK_RANGE, cooldownMs: ATTACK_COOLDOWN_MS, damageFor: p => p.equipment?.main_hand && Number(p.equipment.main_hand.durability)>0 ? Math.round((WEAPON_DAMAGE[p.weapon] || 0) * (Number(p.equipment.main_hand.powerMultiplier)||1)) : 0 });
 
 function publicPlayer(p) { return {id:p.id,name:p.name,team:p.team,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{},charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,weapon:p.weapon||null}; }
 function chooseTeam() { let blue=0,red=0; for(const player of players.values()){if(player.team==="blue")blue++;else if(player.team==="red")red++;} if(blue===red)return crypto.randomInt(0,2)?"blue":"red"; return blue<red?"blue":"red"; }
@@ -339,7 +339,7 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
         const armor=armorBreakMultiplier(victim);
         const weak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;
         const outgoingBonus=["attackBuff","damageBuff"].reduce((sum,key)=>{const st=p.statuses?.[key];return sum+(st&&st.until>Date.now()?Math.max(0,Number(st.value)||0):0);},0);
-        const raw=Number(hit.damage)||0,dealt=Math.max(0,Math.round(raw*bonus*(1+outgoingBonus)*(1-reduction)*(1-defenseReduction)*(1-weak)*armor));
+        const raw=Number(hit.damage)||0,weaponPower=Number(p.equipment?.main_hand?.powerMultiplier)||1,dealt=Math.max(0,Math.round(raw*weaponPower*bonus*(1+outgoingBonus)*(1-reduction)*(1-defenseReduction)*(1-weak)*armor));
         const actualDealt=absorbShield(victim,dealt);
         victim.hp=Math.max(0,victim.hp-actualDealt);
         broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:actualDealt,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hits.indexOf(hit)});
@@ -361,7 +361,7 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
       const radius=Math.max(0,Number(landing.radius)||0), landingVictims=[...players.values()].filter(v=>v.hp>0&&v.id!==p.id&&v.team!==p.team&&Math.hypot(v.x-p.x,v.z-p.z)<=radius+0.35);
       const bonus=1+Math.max(0,landingVictims.length-1)*(Number(ability.multiTargetBonus)||0);
       for(const victim of landingVictims){
-        if(Number(landing.damage)>0){const dealt= Math.max(0,Math.round(Number(landing.damage)*bonus));const actual=absorbShield(victim,dealt);victim.hp=Math.max(0,victim.hp-actual);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:actual,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:"landing"});}
+        if(Number(landing.damage)>0){const dealt= Math.max(0,Math.round(Number(landing.damage)*(Number(p.equipment?.main_hand?.powerMultiplier)||1)*bonus));const actual=absorbShield(victim,dealt);victim.hp=Math.max(0,victim.hp-actual);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:actual,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:"landing"});}
         if(victim.hp>0)applyEffects(victim,landing.effects||[],p.id);
         if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
         broadcast({type:"player",player:publicPlayer(victim)});
@@ -575,12 +575,16 @@ wss.on("connection", (ws) => {
           p.equipment = { ...saved.equipment };
           p.blueprints = { ...saved.blueprints };
           const equipped = p.equipment.main_hand;
-          if (equipped?.kind === "weapon" && WEAPON_DAMAGE[equipped.weaponId]) { p.weapon = equipped.weaponId; p.branch = ALBION_WEAPONS[equipped.weaponId]?.branch || null; }
+          if (equipped?.kind === "weapon" && WEAPON_DAMAGE[equipped.weaponId]) {
+            p.weapon = equipped.weaponId; p.branch = ALBION_WEAPONS[equipped.weaponId]?.branch || null;
+            if(p.branch){const branch=ALBION_BRANCHES[p.branch],passives=Object.keys(branch.passives);p.loadout={q:branch.q.includes(p.loadout?.q)?p.loadout.q:branch.q[0],w:branch.w.includes(p.loadout?.w)?p.loadout.w:branch.w[0],p:passives.includes(p.loadout?.p)?p.loadout.p:passives[0]};}
+            else p.loadout={q:"strike",w:"cyclone",p:"deepcuts"};
+          }
         }
       }
       lobby.refresh();
       broadcast({ type: "player", player: publicPlayer(p) }, p.id);
-      send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, profileToken:p.profileToken, players: snapshot(p), resources: resourceWorldSnapshot(p), factories:factoryWorldSnapshot(p) });
+      send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, profileToken:p.profileToken, players: snapshot(p), resources: resourceWorldSnapshot(p), factories:factoryWorldSnapshot(p), loot:lootWorldSnapshot(p) });
       processCraftJobs(p);
       sendEconomy(p, "Профиль загружен.");
       send(ws,{type:"combat-loadout",weapon:p.weapon,branch:p.branch,loadout:p.loadout});
@@ -985,7 +989,7 @@ wss.on("connection", (ws) => {
         broadcast({type:"player",player:publicPlayer(p)});
         return;
       }
-      let castDamage=ability.damage;
+      let castDamage=ability.damage*(Number(p.equipment?.main_hand?.powerMultiplier)||1);
       if(abilityId==="mightyBlow")castDamage=[269,432,649,918][Math.min(3,p.charges||0)];
       if(abilityId==="charge")castDamage=[390,560,780,1030][Math.min(3,p.charges||0)];
       if(abilityId==="carvingDash")castDamage=[260,340,430,540][Math.min(3,p.charges||0)];
@@ -1021,7 +1025,7 @@ wss.on("connection", (ws) => {
           },1200);
           continue;
         }
-        for(let hit=0;hit<(ability.hits||1);hit++){const amount=hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:castDamage;const reduction=victim.statuses?.resist?.value||0;const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;const outgoingWeak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;const vulnerability=victim.statuses?.armorBreak&&victim.statuses.armorBreak.until>Date.now()?(1+Math.max(0,Number(victim.statuses.armorBreak.value)||0)):1;const dealt=Math.max(0,Math.round(amount*(1-reduction)*(1-defenseReduction)*(1-outgoingWeak)*vulnerability));const actual=absorbShield(victim,dealt);victim.hp=Math.max(0,victim.hp-actual);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:actual,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
+        for(let hit=0;hit<(ability.hits||1);hit++){const amount=(hit===(ability.hits||1)-1&&ability.secondDamage?ability.secondDamage:castDamage)*(hit===(ability.hits||1)-1&&ability.secondDamage?(Number(p.equipment?.main_hand?.powerMultiplier)||1):1);const reduction=victim.statuses?.resist?.value||0;const defense=victim.statuses?.defense&&victim.statuses.defense.until>Date.now()?Math.max(0,Number(victim.statuses.defense.value)||0):0;const defenseReduction=defense>0?Math.min(.5,defense/(defense+200)):0;const outgoingWeak=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;const vulnerability=victim.statuses?.armorBreak&&victim.statuses.armorBreak.until>Date.now()?(1+Math.max(0,Number(victim.statuses.armorBreak.value)||0)):1;const dealt=Math.max(0,Math.round(amount*(1-reduction)*(1-defenseReduction)*(1-outgoingWeak)*vulnerability));const actual=absorbShield(victim,dealt);victim.hp=Math.max(0,victim.hp-actual);broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:actual,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:hit});if(victim.hp<=0)break;}
         if(victim.hp>0)applyEffects(victim,ability.effects||[],p.id);
         if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
       }
