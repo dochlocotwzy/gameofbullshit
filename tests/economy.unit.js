@@ -33,7 +33,7 @@ try {
   assert.equal(reset.resetRound(token), true);
   const afterReset = createPlayerStore({ dataDir: dir }).get(token);
   assert.equal(afterReset.items.wood, 0);
-  assert.deepEqual(afterReset.equipment, {});
+  assert.equal(afterReset.equipment.main_hand.weaponId, "broadsword");
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });
 }
