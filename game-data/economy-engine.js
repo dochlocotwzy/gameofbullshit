@@ -44,7 +44,7 @@ function equipGear(profile, instanceId) {
   const previous = profile.equipment.main_hand;
   profile.equipment.main_hand = item;
   gear.splice(index, 1);
-  if (previous && previous.id !== "starter-broadsword") gear.push(previous);
+  if (previous) gear.push(previous);
   return { ok: true, equipped: item, unequipped: previous || null };
 }
 
