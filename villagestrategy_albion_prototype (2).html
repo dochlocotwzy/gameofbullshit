@@ -2590,6 +2590,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     if (notify) toast('Цель снята');
   };
   window.mpAbilityHit = (slot, weapon, requestedTargetId = mpTargetId, abilityId = (slot === 'e' ? WEAPONS[weapon]?.e : loadout[slot])) => {
+    if(!window.mpHasEquippedWeapon){toast('Сначала экипируй оружие в инвентаре');return false;}
     const targetId = String(requestedTargetId || '');
     const target = targetId ? remotes.get(targetId) : null;
     const groundAoE = multiplayerAreaAbilityIds();
@@ -3032,7 +3033,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
         // Fire as soon as the player enters melee range; don't carry a stale interval from a previous target/range state.
         if (inAttackRange && !wasInAttackRange) lastAttack = 0;
         wasInAttackRange = inAttackRange;
-        if (inAttackRange && now - lastAttack > MP_ATTACK_INTERVAL) {
+        if (inAttackRange && window.mpHasEquippedWeapon && now - lastAttack > MP_ATTACK_INTERVAL) {
           faceXZ(target.group.position.x, target.group.position.z);
           socket.send(JSON.stringify({type:'attack', targetId:mpTargetId, weapon:loadout.weapon}));
           lastAttack = now;
