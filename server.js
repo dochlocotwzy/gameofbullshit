@@ -187,7 +187,7 @@ const lobby = createLobby({ players, send, broadcast, maxPlayers: MAX_PLAYERS, m
   onReset: () => resetMatch() });
 siege = createSiege({ players, send, broadcast, attackRange: ATTACK_RANGE, cooldownMs: ATTACK_COOLDOWN_MS, damageFor: p => WEAPON_DAMAGE[p.weapon] || WEAPON_DAMAGE.broadsword });
 
-function publicPlayer(p) { return {id:p.id,name:p.name,team:p.team,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{},charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,weapon:p.weapon||"broadsword"}; }
+function publicPlayer(p) { return {id:p.id,name:p.name,team:p.team,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{},charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,weapon:p.weapon||null}; }
 function chooseTeam() { let blue=0,red=0; for(const player of players.values()){if(player.team==="blue")blue++;else if(player.team==="red")red++;} if(blue===red)return crypto.randomInt(0,2)?"blue":"red"; return blue<red?"blue":"red"; }
 function isParryInvulnerable(target, now = Date.now()) {
   return !!(target?.statuses?.parryLock && target.statuses.parryLock.until > now);
@@ -540,7 +540,7 @@ wss.on("connection", (ws) => {
   const p = { id, ws, spawnIndex, team, profileToken: null, equipment: { main_hand: { id: "starter-broadsword", kind: "weapon", weaponId: "broadsword", tier: "T1", quality: "ordinary", durability: 100, maxDurability: 100 } }, blueprints: {}, economy: { items: { ...DEFAULT_ITEMS }, gear: [], factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, lastVisionSyncAt:0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
   players.set(id, p);
   lobby.onConnect(p);
-  send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(p), resources: resourceWorldSnapshot(p), factories:factoryWorldSnapshot(p) });
+  send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(p), resources: resourceWorldSnapshot(p), factories:factoryWorldSnapshot(p), loot:lootWorldSnapshot(p) });
   send(ws, siege.snapshot());
   broadcast({ type: "joined", player: publicPlayer(p) }, id);
 
@@ -638,7 +638,7 @@ wss.on("connection", (ws) => {
     if (msg.type === "economy-trade") {
       if (Math.hypot(p.x-MERCHANT_POSITION.x,p.z-MERCHANT_POSITION.z)>MERCHANT_RANGE) { sendEconomy(p,"Торговать можно только рядом с нейтральным торговцем."); return; }
       const item = String(msg.item || ""), side = String(msg.side || ""), amount = Math.floor(Number(msg.amount) || 0);
-      const prices = { wood:2, stone:3, ore:5, plank:5, charcoal:4, stone_block:7, iron_ingot:12, steel_ingot:28, tool_kit:18, ship:120 };
+      const prices = { wood:2, stone:3, ore:5, plank:5, charcoal:4, stone_block:7, iron_ingot:12, steel_ingot:28, mithril_ingot:55, adamantite_ingot:95, tool_kit:18, ship:120, minor_healing_potion:18, minor_energy_potion:28, battle_stew:55, greater_healing_potion:110 };
       if (!ECONOMY_ITEMS.has(item) || item === "gold" || !Number.isFinite(amount) || amount < 1 || amount > 99 || !prices[item] || !["buy","sell"].includes(side)) { sendEconomy(p,"Эта сделка недоступна."); return; }
       const items=p.economy.items, unitPrice=prices[item], total=unitPrice*amount;
       if (side === "buy") {
@@ -950,7 +950,7 @@ wss.on("connection", (ws) => {
             if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
             broadcast({type:"player",player:publicPlayer(victim)});
           }
-          broadcast({type:"combat-effect",phase:"impact",attackerId:p.id,abilityId,targetIds:impactVictims.map(v=>v.id),x:p.x,z:p.z,originX:p.x,originZ:p.z,aimX:p.x,aimZ:p.z,rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||"broadsword"});
+          broadcast({type:"combat-effect",phase:"impact",attackerId:p.id,abilityId,targetIds:impactVictims.map(v=>v.id),x:p.x,z:p.z,originX:p.x,originZ:p.z,aimX:p.x,aimZ:p.z,rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||null});
           broadcast({type:"player",player:publicPlayer(p)});
         },800);
         broadcast({type:"combat-effect",phase:"cast",attackerId:p.id,abilityId,targetIds:[],x:p.x,z:p.z,originX:p.x,originZ:p.z,aimX:p.x,aimZ:p.z,rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||"broadsword"});
@@ -1009,6 +1009,7 @@ wss.on("connection", (ws) => {
         effectAimX=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,castOriginX+vx/len*ability.line));
         effectAimZ=Math.max(-WORLD_BOUND,Math.min(WORLD_BOUND,castOriginZ+vz/len*ability.line));
       }
+      damageEquippedDurability(p, 1);
       broadcast({type:"combat-effect",attackerId:p.id,abilityId,targetIds:victims.map(v=>v.id),x:p.x,z:p.z,originX:castOriginX,originZ:castOriginZ,aimX:effectAimX,aimZ:effectAimZ,rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||"broadsword"});
       broadcast({type:"player",player:publicPlayer(p)});
       for(const victim of victims)broadcast({type:"player",player:publicPlayer(victim)});
@@ -1035,6 +1036,7 @@ const gameTick = setInterval(() => {
       broadcastResource(node);
     }
   }
+  for (let i=worldLoot.length-1;i>=0;i--) if(worldLoot[i].expiresAt<=resourceNow){const expired=worldLoot.splice(i,1)[0];broadcastLoot({type:"loot-removed",lootId:expired.id,x:expired.x,z:expired.z});}
   const dt = TICK_MS / 1000;
   for (const p of players.values()) {
     p.energy = Math.min(100, (p.energy ?? 100) + 4 * dt);
