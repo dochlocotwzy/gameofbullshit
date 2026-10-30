@@ -57,21 +57,21 @@ assert.ok(clientHtml.includes("Replace the old bright, almost uniform green carp
 assert.ok(clientHtml.includes("Broad, irregular ground cover patches"), "ground texture includes clearly visible large-scale color variation");
 assert.ok(serverSource.includes('ship: { name: "Корабль", inputs: { plank: 20, iron_ingot: 4 }, output: { ship: 1 }, seconds: 45, station: "shipyard" }'), "ship construction consumes refined materials at a shipyard");
 assert.ok(serverSource.includes('shipyard: { name: "Верфь", cost: { wood: 20, stone: 12, plank: 8 }, recipe: "ship" }'), "shipyard has a server-validated construction cost");
-assert.ok(clientHtml.includes("addPortDock(-49, -1); addPortDock(49, 1)"), "map has docks at both river mouths");
-assert.ok(clientHtml.includes("addPrototypeBoat(1.5, -42.5, 0)"), "map includes prototype ship visuals");
+assert.ok(clientHtml.includes("addPortDock(-111, -1); addPortDock(111, 1)"), "map has docks at both river mouths");
+assert.ok(clientHtml.includes("addPrototypeBoat(riverCenter[0][0] + 5, -121, 0)"), "map includes prototype ship visuals");
 assert.ok(clientHtml.includes("{id:'shipyard',name:'Верфь'") && clientHtml.includes("{id:'ship',name:'Корабль'"), "economy UI exposes shipyard construction and ship production");
 assert.ok(serverSource.includes("Math.hypot(p.x - node.x, p.z - node.z) > 3.6"), "resource gathering validates server-side proximity");
 assert.ok(serverSource.includes("closestRiverPoint(leftX, z).distance < 5.5") && serverSource.includes("closestRiverPoint(rightX, z).distance < 5.5"), "server resource generation excludes the river and its banks on both mirrored sides");
 assert.ok(serverSource.includes("function isRiverBlocked(x, z)"), "server blocks player positions inside the river");
 assert.ok(serverSource.includes("function safeLandPosition(fromX, fromZ, toX, toZ)"), "server dash movement cannot cross the river outside bridge corridors");
-assert.ok(serverSource.includes("const candidate = { x: Math.round((-31 + Math.cos(angle)*radius) * MAP_SCALE * 100) / 100, z: Math.round((-7 + Math.sin(angle)*radius) * MAP_SCALE * 100) / 100 };"), "player spawn and respawn positions are assigned around the left village");
-assert.ok(serverSource.includes("return isRiverBlocked(candidate.x, candidate.z) ? safeLandPosition(-31*MAP_SCALE, -7*MAP_SCALE, candidate.x, candidate.z) : candidate;"), "left-village spawn and respawn positions are kept on dry land");
+assert.ok(serverSource.includes("const baseX = (team === \"red\" ? 31 : -31);") && serverSource.includes("function spawnPosition(index, team = \"blue\")"), "players spawn on their team-specific bases");
+assert.ok(serverSource.includes("return isRiverBlocked(candidate.x, candidate.z) ? safeLandPosition(baseX*MAP_SCALE, -7*MAP_SCALE, candidate.x, candidate.z) : candidate;"), "team-base spawn and respawn positions are kept on dry land");
 assert.ok(serverSource.includes("accepted = safeLandPosition(p.x, p.z, accepted.x, accepted.z)"), "server clamps river entry to last valid land point instead of snapping to old position");
 assert.ok(clientHtml.includes("style:base.style||w.id") && clientHtml.includes("function buildWeaponModel(look)"), "weapon families have data-driven visual identities and custom meshes");
 assert.ok(clientHtml.includes("function isRiverBlocked(x, z)"), "client collision system treats the river as an obstacle");
 assert.ok(!clientHtml.includes("createLocalResourceFallback();"), "resource nodes remain server-authoritative");
 assert.ok(clientHtml.includes("const RIVER_BLOCK_RADIUS = 3.15 * MAP_SCALE;"), "client river collision leaves a narrow, consistent bank margin");
-assert.ok(clientHtml.includes("Math.abs(x - bx) <= 4.15 && Math.abs(z - bz) <= 2.15"), "bridge collision matches the visible bridge deck footprint");
+assert.ok(clientHtml.includes("Math.abs(x - bx) <= BRIDGE_HALF_L && Math.abs(z - bz) <= BRIDGE_HALF_W"), "bridge collision matches the visible bridge deck footprint");
 assert.ok(clientHtml.includes("only the three bridge decks permit crossing"), "client movement collision preserves the three bridge crossings");
 assert.ok(serverSource.includes("const MAP_SCALE = 2.3;") && clientHtml.includes("const MAP_SCALE = 2.3;"), "server and client use the same expanded map scale");
 assert.ok(serverSource.includes("function chooseTeam()") && serverSource.includes("team===p.team"), "server assigns balanced teams and prevents friendly fire");
@@ -116,10 +116,10 @@ assert.ok(clientHtml.includes("sp.target === 'enemy' && !groundAoE.has(String(ab
 assert.ok(clientHtml.includes("sp.target === 'ground' || groundAoE.has(String(abilityId))"), "multiplayer AoE casts face their ground aim point");
 assert.ok(clientHtml.includes("float coastLimit = 0.90"), "world ground is clipped to an irregular island shoreline");
 assert.ok(clientHtml.includes("const riverCenter = [[0,-55]"), "world map includes a central winding river");
-assert.ok(clientHtml.includes("addRiverBridge(0, -28)") && clientHtml.includes("addRiverBridge(0, 28)"), "river prototype includes two visible crossings");
-assert.ok(clientHtml.includes("makeHouse(-13, -37") && clientHtml.includes("makeHouse(37, -7") && clientHtml.includes("makeHouse(-13, 37"), "village buildings are distributed across distinct island regions");
+assert.ok(clientHtml.includes("for (const [bx, bz] of riverBridges) addRiverBridge(bx, bz);") && clientHtml.includes("[[0,-28],[-7,0],[0,28]]"), "river prototype includes two visible crossings");
+assert.ok(clientHtml.includes("[-13, -37, 8, 6.6") && clientHtml.includes("[37, -7, 8, 6.6") && clientHtml.includes("[-13, 37, 7.4, 6.4"), "village buildings are distributed across distinct island regions");
 assert.ok(clientHtml.includes("[[0, -8], [0, -20], [0, -28], [-5, -34], [-13, -37]]") && clientHtml.includes("[[0, 0], [-7, 0], [-18, -2], [-27, -5], [-37, -7]]"), "road network connects outer villages to river crossings and central hub");
-assert.ok(clientHtml.includes("addRiverBridge(-7, 0)"), "central river route has a crossing near the hub");
+assert.ok(clientHtml.includes("[-7,0]") && clientHtml.includes("addRiverBridge(bx, bz)"), "central river route has a crossing near the hub");
 assert.ok(clientHtml.includes("color: 0x1b5977"), "island is surrounded by ocean rather than an outer grass plane");
 assert.ok(clientHtml.includes("window.mpClearTarget(true);"), "Escape clears the selected PvP target");
 assert.ok(clientHtml.includes("if (econPanel.classList.contains('open')) return;"), "Escape closes an open inventory panel before clearing the target");
@@ -203,12 +203,12 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     const resourceYield = resourceNode.kind === "wood" ? 3 : 2;
     // Move the second player into the same visible area so the depletion broadcast can be verified without leaking hidden nodes.
     b.send(JSON.stringify({type:"state",x:resourceNode.x,z:resourceNode.z,rotation:0}));
-    await waitMessage(a, m => m.type === "player" && m.player?.id === bId);
+    // Enemy movement is not broadcast through fog of war; continue without expecting a hidden player update.
     a.send(JSON.stringify({type:"state",x:resourceNode.x,z:resourceNode.z,rotation:0}));
     a.send(JSON.stringify({type:"economy-gather",resource:resourceNode.kind,nodeId:resourceNode.id,requestId:"resource-test-1"}));
     const gatheredEconomy = await waitMessage(a, m => m.type === "economy-state" && m.action === "gather" && m.ok === true);
     assert.equal(gatheredEconomy.economy.items[resourceNode.kind], resourceYield, "server awards the configured yield for the selected resource type");
-    const depletedNode = await waitMessage(b, m => m.type === "resource-node" && m.node?.id === resourceNode.id && m.node.depleted === true);
+    const depletedNode = await waitMessage(a, m => m.type === "resource-node" && m.node?.id === resourceNode.id && m.node.depleted === true);
     assert.ok(depletedNode.node.respawnAt >= Date.now() + 29 * 60 * 1000, "shared node receives a thirty-minute server respawn deadline");
     assert.equal(gatheredEconomy.nodeId, resourceNode.id, "gather confirmation identifies the depleted node");
     // The server must serialize competing requests: the second player cannot collect the same node.

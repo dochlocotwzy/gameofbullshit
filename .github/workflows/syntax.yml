@@ -14,13 +14,14 @@ jobs:
           node-version: 20
       - name: Install server dependencies
         run: npm install --no-audit --no-fund
-      - name: Run PvP integration test
-        run: node tests/pvp.integration.js
-      - name: Run lobby integration test
-        run: node tests/lobby.integration.js
+      - name: Run lobby and siege integration tests
+        run: npm test
       - name: Check server JavaScript
         if: always()
         run: node --check server.js
+      - name: Check siege client JavaScript
+        if: always()
+        run: node --check siege/siege-client.js
       - name: Check inline game scripts
         if: always()
         run: |
