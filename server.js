@@ -573,12 +573,15 @@ wss.on("connection", (ws) => {
           p.economy.gear = Array.isArray(saved.gear) ? saved.gear : [];
           p.economy.craftJobs = Array.isArray(saved.craftJobs) ? saved.craftJobs : [];
           p.economy.factories = [];
+          const restoredFactoryIds=new Map();
           for(const savedFactory of (saved.factories||[])){
             let restored=worldFactories.find(f=>f.ownerProfileToken===p.profileToken&&Number(f.id)===Number(savedFactory.id));
             if(!restored){restored={...savedFactory,id:nextWorldFactoryId++,ownerId:p.id,ownerName:p.name,team:p.team,ownerProfileToken:p.profileToken};worldFactories.push(restored);broadcast({type:"factory-created",factory:publicFactory(restored)});}
             else {restored.ownerId=p.id;restored.ownerName=p.name;restored.team=p.team;}
+            restoredFactoryIds.set(Number(savedFactory.id),Number(restored.id));
             p.economy.factories.push(restored);
           }
+          for(const job of p.economy.craftJobs)if(restoredFactoryIds.has(Number(job.stationId)))job.stationId=restoredFactoryIds.get(Number(job.stationId));
           p.equipment = { ...saved.equipment };
           p.blueprints = { ...saved.blueprints };
           const equipped = p.equipment.main_hand;
