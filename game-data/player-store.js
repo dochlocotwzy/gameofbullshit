@@ -20,7 +20,7 @@ function createDefaultProfile() {
   return {
     version: 1,
     items: { ...DEFAULT_ITEMS },
-    equipment: {},
+    equipment: { main_hand: { id: "starter-broadsword", kind: "weapon", weaponId: "broadsword", tier: "T1", quality: "ordinary", durability: 100, maxDurability: 100 } },
     factories: [],
     blueprints: {},
     createdAt: Date.now(),
@@ -63,7 +63,7 @@ function createPlayerStore(options = {}) {
     return {
       version: 1,
       items: { ...DEFAULT_ITEMS, ...(value.items || {}) },
-      equipment: { ...(value.equipment || {}) },
+      equipment: { ...createDefaultProfile().equipment, ...(value.equipment || {}) },
       factories: Array.isArray(value.factories) ? value.factories : [],
       blueprints: { ...(value.blueprints || {}) },
       createdAt: value.createdAt || Date.now(),
@@ -92,7 +92,7 @@ function createPlayerStore(options = {}) {
     if (!validProfileToken(token)) return false;
     const current = get(token) || createDefaultProfile();
     current.items = { ...DEFAULT_ITEMS };
-    current.equipment = {};
+    current.equipment = { ...createDefaultProfile().equipment };
     current.factories = [];
     current.blueprints = {};
     return save(token, current);
