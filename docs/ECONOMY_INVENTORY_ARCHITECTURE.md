@@ -13,7 +13,7 @@
 - Every equipment instance stores current and maximum durability.
 - On death, equipped gear is rolled independently: it either breaks and is destroyed, or drops into the world for another player to loot. Higher tier means higher break probability. Backpack contents are not automatically dropped.
 - Server owns inventory, item instances, equipment, durability, blueprints, crafting, trade, loot and death-drop resolution.
-- Player inventory/profile data survives reconnects and server restarts, but a round reset deliberately wipes that round's inventory, equipment, factories and blueprints.
+- Player inventory/profile data survives reconnects and server restarts, but a round reset deliberately wipes every profile, including offline players, and clears inventory, equipment, factories, blueprints, craft jobs and world gear drops. A starter T1 broadsword is restored so the next round can begin.
 
 ## Identity and persistence
 
@@ -32,6 +32,10 @@ Only equipped gear is subject to the death drop/break roll. Each equipped item h
 ## Loot
 
 Consumable drop definitions are data-driven and have lower chances than ordinary resource/material yields. Initial implementation should roll consumables on successful resource gathering; later the same table can be reused by PvE and event loot.
+
+## Neutral merchant and compact UI
+
+There is one visible merchant NPC at the central neutral position (world x=20.7, z=0), outside the team safe zones. Players use F to interact; E remains reserved for the weapon ability. Inventory, equipment, crafting and merchant panels are compact overlays, not full-screen screens, and leave the 3D world visible.
 
 ## Rollout
 
