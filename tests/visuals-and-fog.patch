@@ -1,0 +1,1110 @@
+--- a/villagestrategy_albion_prototype (2).html
++++ b/villagestrategy_albion_prototype (2).html
+@@ -177,7 +177,8 @@
+   PITCH: 0.87,          // наклон камеры (~50°)
+   ZOOM_MIN: 12, ZOOM_MAX: 48, ZOOM_START: 25
+ };
+-const PX = -24, PZ = 17; // пруд
++const PX = -24, PZ = 17; // пруд (в «немасштабированных» единицах, × MAP_SCALE в мире)
++const GROUND_W = 300;      // сторона квадрата земли в мировых единицах
+ let grassMesh = null;
+ 
+ /* =====================  утилиты  ===================== */
+@@ -297,8 +298,9 @@
+   }
+   return best;
+ }
++const BRIDGE_HALF_L = 9.2, BRIDGE_HALF_W = 3.1; // = размеры видимого настила; синхронно с server.js
+ function isBridgeCrossing(x, z) {
+-  return riverBridges.some(([bx, bz]) => Math.abs(x - bx) <= 4.15 && Math.abs(z - bz) <= 2.15);
++  return riverBridges.some(([bx, bz]) => Math.abs(x - bx) <= BRIDGE_HALF_L && Math.abs(z - bz) <= BRIDGE_HALF_W);
+ }
+ function isRiverBlocked(x, z) {
+   return !isBridgeCrossing(x, z) && closestRiverPoint(x, z).distance < RIVER_BLOCK_RADIUS;
+@@ -364,11 +366,12 @@
+   g.globalAlpha = 1;
+ }
+ function buildGroundTexture() {
+-  const N = 2048, S = N / CFG.WORLD, c = document.createElement('canvas'); c.width = c.height = N;
+-  const g = c.getContext('2d'), X = x => (x + CFG.HALF) * S, Z = z => (z + CFG.HALF) * S;
++  const N = Math.min(3072, renderer.capabilities.maxTextureSize), S = N / GROUND_W * MAP_SCALE, c = document.createElement('canvas'); c.width = c.height = N;
++  // S — пикселей на «немасштабированную» единицу; X/Z переводят её в пиксели квадрата GROUND_W (центр = центр мира)
++  const g = c.getContext('2d'), X = x => N / 2 + x * S, Z = z => N / 2 + z * S;
+   // Replace the old bright, almost uniform green carpet with a layered medieval field palette.
+   g.fillStyle = '#596847'; g.fillRect(0, 0, N, N);
+-  noiseDots(g, N, 1700, ['#3d5037', '#4b5f3e', '#65764c', '#78815a', '#555f43', '#8b8964'], 10, 55, .42);
++  noiseDots(g, N, 1700, ['#3d5037', '#4b5f3e', '#65764c', '#78815a', '#555f43', '#8b8964'], 10, 55, .2);
+   // Broad, irregular ground cover patches are intentionally stronger and larger than decorative grain.
+   for (let i = 0; i < 1450; i++) {
+     const x = rr(-30, N + 30), y = rr(-30, N + 30);
+@@ -394,7 +397,7 @@
+   }
+   g.globalAlpha = 1;
+   g.lineWidth = 1.4;
+-  for (let i = 0; i < 26000; i++) { const x = rand() * N, y = rand() * N; g.globalAlpha = .25 + rand() * .2; g.strokeStyle = pick(['#86b857', '#3f6f2c', '#9bc566', '#4a7d33']); g.beginPath(); g.moveTo(x, y); g.lineTo(x + rr(-3, 3), y - rr(4, 10)); g.stroke(); }
++  for (let i = 0; i < 60000; i++) { const x = rand() * N, y = rand() * N; g.globalAlpha = .22 + rand() * .2; g.strokeStyle = pick(['#86b857', '#3f6f2c', '#9bc566', '#4a7d33']); g.beginPath(); g.moveTo(x, y); g.lineTo(x + rr(-3, 3), y - rr(4, 10)); g.stroke(); }
+   g.globalAlpha = 1;
+   const gr = g.createRadialGradient(X(0), Z(0), 40 * S, X(0), Z(0), 64 * S);
+   gr.addColorStop(0, 'rgba(24,52,24,0)'); gr.addColorStop(1, 'rgba(24,52,24,.65)'); g.fillStyle = gr; g.fillRect(0, 0, N, N);
+@@ -415,37 +418,40 @@
+   for (let i = 0; i < 700; i++) { const a = rand() * 6.283, d = Math.sqrt(rand()) * 8; g.globalAlpha = .3; g.fillStyle = pick(['#6f6a60', '#b3a48a', '#8a7a62']); g.beginPath(); g.ellipse(X(Math.cos(a) * d), Z(Math.sin(a) * d), rr(5, 11), rr(4, 8), rand() * 3, 0, 7); g.fill(); }
+   for (let i = 0; i < 5000; i++) { const p = pick(paths), q = pick(p); g.globalAlpha = .5; g.fillStyle = pick(['#6f6a60', '#c2b49a', '#5d4a30']); g.fillRect(X(q[0] + rr(-1.6, 1.6)), Z(q[1] + rr(-1.6, 1.6)), 2, 2); }
+   g.globalAlpha = 1;
+-  // цветы
+-  for (let i = 0; i < 1400; i++) {
+-    const x = rr(-55, 55), z = rr(-55, 55);
+-    if (distToPaths(x, z) < 3 || Math.hypot(x, z) < 10.5 || Math.hypot(x - PX, z - PZ) < 8.4) continue;
+-    g.fillStyle = pick(['#f5f0e0', '#f2d94e', '#e58fb4', '#9ec5f2']); g.beginPath(); g.arc(X(x), Z(z), rr(1.6, 3), 0, 7); g.fill();
+-  }
++  // цветы теперь настоящие (инстансы 3D), а не пятна в текстуре
+   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy()); return t;
+ }
+ {
++  // Земля — квадрат GROUND_W×GROUND_W в реальных мировых единицах (без растяжения по одной оси!).
+   const gm = new THREE.MeshStandardMaterial({ map: buildGroundTexture(), roughness: 1 });
+   gm.onBeforeCompile = sh => {
+     sh.uniforms.detailMap = { value: detailTex };
+     sh.fragmentShader = sh.fragmentShader
+       .replace('#include <common>', '#include <common>\nuniform sampler2D detailMap;')
+-      .replace('#include <map_fragment>', '#include <map_fragment>\n float islandAngle = atan(vMapUv.y - 0.5, vMapUv.x - 0.5);\n float islandRadius = length((vMapUv - vec2(0.5)) * 2.0);\n float coastLimit = 0.90 + 0.014 * sin(islandAngle * 3.0 + 0.4) + 0.009 * sin(islandAngle * 7.0);\n if (islandRadius > coastLimit) discard;\n float beach = smoothstep(coastLimit - 0.07, coastLimit - 0.012, islandRadius);\n diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.48, 0.39, 0.25), beach * 0.85);\n diffuseColor.rgb *= (0.3 + texture2D(detailMap, vMapUv * 60.0).rgb * 1.4);');
++      .replace('#include <map_fragment>', `#include <map_fragment>
++ float islandAngle = atan(vMapUv.y - 0.5, vMapUv.x - 0.5);
++ float islandRadius = length((vMapUv - vec2(0.5)) * 2.0);
++ float coastLimit = 0.905 + 0.012 * sin(islandAngle * 3.0 + 0.4) + 0.008 * sin(islandAngle * 7.0);
++ if (islandRadius > coastLimit) discard;
++ float beach = smoothstep(coastLimit - 0.07, coastLimit - 0.012, islandRadius);
++ diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.62, 0.52, 0.34), beach * 0.85);
++ float d1 = texture2D(detailMap, vMapUv * 52.0).r, d2 = texture2D(detailMap, vMapUv * 171.0 + 0.37).r, d3 = texture2D(detailMap, vMapUv * 9.0).r;
++ diffuseColor.rgb *= (0.50 + d1 * 0.55 + d2 * 0.38 + (d3 - 0.5) * 0.55);`);
+   };
+-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(CFG.WORLD, CFG.WORLD), gm);
++  const ground = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_W, GROUND_W), gm);
+   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+-  // Water surrounds the irregular island silhouette; the ground shader cuts away the square corners.
+-  const outer = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), new THREE.MeshStandardMaterial({ color: 0x1b5977, roughness: .28, metalness: .05 }));
++  // Море вокруг острова
++  const outer = new THREE.Mesh(new THREE.PlaneGeometry(2400, 2400), new THREE.MeshStandardMaterial({ color: 0x1b5977, roughness: .28, metalness: .05 }));
+   outer.rotation.x = -Math.PI / 2; outer.position.y = -0.06; scene.add(outer);
+ 
+-  // First-pass central river with sandy banks and two visible crossings.
++  // Река строго по той же осевой линии, что и коллизии/сервер (riverCenter уже в мировых единицах).
+   function addRiverRibbon(halfWidth, material, y) {
+     const left = [], right = [];
+     for (let i = 0; i < riverCenter.length; i++) {
+       const prev = riverCenter[Math.max(0, i - 1)], next = riverCenter[Math.min(riverCenter.length - 1, i + 1)];
+       const tx = next[0] - prev[0], tz = next[1] - prev[1], len = Math.hypot(tx, tz) || 1;
+       const nx = -tz / len, nz = tx / len, p = riverCenter[i];
+-      left.push([p[0] + nx * halfWidth, p[1] + nz * halfWidth]);
+-      right.push([p[0] - nx * halfWidth, p[1] - nz * halfWidth]);
++      left.push([p[0] + nx * halfWidth, p[1] + nz * halfWidth]); right.push([p[0] - nx * halfWidth, p[1] - nz * halfWidth]);
+     }
+     const shape = new THREE.Shape();
+     shape.moveTo(left[0][0], -left[0][1]);
+@@ -455,35 +461,32 @@
+     const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape, 24), material);
+     mesh.rotation.x = -Math.PI / 2; mesh.position.y = y; mesh.receiveShadow = true; scene.add(mesh);
+   }
+-  addRiverRibbon(4.9, new THREE.MeshStandardMaterial({ color: 0xb7a071, roughness: 1 }), 0.018);
+-  addRiverRibbon(3.0, new THREE.MeshStandardMaterial({ color: 0x2e789a, roughness: .22, metalness: .05, transparent: true, opacity: .96, side: THREE.DoubleSide }), 0.035);
++  addRiverRibbon(4.9 * MAP_SCALE, new THREE.MeshStandardMaterial({ color: 0xb9a374, roughness: 1 }), 0.018);
++  addRiverRibbon(3.0 * MAP_SCALE, new THREE.MeshStandardMaterial({ color: 0x2c7898, roughness: .18, metalness: .08, transparent: true, opacity: .93, side: THREE.DoubleSide }), 0.035);
++  // Мост: настил, доски, перила со столбами, каменные упоры. Размеры = зона перехода (BRIDGE_HALF_L × BRIDGE_HALF_W).
+   function addRiverBridge(x, z) {
+-    const group = new THREE.Group();
+-    const deckMat = new THREE.MeshStandardMaterial({ color: 0x80603c, roughness: .9 });
+-    const railMat = new THREE.MeshStandardMaterial({ color: 0x4d3927, roughness: 1 });
+-    const deck = new THREE.Mesh(new THREE.BoxGeometry(8.2, .28, 3.8), deckMat); deck.position.y = .22; deck.castShadow = deck.receiveShadow = true; group.add(deck);
+-    for (let n = 0; n < 9; n++) {
+-      const plank = new THREE.Mesh(new THREE.BoxGeometry(.78, .035, 3.65), new THREE.MeshStandardMaterial({ color: n % 2 ? 0x987348 : 0x8b6842, roughness: 1 }));
+-      plank.position.set(-3.7 + n * .92, .38, 0); group.add(plank);
+-    }
++    const group = new THREE.Group(), L = BRIDGE_HALF_L * 2, W = BRIDGE_HALF_W * 2;
++    const deckMat = new THREE.MeshStandardMaterial({ color: 0x7a5a38, roughness: .9 }), railMat = new THREE.MeshStandardMaterial({ color: 0x4d3927, roughness: 1 });
++    const deck = new THREE.Mesh(new THREE.BoxGeometry(L, .3, W), deckMat); deck.position.y = .3; deck.castShadow = deck.receiveShadow = true; group.add(deck);
++    const n = Math.round(L / .85);
++    for (let i = 0; i < n; i++) { const plank = new THREE.Mesh(new THREE.BoxGeometry(.8, .05, W - .1), new THREE.MeshStandardMaterial({ color: i % 2 ? 0x987348 : 0x8b6842, roughness: 1 })); plank.position.set(-L / 2 + .5 + i * (L - 1) / (n - 1), .47, 0); plank.castShadow = plank.receiveShadow = true; group.add(plank); }
+     for (const side of [-1, 1]) {
+-      const rail = new THREE.Mesh(new THREE.BoxGeometry(8.2, .22, .14), railMat); rail.position.set(0, .58, side * 1.72); group.add(rail);
+-      for (let n = 0; n < 5; n++) { const post = new THREE.Mesh(new THREE.BoxGeometry(.14, .52, .14), railMat); post.position.set(-3.8 + n * 1.9, .48, side * 1.72); group.add(post); }
++      const rail = new THREE.Mesh(new THREE.BoxGeometry(L, .16, .16), railMat); rail.position.set(0, 1.25, side * (W / 2 - .15)); rail.castShadow = true; group.add(rail);
++      const rail2 = rail.clone(); rail2.position.y = .85; group.add(rail2);
++      const m = Math.round(L / 1.8); for (let i = 0; i <= m; i++) { const post = new THREE.Mesh(new THREE.BoxGeometry(.2, 1.25, .2), railMat); post.position.set(-L / 2 + .3 + i * (L - .6) / m, .95, side * (W / 2 - .15)); post.castShadow = true; group.add(post); }
++      for (const e of [-1, 1]) { const ab = new THREE.Mesh(new THREE.BoxGeometry(1.4, .9, W + .6), M.stone); ab.position.set(e * (L / 2 + .3), .15, 0); ab.castShadow = ab.receiveShadow = true; if (side > 0) group.add(ab); }
+     }
++    const pil = new THREE.Mesh(new THREE.CylinderGeometry(.35, .45, 2.4, 8), railMat); pil.position.set(0, -.6, 0); for (const px of [-L * .3, L * .3]) for (const pz of [-W * .38, W * .38]) { const p = pil.clone(); p.position.set(px, -.5, pz); group.add(p); }
+     group.position.set(x, 0, z); scene.add(group);
+   }
+-  addRiverBridge(0, -28);
+-  addRiverBridge(-7, 0);
+-  addRiverBridge(0, 28);
+-  // Prototype harbours at both river mouths; boats are visual until sailing controls are implemented.
++  for (const [bx, bz] of riverBridges) addRiverBridge(bx, bz);
++  // Причалы у устьев реки (визуально; плавание — в будущих системах)
+   function addPortDock(z, direction) {
+-    const dock = new THREE.Group();
+-    const deckMat = new THREE.MeshStandardMaterial({ color: 0x8b6842, roughness: .95 });
+-    const beamMat = new THREE.MeshStandardMaterial({ color: 0x4e3826, roughness: 1 });
+-    for (let i = 0; i < 10; i++) { const plank = new THREE.Mesh(new THREE.BoxGeometry(3.6, .16, .68), deckMat); plank.position.set(0, .22, -3.35 + i * .74); dock.add(plank); }
++    const dock = new THREE.Group(), deckMat = new THREE.MeshStandardMaterial({ color: 0x8b6842, roughness: .95 }), beamMat = new THREE.MeshStandardMaterial({ color: 0x4e3826, roughness: 1 });
++    for (let i = 0; i < 10; i++) { const plank = new THREE.Mesh(new THREE.BoxGeometry(3.6, .16, .68), deckMat); plank.position.set(0, .22, -3.35 + i * .74); plank.castShadow = plank.receiveShadow = true; dock.add(plank); }
+     for (const x of [-1.55, 1.55]) for (let i = 0; i < 5; i++) { const post = new THREE.Mesh(new THREE.BoxGeometry(.22, .8, .22), beamMat); post.position.set(x, -.08, -3.2 + i * 1.6); dock.add(post); }
+     const tie = new THREE.Mesh(new THREE.BoxGeometry(4.1, .18, .3), beamMat); tie.position.set(0, .38, direction * 3.75); dock.add(tie);
+-    dock.position.set(0, 0, z); scene.add(dock);
++    dock.scale.setScalar(1.7); dock.position.set(riverCenter[direction < 0 ? 0 : riverCenter.length - 1][0] * .94, 0, z); scene.add(dock);
+   }
+   function addPrototypeBoat(x, z, rotation) {
+     const boat = new THREE.Group(), hullShape = new THREE.Shape();
+@@ -494,14 +497,14 @@
+     const mast = new THREE.Mesh(new THREE.CylinderGeometry(.07, .1, 3.1, 8), M.darkWood); mast.position.set(0, 2.05, -.1); boat.add(mast);
+     const sail = new THREE.Mesh(new THREE.PlaneGeometry(1.65, 1.85), new THREE.MeshStandardMaterial({ color: 0xe6dfc8, side: THREE.DoubleSide, roughness: .95 })); sail.position.set(.12, 2.35, -.12); sail.rotation.y = -.12; boat.add(sail);
+     const rail = new THREE.Mesh(new THREE.BoxGeometry(1.9, .14, 3.7), M.darkWood); rail.position.y = .73; boat.add(rail);
+-    boat.position.set(x, .02, z); boat.rotation.y = rotation; scene.add(boat);
++    boat.scale.setScalar(1.6); boat.position.set(x, .02, z); boat.rotation.y = rotation; scene.add(boat);
+   }
+-  addPortDock(-49, -1); addPortDock(49, 1);
+-  addPrototypeBoat(1.5, -42.5, 0); addPrototypeBoat(-2.5, 42.5, Math.PI);
++  addPortDock(-111, -1); addPortDock(111, 1);
++  addPrototypeBoat(riverCenter[0][0] + 5, -121, 0); addPrototypeBoat(riverCenter[riverCenter.length - 1][0] - 5, 121, Math.PI);
+ 
+-  // пруд
+-  const water = new THREE.Mesh(new THREE.CircleGeometry(6.4, 48), new THREE.MeshStandardMaterial({ color: 0x3b87a8, roughness: .2, transparent: true, opacity: .88 }));
+-  water.rotation.x = -Math.PI / 2; water.position.set(PX, .04, PZ); scene.add(water);
++  // Пруд: реальный круг (раньше растягивался в эллипс). Коллизия-круг масштабируется общим циклом ниже.
++  const water = new THREE.Mesh(new THREE.CircleGeometry(6.4 * MAP_SCALE, 56), new THREE.MeshStandardMaterial({ color: 0x3b87a8, roughness: .18, transparent: true, opacity: .9 }));
++  water.rotation.x = -Math.PI / 2; water.position.set(PX * MAP_SCALE, .04, PZ * MAP_SCALE); scene.add(water);
+   addCircle(PX, PZ, 6.0);
+ }
+ 
+@@ -520,45 +523,103 @@
+   }
+   g.computeVertexNormals(); return g;
+ }
+-function buildPine() {
+-  const parts = [], t = new THREE.CylinderGeometry(.2, .3, 1.6, 6); t.translate(0, .8, 0); parts.push(colorize(t, 0x5a3c25, .06));
+-  const pr = rr(.9, 1.1);
+-  for (const [r, h, y] of [[1.7, 2.4, 1.9], [1.4, 2.2, 3.1], [1.05, 2.0, 4.3], [.7, 1.6, 5.4]]) {
+-    const c = wobble(new THREE.ConeGeometry(r * pr, h, 7), .08); c.rotateY(rand() * 3); c.translate(0, y + h / 2 - .2, 0);
+-    parts.push(colorize(c, pick([0x2d6a3c, 0x33723f, 0x285f36]), .1));
++function gradColor(geo, lo, hi, jit = .07, y0, y1) {
++  // вертикальный градиент (темнее у земли/снизу, светлее сверху) + лёгкий разброс на грань
++  const g = geo.index ? geo.toNonIndexed() : geo, p = g.attributes.position, n = p.count, col = new Float32Array(n * 3);
++  if (y0 === undefined) { g.computeBoundingBox(); y0 = g.boundingBox.min.y; y1 = g.boundingBox.max.y; }
++  const a = new THREE.Color(lo), b = new THREE.Color(hi), c = new THREE.Color();
++  for (let i = 0; i < n; i += 3) {
++    const k = 1 + (rand() - .5) * 2 * jit;
++    for (let j = 0; j < 3; j++) {
++      const t = clamp((p.getY(i + j) - y0) / Math.max(1e-4, y1 - y0), 0, 1);
++      c.copy(a).lerp(b, t);
++      col[(i + j) * 3] = c.r * k; col[(i + j) * 3 + 1] = c.g * k; col[(i + j) * 3 + 2] = c.b * k;
++    }
+   }
++  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g;
++}
++function mossColor(geo, base, moss = 0x5d7f3a, jit = .08, mossAmt = .8) {
++  // грани, смотрящие вверх, зарастают мхом; остальные — камень с разбросом
++  const g = geo.index ? geo.toNonIndexed() : geo; g.computeVertexNormals();
++  const p = g.attributes.position, nrm = g.attributes.normal, n = p.count, col = new Float32Array(n * 3), cb = new THREE.Color(base), cm = new THREE.Color(moss), c = new THREE.Color();
++  for (let i = 0; i < n; i += 3) {
++    const ny = (nrm.getY(i) + nrm.getY(i + 1) + nrm.getY(i + 2)) / 3, k = 1 + (rand() - .5) * 2 * jit;
++    c.copy(cb); if (ny > .45 && rand() < mossAmt) c.lerp(cm, clamp((ny - .35) * 1.5, 0, 1) * (.5 + rand() * .5));
++    const dark = .78 + .22 * clamp((p.getY(i) + .2) / 1.6, 0, 1);     // у земли темнее
++    for (let j = 0; j < 3; j++) { col[(i + j) * 3] = c.r * k * dark; col[(i + j) * 3 + 1] = c.g * k * dark; col[(i + j) * 3 + 2] = c.b * k * dark; }
++  }
++  g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g;
++}
++function trunk(h, r0, r1, color, lean = 0) {
++  const t = new THREE.CylinderGeometry(r1, r0, h, 8, 3); t.translate(0, h / 2, 0);
++  const p = t.attributes.position;                        // корни-наплывы и изгиб
++  for (let i = 0; i < p.count; i++) { const y = p.getY(i), f = y / h, fl = 1 + Math.max(0, .35 - f) * 1.1; p.setX(i, p.getX(i) * fl + lean * f * f); p.setZ(i, p.getZ(i) * fl); }
++  const w = wobble(t, .05); return gradColor(w, new THREE.Color(color).multiplyScalar(.55).getHex(), color, .05);
++}
++function buildPine(variant = 0) {
++  const parts = [trunk(1.7, .34, .17, 0x5b3d26)], pr = rr(.92, 1.12), tiers = 5 + (variant % 2);
++  const dark = pick([0x1f4d2e, 0x23552f, 0x1c4829]), light = pick([0x3f8a45, 0x4a944a, 0x3a8240]);
++  for (let i = 0; i < tiers; i++) {
++    const f = i / (tiers - 1), r = (1.9 - f * 1.25) * pr, h = 1.75 - f * .5, y = 1.2 + i * .95;
++    const c = wobble(new THREE.ConeGeometry(r, h, 8, 1), .13); c.rotateY(rand() * 3); c.translate(0, y + h / 2, 0);
++    parts.push(gradColor(c, new THREE.Color(dark).lerp(new THREE.Color(light), f * .35).getHex(), new THREE.Color(dark).lerp(new THREE.Color(light), .4 + f * .6).getHex(), .08));
++  }
++  const tip = new THREE.ConeGeometry(.2, .7, 6); tip.translate(0, 1.2 + (tiers - 1) * .95 + 1.7, 0); parts.push(gradColor(tip, light, light, .04));
+   return mergeGeometries(parts);
+ }
+-function buildOak(palette) {
+-  const parts = [], t = new THREE.CylinderGeometry(.28, .42, 2.2, 7); t.translate(0, 1.1, 0); parts.push(colorize(t, 0x5d3f27, .06));
+-  for (const [x, y, z, r] of [[0, 3.5, 0, 1.5], [1.0, 3.0, .5, 1.0], [-1.0, 3.2, -.4, 1.1], [.2, 4.5, .2, 1.0], [-.3, 3.0, 1.0, .9]]) {
+-    const b = wobble(new THREE.IcosahedronGeometry(r * rr(.9, 1.1), 1), .25); b.scale(1, .85, 1); b.translate(x, y, z); parts.push(colorize(b, pick(palette), .09));
++function buildOak(palette, birch = false) {
++  const trunkCol = birch ? 0xe6e1d3 : 0x5d3f27, parts = [trunk(2.4, .42, .22, trunkCol, rr(-.25, .25))];
++  if (birch) for (let i = 0; i < 9; i++) { const s = new THREE.CylinderGeometry(.231, .23, .06, 8); s.translate(0, .4 + i * .24, 0); parts.push(gradColor(s, 0x2b2a27, 0x2b2a27, .1)); }
++  // ветки
++  for (let i = 0; i < 3; i++) { const br = new THREE.CylinderGeometry(.05, .1, 1.3, 5); br.translate(0, .65, 0); const a = rand() * 6.28; br.rotateZ(.8 + rand() * .3); br.rotateY(a); br.translate(0, 1.9 + i * .3, 0); parts.push(gradColor(br, trunkCol, trunkCol, .05)); }
++  const lo = new THREE.Color(pick(palette)).multiplyScalar(.62).getHex(), hi = pick(palette);
++  const blobs = [[0, 3.7, 0, 1.55], [1.15, 3.2, .55, 1.1], [-1.1, 3.35, -.45, 1.15], [.3, 4.65, .15, 1.05], [-.5, 3.1, 1.15, .95], [.85, 3.9, -.85, .9], [-.9, 4.2, .6, .85]];
++  for (const [x, y, z, r] of blobs) {
++    const b = wobble(new THREE.IcosahedronGeometry(r * rr(.92, 1.08), 1), .28); b.scale(1, .82, 1); b.translate(x, y, z);
++    parts.push(gradColor(b, lo, hi, .1, 2.2, 5.5));
+   }
+   return mergeGeometries(parts);
+ }
+-const treeGeos = [buildPine(), buildPine(), buildPine(),
++const treeGeos = [buildPine(0), buildPine(1), buildPine(0), buildPine(1),
+   buildOak([0x4f8f3c, 0x5b9c42, 0x468636]), buildOak([0x4f8f3c, 0x5b9c42, 0x468636]),
+-  buildOak([0x7a9a38, 0x8aab3f, 0x6d8c33]), buildOak([0xa08a2e, 0xb5702a, 0x9a7d2a])];
+-const stumpGeo = (() => { const c = new THREE.CylinderGeometry(.35, .45, .55, 7); c.translate(0, .27, 0); return colorize(c, 0x5d3f27, .06); })();
++  buildOak([0x7a9a38, 0x8aab3f, 0x6d8c33]), buildOak([0xa08a2e, 0xb5702a, 0x9a7d2a]),
++  buildOak([0x86b04a, 0x9bc356, 0x7da63e], true), buildOak([0x86b04a, 0x9bc356, 0x7da63e], true)];
++const stumpGeo = (() => {
++  const c = new THREE.CylinderGeometry(.34, .46, .55, 9, 2); c.translate(0, .27, 0); const w = wobble(c, .05);
++  const ring = new THREE.CylinderGeometry(.3, .3, .02, 9); ring.translate(0, .56, 0);
++  return mergeGeometries([gradColor(w, 0x3e2a19, 0x6a4a2e, .06), gradColor(ring, 0xc79a62, 0xc79a62, .05)]);
++})();
++function chunk(r, x, y, z, sx, sy, sz, detail = 0, amt = .2) {
++  const b = wobble(new THREE.DodecahedronGeometry(r, detail), amt); b.scale(sx, sy, sz); b.rotateY(rand() * 6); b.translate(x, y, z); return b;
++}
+ function buildRock() {
+-  const b = wobble(new THREE.DodecahedronGeometry(.95, 1), .22); b.scale(1.1, .8, 1); b.translate(0, .45, 0);
+-  const s = wobble(new THREE.DodecahedronGeometry(.45, 0), .1); s.translate(1.0, .22, .5);
+-  return mergeGeometries([colorize(b, pick([0x8e9494, 0x838a8b, 0x9a9f9c]), .1), colorize(s, 0x8b9091, .1)]);
++  const base = pick([0x8c9293, 0x7f8788, 0x979b97]), parts = [];
++  parts.push(mossColor(chunk(.95, 0, .42, 0, 1.15, .78, 1, 1, .22), base));
++  parts.push(mossColor(chunk(.55, .95, .22, .45, 1, .75, 1, 0, .14), base));
++  parts.push(mossColor(chunk(.4, -.8, .18, .6, 1, .8, 1.1, 0, .1), base));
++  if (rand() < .6) parts.push(mossColor(chunk(.3, .3, .15, -.9, 1.2, .7, 1, 0, .08), base));
++  return mergeGeometries(parts);
+ }
+ function buildOre() {
+-  const b = wobble(new THREE.DodecahedronGeometry(.9, 1), .2); b.scale(1.1, .75, 1); b.translate(0, .4, 0);
+-  const parts = [colorize(b, 0x4d5257, .08)];
+-  for (let i = 0; i < 8; i++) {
+-    const big = i === 0, h = big ? 2.1 : rr(1.1, 1.7), r = big ? .48 : rr(.28, .38), a = rand() * 6.283 + i;
+-    const tilt = big ? rr(-.12, .12) : rr(.4, .85), d = big ? 0 : rr(.35, .8);
+-    const c = new THREE.ConeGeometry(r, h, 6); c.translate(0, h / 2, 0); c.rotateX(Math.sin(a) * tilt); c.rotateZ(-Math.cos(a) * tilt); c.translate(Math.cos(a) * d, .45, Math.sin(a) * d);
+-    parts.push(colorize(c, pick([0xffb84a, 0xffd36e, 0xf59a2a]), .05));
+-  }
++  // тёмная порода с золотыми прожилками, самородками и кристаллами
++  const parts = [mossColor(chunk(.95, 0, .42, 0, 1.15, .78, 1, 1, .2), 0x4a4f55, 0x4f5f44, .07, .2), mossColor(chunk(.55, -.85, .22, .5, 1, .75, 1, 0, .12), 0x464b51, 0x4f5f44, .07, .2)];
++  const gold = [0xffb23a, 0xffd25f, 0xe29a24, 0xffc84a];
++  const crystal = (h, r, x, z, tilt, a) => {
++    const prism = new THREE.CylinderGeometry(r * .85, r, h * .72, 6); prism.translate(0, h * .36, 0);
++    const tip = new THREE.ConeGeometry(r * .85, h * .3, 6); tip.translate(0, h * .72 + h * .15, 0);
++    const m = mergeGeometries([gradColor(prism, 0xb8741a, pick(gold), .06), gradColor(tip, 0xffe08a, 0xfff0b0, .04)]);
++    m.rotateX(Math.sin(a) * tilt); m.rotateZ(-Math.cos(a) * tilt); m.translate(x, .55, z); return m;
++  };
++  parts.push(crystal(2.0, .36, .05, 0, .12, 1));
++  for (let i = 0; i < 7; i++) { const a = rand() * 6.283 + i, d = rr(.35, .85); parts.push(crystal(rr(.85, 1.5), rr(.15, .24), Math.cos(a) * d, Math.sin(a) * d, rr(.35, .8), a)); }
++  for (let i = 0; i < 9; i++) { const a = rand() * 6.283, d = rr(.6, 1.15), n = new THREE.IcosahedronGeometry(rr(.07, .15), 0); n.translate(Math.cos(a) * d, rr(.12, .6), Math.sin(a) * d); parts.push(gradColor(n, 0xd58f1e, pick(gold), .08)); }
++  for (let i = 0; i < 5; i++) { const v = new THREE.BoxGeometry(rr(.5, .9), .05, .09); v.rotateZ(rr(-.6, .6)); v.rotateY(rand() * 6.28); const a = rand() * 6.28; v.translate(Math.cos(a) * .72, rr(.3, .7), Math.sin(a) * .72); parts.push(gradColor(v, 0xe8a82e, 0xffd25f, .06)); }
+   return mergeGeometries(parts);
+ }
+-const rockGeos = [buildRock(), buildRock(), buildRock()], oreGeos = [buildOre(), buildOre()];
++const rockGeos = [buildRock(), buildRock(), buildRock(), buildRock()], oreGeos = [buildOre(), buildOre(), buildOre()];
+ 
+ /* =====================  постройки и реквизит  ===================== */
++/* =====================  постройки и реквизит (реальный масштаб, без растяжения)  ===================== */
+ function tiledBox(w, h, d, tileFn) {
+   const geo = new THREE.BoxGeometry(w, h, d), uv = geo.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+   for (let f = 0; f < 6; f++) { const [tu, tv] = tileFn(dims[f][0], dims[f][1]); for (let i = 0; i < 4; i++) { const k = f * 4 + i; uv.setXY(k, uv.getX(k) * dims[f][0] / tu, uv.getY(k) * dims[f][1] / tv); } }
+@@ -567,100 +628,213 @@
+ const tile2 = () => [2, 2];
+ const roofMats = {};
+ function put(parent, mesh, x, y, z) { mesh.position.set(x, y, z); mesh.castShadow = mesh.receiveShadow = true; parent.add(mesh); return mesh; }
++const plasterWall = canvasTex(256, (g, s) => {
++  g.fillStyle = '#e4d6b4'; g.fillRect(0, 0, s, s);
++  noiseDots(g, s, 700, ['#d3c29a', '#efe3c4', '#cbb88c', '#b9a77f'], 1, 7, .28);
++  for (let i = 0; i < 40; i++) { g.globalAlpha = .08; g.strokeStyle = '#8a7a58'; g.beginPath(); const x = rand() * s; g.moveTo(x, 0); g.lineTo(x + rr(-12, 12), s); g.stroke(); }
++  g.globalAlpha = 1;
++});
++const timberTex = canvasTex(128, (g, s) => {
++  g.fillStyle = '#4a3220'; g.fillRect(0, 0, s, s);
++  for (let i = 0; i < 28; i++) { g.globalAlpha = .35; g.strokeStyle = pick(['#2d1d11', '#654529', '#3a2616']); g.lineWidth = rr(1, 2.5); g.beginPath(); const y = rand() * s; g.moveTo(0, y); g.bezierCurveTo(s * .3, y + rr(-5, 5), s * .6, y + rr(-5, 5), s, y + rr(-4, 4)); g.stroke(); }
++  g.globalAlpha = 1;
++});
++const roofTile = canvasTex(256, (g, s) => {
++  const rows = 9, rh = s / rows, cols = 7, cw = s / cols;
++  g.fillStyle = '#4a2b1c'; g.fillRect(0, 0, s, s);
++  for (let r = 0; r < rows; r++) for (let c = 0; c < cols + 1; c++) {
++    const x = c * cw - (r % 2 ? cw / 2 : 0), sh = (190 + rr(-34, 30)) | 0;
++    g.fillStyle = `rgb(${sh},${sh - 6},${sh - 14})`; g.beginPath(); g.roundRect(x + 1, r * rh + 1, cw - 2, rh + 3, [0, 0, cw / 2.2, cw / 2.2]); g.fill();
++    g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(x + 1, r * rh + rh - 1, cw - 2, 3);
++  }
++});
++const VM = {
++  plaster: new THREE.MeshStandardMaterial({ map: plasterWall, roughness: 1 }),
++  timber: new THREE.MeshStandardMaterial({ map: timberTex, roughness: .95 }),
++  lamp: new THREE.MeshStandardMaterial({ color: 0xffd58a, emissive: 0xffa640, emissiveIntensity: 1.2, roughness: .5 }),
++  hay: new THREE.MeshStandardMaterial({ color: 0xd2b45a, roughness: 1 }),
++  cloth: [0xb5433a, 0xd9c8a0, 0x3d6aa8, 0xc99a3a].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: .95, side: THREE.DoubleSide })),
++  flowers: [0xe9576b, 0xf2d94e, 0xf4efe0, 0xb27ae0].map(c => new THREE.MeshStandardMaterial({ color: c, roughness: .8 })),
++  leaf: new THREE.MeshStandardMaterial({ color: 0x4f8f3c, roughness: 1 })
++};
++function roofMatFor(tint) { return roofMats[tint] || (roofMats[tint] = new THREE.MeshStandardMaterial({ map: roofTile, color: tint, roughness: .9 })); }
+ 
+-function makeHouse(cx, cz, w, d, rotY, tint) {
+-  const g = new THREE.Group(), H = 4.0, B = .6, E = B + H;
+-  const bx = (geo, mat, x, y, z) => put(g, new THREE.Mesh(geo, mat), x, y, z);
+-  bx(tiledBox(w + .4, B, d + .4, tile2), M.stone, 0, B / 2, 0);
+-  bx(tiledBox(w, H, d, (a, b) => [a / Math.max(1, Math.round(a / 3.2)), b]), M.wall, 0, B + H / 2, 0);
+-  // дверь слева от центра, окно справа
+-  const dx = -w / 4;
+-  bx(new THREE.BoxGeometry(1.6, 2.9, .18), M.wood, dx, B + 1.45, d / 2 + .05);
+-  bx(new THREE.BoxGeometry(2.1, .3, .26), M.darkWood, dx, B + 3.05, d / 2 + .06);
+-  bx(new THREE.BoxGeometry(.2, 2.9, .26), M.darkWood, dx - .9, B + 1.45, d / 2 + .06);
+-  bx(new THREE.BoxGeometry(.2, 2.9, .26), M.darkWood, dx + .9, B + 1.45, d / 2 + .06);
+-  bx(new THREE.BoxGeometry(2.4, .25, .9), M.stone, dx, .125, d / 2 + .5);
+-  const wx = w / 4;
+-  bx(new THREE.BoxGeometry(1.1, 1.2, .1), M.glass, wx, B + 2.3, d / 2 + .03);
+-  bx(new THREE.BoxGeometry(.4, 1.2, .12), M.wood, wx - .78, B + 2.3, d / 2 + .06);
+-  bx(new THREE.BoxGeometry(.4, 1.2, .12), M.wood, wx + .78, B + 2.3, d / 2 + .06);
+-  bx(new THREE.BoxGeometry(1.6, .12, .3), M.stone, wx, B + 1.62, d / 2 + .12);
+-  for (const s of [1, -1]) {
+-    bx(new THREE.BoxGeometry(.1, 1.2, 1.0), M.glass, s * (w / 2 + .03), B + 2.3, 0);
+-    bx(new THREE.BoxGeometry(.12, 1.2, .4), M.wood, s * (w / 2 + .06), B + 2.3, -.78);
+-    bx(new THREE.BoxGeometry(.12, 1.2, .4), M.wood, s * (w / 2 + .06), B + 2.3, .78);
+-  }
+-  // крыша
+-  const al = .62, hw = w / 2, ov = .55, ovz = .5, rh = hw * Math.tan(al), L = (hw + ov) / Math.cos(al), th = .22, Lz = d + ovz * 2;
+-  const roofMat = roofMats[tint] || (roofMats[tint] = new THREE.MeshStandardMaterial({ map: roofBase, color: tint, roughness: .9 }));
++function makeHouse(cx, cz, w, d, rotY, tint, opts = {}) {
++  const g = new THREE.Group(), H = opts.H || 3.5, B = .55, E = B + H, T = .26;
++  const bx = (geo, mat, x, y, z, rx = 0, ry = 0, rz = 0) => { const m = put(g, new THREE.Mesh(geo, mat), x, y, z); m.rotation.set(rx, ry, rz); return m; };
++  // фундамент и стены
++  bx(tiledBox(w + .5, B, d + .5, tile2), M.stone, 0, B / 2, 0);
++  bx(tiledBox(w, H, d, (a, b) => [3.2, 3.2]), VM.plaster, 0, B + H / 2, 0);
++  // фахверк: угловые стойки, обвязки, вертикали и раскосы на всех четырёх стенах
++  for (const sx of [-1, 1]) for (const sz of [-1, 1]) bx(new THREE.BoxGeometry(T, H + .1, T), VM.timber, sx * (w / 2), B + H / 2, sz * (d / 2));
++  for (const sz of [-1, 1]) for (const y of [B + .08, B + H * .5, E - .12]) bx(new THREE.BoxGeometry(w + T, T * .8, T * .8), VM.timber, 0, y, sz * (d / 2 + .02));
++  for (const sx of [-1, 1]) for (const y of [B + .08, B + H * .5, E - .12]) bx(new THREE.BoxGeometry(T * .8, T * .8, d + T), VM.timber, sx * (w / 2 + .02), y, 0);
++  for (const sz of [-1, 1]) {
++    const n = Math.max(2, Math.round(w / 2.2)); for (let i = 1; i < n; i++) bx(new THREE.BoxGeometry(T * .7, H, T * .7), VM.timber, -w / 2 + w * i / n, B + H / 2, sz * (d / 2 + .02));
++    for (const side of [-1, 1]) { const len = Math.hypot(w / 5, H * .5); bx(new THREE.BoxGeometry(len, T * .6, T * .6), VM.timber, side * w * .3, B + H * .75, sz * (d / 2 + .03), 0, 0, side * Math.atan2(H * .5, w / 5)); }
++  }
++  for (const sx of [-1, 1]) { const n = Math.max(2, Math.round(d / 2.2)); for (let i = 1; i < n; i++) bx(new THREE.BoxGeometry(T * .7, H, T * .7), VM.timber, sx * (w / 2 + .02), B + H / 2, -d / 2 + d * i / n); }
++  // дверь (арка) слева, ступень, фонарь
++  const dx = -w / 4, dz = d / 2;
++  bx(new THREE.BoxGeometry(1.5, 2.45, .14), M.wood, dx, B + 1.22, dz + .04);
++  bx(new THREE.CylinderGeometry(.75, .75, .14, 12, 1, false, Math.PI / 2, Math.PI), M.wood, dx, B + 2.45, dz + .04, Math.PI / 2, 0, 0);
++  for (const s of [-1, 1]) bx(new THREE.BoxGeometry(.2, 2.9, .24), VM.timber, dx + s * .85, B + 1.45, dz + .06);
++  bx(new THREE.BoxGeometry(1.9, .22, .24), VM.timber, dx, B + 2.95, dz + .06);
++  for (const y of [.55, 1.9]) bx(new THREE.BoxGeometry(1.2, .08, .05), M.iron, dx, B + y, dz + .13);
++  bx(new THREE.SphereGeometry(.07, 6, 5), M.iron, dx + .5, B + 1.2, dz + .16);
++  bx(tiledBox(2.4, .3, 1.0, tile2), M.stone, dx, .15, dz + .62);
++  bx(new THREE.BoxGeometry(.06, .5, .06), M.iron, dx + 1.35, B + 2.2, dz + .15); bx(new THREE.BoxGeometry(.22, .3, .22), VM.lamp, dx + 1.35, B + 1.9, dz + .2);
++  // окна со ставнями и цветочными ящиками
++  const win = (x, y, z, ry) => {
++    const grp = new THREE.Group(); grp.position.set(x, y, z); grp.rotation.y = ry; g.add(grp);
++    const a = (geo, mat, px, py, pz) => put(grp, new THREE.Mesh(geo, mat), px, py, pz);
++    a(new THREE.BoxGeometry(1.0, 1.15, .1), M.glass, 0, 0, .02);
++    a(new THREE.BoxGeometry(.08, 1.2, .14), VM.timber, 0, 0, .04); a(new THREE.BoxGeometry(1.05, .08, .14), VM.timber, 0, 0, .04);
++    for (const s of [-1, 1]) { a(new THREE.BoxGeometry(.1, 1.3, .12), VM.timber, s * .55, 0, .05); a(new THREE.BoxGeometry(.5, 1.15, .06), M.wood, s * .88, 0, .06); }
++    a(new THREE.BoxGeometry(1.2, .1, .14), VM.timber, 0, 0.63, .05); a(new THREE.BoxGeometry(1.2, .1, .14), VM.timber, 0, -.63, .05);
++    a(new THREE.BoxGeometry(1.1, .28, .3), M.wood, 0, -.82, .22);
++    for (let i = 0; i < 5; i++) a(new THREE.SphereGeometry(.075, 6, 5), VM.flowers[(i + (x * 7 | 0)) & 3], -.42 + i * .21, -.62, .24 + (i % 2) * .04);
++    a(new THREE.BoxGeometry(1.0, .09, .22), VM.leaf, 0, -.66, .22);
++  };
++  win(w / 4 - .2, B + 2.0, d / 2 + .02, 0); win(w / 2 - .6, B + 2.0, d / 2 + .02, 0);
++  win(-w / 4, B + 2.0, -d / 2 - .02, Math.PI); win(w / 4, B + 2.0, -d / 2 - .02, Math.PI);
++  for (const s of [1, -1]) win(s * (w / 2 + .02), B + 2.0, 0, s * Math.PI / 2);
++  // крыша: два ската с карнизами, коньковая балка, фронтоны с балками
++  const al = .66, hw = w / 2, ov = .65, ovz = .6, rh = hw * Math.tan(al), L = (hw + ov) / Math.cos(al), th = .24, Lz = d + ovz * 2;
++  const roofMat = roofMatFor(tint);
+   for (const sg of [1, -1]) {
+-    const slab = new THREE.Mesh(tiledBox(L, th, Lz, () => [1.6, 1.6]), roofMat);
+-    slab.rotation.z = -sg * al;
++    const slab = new THREE.Mesh(tiledBox(L, th, Lz, () => [2.2, 2.2]), roofMat); slab.rotation.z = -sg * al;
+     put(g, slab, sg * (hw + ov) / 2 + sg * Math.sin(al) * th / 2, E + (rh - ov * Math.tan(al)) / 2 + Math.cos(al) * th / 2, 0);
++    // подкарнизная балка
++    bx(new THREE.BoxGeometry(.18, .18, Lz), VM.timber, sg * (hw + ov * .6), E + .05 - ov * .6 * Math.tan(al) * 0.2, 0);
+   }
+-  bx(new THREE.BoxGeometry(.35, .25, Lz + .1), M.darkWood, 0, E + rh + .05, 0);
++  bx(new THREE.BoxGeometry(.4, .3, Lz + .12), VM.timber, 0, E + rh + .06, 0);
+   const sh = new THREE.Shape(); sh.moveTo(-hw, 0); sh.lineTo(hw, 0); sh.lineTo(0, rh); sh.closePath();
+   const gg = new THREE.ShapeGeometry(sh);
+-  put(g, new THREE.Mesh(gg, M.gable), 0, E, d / 2 + .01);
+-  const gb = new THREE.Mesh(gg, M.gable); gb.rotation.y = Math.PI; put(g, gb, 0, E, -d / 2 - .01);
+-  // труба
+-  const chH = rh + 1.3;
+-  bx(tiledBox(1, chH, 1, tile2), M.stone, w / 4, E + chH / 2 - .2, -d / 4);
+-  bx(new THREE.BoxGeometry(1.25, .2, 1.25), M.darkWood, w / 4, E + chH - .1, -d / 4);
++  for (const sz of [1, -1]) {
++    const pl = new THREE.Mesh(gg, VM.plaster); pl.rotation.y = sz > 0 ? 0 : Math.PI; put(g, pl, 0, E, sz * (d / 2 + .01));
++    bx(new THREE.BoxGeometry(.18, rh, .2), VM.timber, 0, E + rh / 2, sz * (d / 2 + .06));           // конёк-стойка
++    for (const s of [-1, 1]) { const len = Math.hypot(hw * .55, rh * .55); bx(new THREE.BoxGeometry(len, .15, .18), VM.timber, s * hw * .52, E + rh * .28, sz * (d / 2 + .06), 0, 0, s * Math.atan2(rh, hw)); }
++    bx(new THREE.CylinderGeometry(.3, .3, .14, 12), M.glass, 0, E + rh * .32, sz * (d / 2 + .04), Math.PI / 2, 0, 0);
++    bx(new THREE.TorusGeometry(.33, .05, 6, 14), VM.timber, 0, E + rh * .32, sz * (d / 2 + .08));
++  }
++  // труба из камня
++  const chH = rh + 1.4;
++  bx(tiledBox(1.05, chH, 1.05, tile2), M.stone, w / 4, E + chH / 2 - .3, -d / 4);
++  bx(new THREE.BoxGeometry(1.3, .22, 1.3), M.stone, w / 4, E + chH - .15, -d / 4);
+   g.position.set(cx, 0, cz); g.rotation.y = rotY; scene.add(g);
+   const odd = Math.abs(Math.round(rotY / (Math.PI / 2))) % 2 === 1;
+-  addBox(cx, cz, (odd ? d : w) / 2 + .25, (odd ? w : d) / 2 + .25);
++  addBox(cx, cz, (odd ? d : w) / 2 + .3, (odd ? w : d) / 2 + .3);
++  return g;
+ }
+-function makeBarrel(x, z) {
++function makeBarrel(x, z, s = 1) {
+   const g = new THREE.Group();
+-  put(g, new THREE.Mesh(new THREE.CylinderGeometry(.48, .48, 1.1, 10), M.wood), 0, .55, 0);
+-  put(g, new THREE.Mesh(new THREE.CylinderGeometry(.5, .5, .08, 10), M.iron), 0, .25, 0);
+-  put(g, new THREE.Mesh(new THREE.CylinderGeometry(.5, .5, .08, 10), M.iron), 0, .85, 0);
+-  g.position.set(x, 0, z); scene.add(g); addCircle(x, z, .55);
++  put(g, new THREE.Mesh(new THREE.CylinderGeometry(.46 * s, .46 * s, 1.05 * s, 12), M.wood), 0, .52 * s, 0);
++  put(g, new THREE.Mesh(new THREE.CylinderGeometry(.53 * s, .5 * s, .6 * s, 12), M.wood), 0, .52 * s, 0);
++  for (const y of [.18, .45, .86]) put(g, new THREE.Mesh(new THREE.CylinderGeometry(.535 * s, .535 * s, .06 * s, 12), M.iron), 0, y * s + .05, 0);
++  put(g, new THREE.Mesh(new THREE.CylinderGeometry(.42 * s, .42 * s, .04, 12), VM.timber), 0, 1.06 * s, 0);
++  g.position.set(x, 0, z); scene.add(g); addCircle(x, z, .58 * s);
++}
++function makeCrate(x, z, s = 1) {
++  const g = new THREE.Group(); g.rotation.y = rand() * 3;
++  put(g, new THREE.Mesh(tiledBox(1 * s, 1 * s, 1 * s, () => [1, 1]), M.wood), 0, .5 * s, 0);
++  for (const sx of [-1, 1]) for (const sz of [-1, 1]) put(g, new THREE.Mesh(new THREE.BoxGeometry(.1, 1.02 * s, .1), VM.timber), sx * .46 * s, .5 * s, sz * .46 * s);
++  if (rand() < .5) put(g, new THREE.Mesh(tiledBox(.7, .7, .7, () => [1, 1]), M.wood), .1, 1.35 * s, .05).rotation.y = rand();
++  g.position.set(x, 0, z); scene.add(g); addCircle(x, z, .78 * s);
+ }
+-function makeCrate(x, z) {
+-  const m = new THREE.Mesh(tiledBox(1, 1, 1, () => [1, 1]), M.wood); m.rotation.y = rand() * 3; put(scene, m, x, .5, z); addCircle(x, z, .72);
++function makeHaystack(x, z, s = 1) {
++  const g = new THREE.Group();
++  put(g, new THREE.Mesh(new THREE.CylinderGeometry(.9 * s, 1.1 * s, 1.0 * s, 10), VM.hay), 0, .5 * s, 0);
++  put(g, new THREE.Mesh(new THREE.SphereGeometry(.92 * s, 10, 7, 0, Math.PI * 2, 0, Math.PI / 2), VM.hay), 0, 1.0 * s, 0);
++  g.position.set(x, 0, z); scene.add(g); addCircle(x, z, 1.05 * s);
++}
++function makeWoodpile(x, z, rot) {
++  const g = new THREE.Group();
++  for (let r = 0; r < 4; r++) for (let i = 0; i < 6 - r; i++) put(g, new THREE.Mesh(new THREE.CylinderGeometry(.16, .16, 1.6, 7), M.wood), -1.0 + i * .36 + r * .18, .17 + r * .3, 0).rotation.x = Math.PI / 2;
++  for (const s of [-1, 1]) put(g, new THREE.Mesh(new THREE.BoxGeometry(.12, 1.3, .12), VM.timber), s * 1.15, .65, .9);
++  g.position.set(x, 0, z); g.rotation.y = rot; scene.add(g); addBox(x, z, Math.abs(Math.cos(rot)) * 1.3 + Math.abs(Math.sin(rot)) * .9, Math.abs(Math.sin(rot)) * 1.3 + Math.abs(Math.cos(rot)) * .9);
++}
++function makeCart(x, z, rot) {
++  const g = new THREE.Group();
++  put(g, new THREE.Mesh(new THREE.BoxGeometry(2.0, .14, 1.2), M.wood), 0, .75, 0);
++  for (const s of [-1, 1]) { put(g, new THREE.Mesh(new THREE.BoxGeometry(2.0, .45, .09), M.wood), 0, 1.05, s * .6); put(g, new THREE.Mesh(new THREE.CylinderGeometry(.46, .46, .1, 14), M.wood), 0, .46, s * .72).rotation.x = Math.PI / 2; put(g, new THREE.Mesh(new THREE.CylinderGeometry(.12, .12, .14, 8), M.iron), 0, .46, s * .72).rotation.x = Math.PI / 2; }
++  put(g, new THREE.Mesh(new THREE.BoxGeometry(.09, .45, 1.2), M.wood), -1, 1.05, 0); put(g, new THREE.Mesh(new THREE.BoxGeometry(.09, .45, 1.2), M.wood), 1, 1.05, 0);
++  put(g, new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, 2.2, 6), VM.timber), 1.9, .7, 0).rotation.z = Math.PI / 2 - .25;
++  for (let i = 0; i < 3; i++) put(g, new THREE.Mesh(new THREE.SphereGeometry(.34, 7, 6), VM.hay), -.5 + i * .5, 1.05, 0);
++  g.position.set(x, 0, z); g.rotation.y = rot; scene.add(g); addCircle(x, z, 1.2);
++}
++function makeStall(x, z, rot, ci) {
++  const g = new THREE.Group();
++  for (const sx of [-1, 1]) for (const sz of [-1, 1]) put(g, new THREE.Mesh(new THREE.CylinderGeometry(.08, .09, sz > 0 ? 2.9 : 2.5, 6), VM.timber), sx * 1.5, sz > 0 ? 1.45 : 1.25, sz * .9);
++  put(g, new THREE.Mesh(new THREE.BoxGeometry(3.2, .1, 1.0), M.wood), 0, 1.0, .75);                     // прилавок
++  put(g, new THREE.Mesh(new THREE.BoxGeometry(3.2, .9, .08), M.wood), 0, .5, 1.2);
++  for (let i = 0; i < 8; i++) { const a = new THREE.Mesh(new THREE.PlaneGeometry(.42, 2.1), VM.cloth[(i + ci) % 2 ? 1 : 0]); a.rotation.x = -Math.PI / 2 + .42; put(g, a, -1.46 + i * .42, 2.75 - .5, 0); }
++  for (let i = 0; i < 5; i++) put(g, new THREE.Mesh(new THREE.SphereGeometry(.16, 8, 6), VM.flowers[(i + ci) & 3]), -1.1 + i * .55, 1.2, .75);
++  g.position.set(x, 0, z); g.rotation.y = rot; scene.add(g); addBox(x, z, 1.7, .9);
++}
++function makeLantern(x, z) {
++  const g = new THREE.Group();
++  put(g, new THREE.Mesh(new THREE.CylinderGeometry(.07, .09, 2.8, 6), VM.timber), 0, 1.4, 0);
++  put(g, new THREE.Mesh(new THREE.BoxGeometry(.7, .06, .06), VM.timber), .3, 2.7, 0);
++  put(g, new THREE.Mesh(new THREE.BoxGeometry(.2, .3, .2), VM.lamp), .6, 2.45, 0);
++  g.position.set(x, 0, z); scene.add(g); addCircle(x, z, .16);
+ }
+ function fence(x1, z1, x2, z2) {
+-  const len = Math.hypot(x2 - x1, z2 - z1), n = Math.max(1, Math.round(len / 1.4)), ang = Math.atan2(z2 - z1, x2 - x1);
+-  for (let i = 0; i <= n; i++) { const x = x1 + (x2 - x1) * i / n, z = z1 + (z2 - z1) * i / n; put(scene, new THREE.Mesh(new THREE.BoxGeometry(.2, 1.3, .2), M.wood), x, .65, z); addCircle(x, z, .25); }
++  const len = Math.hypot(x2 - x1, z2 - z1), n = Math.max(1, Math.round(len / 1.5)), ang = Math.atan2(z2 - z1, x2 - x1);
++  for (let i = 0; i <= n; i++) {
++    const x = x1 + (x2 - x1) * i / n, z = z1 + (z2 - z1) * i / n;
++    put(scene, new THREE.Mesh(new THREE.BoxGeometry(.2, 1.35, .2), VM.timber), x, .67, z); put(scene, new THREE.Mesh(new THREE.ConeGeometry(.15, .22, 4), VM.timber), x, 1.46, z).rotation.y = Math.PI / 4; addCircle(x, z, .25);
++  }
+   const m2 = Math.ceil(len / .45); for (let i = 1; i < m2; i++) addCircle(x1 + (x2 - x1) * i / m2, z1 + (z2 - z1) * i / m2, .22);
+-  for (const y of [.45, .95]) { const r = new THREE.Mesh(new THREE.BoxGeometry(len, .12, .1), M.wood); r.rotation.y = -ang; put(scene, r, (x1 + x2) / 2, y, (z1 + z2) / 2); }
++  for (const y of [.45, .98]) { const r = new THREE.Mesh(new THREE.BoxGeometry(len, .13, .09), M.wood); r.rotation.y = -ang; put(scene, r, (x1 + x2) / 2, y, (z1 + z2) / 2); }
+ }
+-let flameA, flameB;
++let flameA, flameB, fireLight, smokePuffs = [];
+ function makeVillage() {
+-  // Four small outlying villages around the island; the well and campfire remain a central hub.
+-  makeHouse(-13, -37, 5.5, 5, 0, 0xb5533a);
+-  makeHouse(13, -39, 5, 5, 0, 0x6b7e8c);
+-  makeHouse(-37, -7, 5, 5.5, Math.PI / 2, 0xa8643a);
+-  makeHouse(-35, 7, 5, 5, Math.PI / 2, 0xb5533a);
+-  makeHouse(37, -7, 5.5, 5, -Math.PI / 2, 0x8a5a3a);
+-  makeHouse(35, 7, 5, 5, -Math.PI / 2, 0x6b7e8c);
+-  makeHouse(-13, 37, 5, 5, Math.PI, 0xa8643a);
+-  makeHouse(13, 39, 5, 5, Math.PI, 0xb5533a);
+-  // колодец
++  const S = MAP_SCALE, P = (x, z) => [x * S, z * S];
++  // Восемь домов в четырёх деревнях: те же точки, что у сервера (villageCenters), но реальные размеры.
++  const H = [[-13, -37, 8, 6.6, 0, 0xb5533a], [13, -39, 7, 6, 0, 0x5f7284], [-37, -7, 7, 7.6, Math.PI / 2, 0xa8643a], [-35, 7, 7.6, 6.4, Math.PI / 2, 0xb5533a],
++    [37, -7, 8, 6.6, -Math.PI / 2, 0x8a5a3a], [35, 7, 7, 6, -Math.PI / 2, 0x5f7284], [-13, 37, 7.4, 6.4, Math.PI, 0xa8643a], [13, 39, 8, 6.6, Math.PI, 0xb5533a]];
++  for (const [x, z, w, d, r, tint] of H) {
++    const [cx, cz] = P(x, z); makeHouse(cx, cz, w, d, r, tint);
++    // реквизит у каждого дома, чтобы деревни выглядели жилыми
++    const fx = Math.sin(r), fz = Math.cos(r), sx = Math.cos(r), sz = -Math.sin(r);       // вперёд и вбок в мировых осях
++    const ahead = (a, b) => [cx + fx * a + sx * b, cz + fz * a + sz * b];
++    let q = ahead((d / 2) + 1.6, w / 2 + 1.2); makeBarrel(q[0], q[1]); q = ahead((d / 2) + 1.2, w / 2 + 2.3); makeBarrel(q[0], q[1], .9);
++    q = ahead(0, -(w / 2 + 1.6)); makeWoodpile(q[0], q[1], r + Math.PI / 2);
++    if (x * z > 0 || Math.abs(x) > 30) { q = ahead(-(d / 2 + 2.4), w / 2 + 1.0); makeHaystack(q[0], q[1], 1.1); }
++    else { q = ahead((d / 2) + 3.2, -w / 2 + 0.5); makeCrate(q[0], q[1]); }
++    q = ahead((d / 2) + 2.2, -(w / 4) - 1.7); makeLantern(q[0], q[1]);
++  }
++  makeCart(...P(-18, -34), 0.5); makeCart(...P(30, 3), 2.2);
++  // колодец: каменное кольцо, воротный механизм, черепичный навес, ведро
+   const well = new THREE.Group();
+-  put(well, new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.35, 1, 14), M.stone), 0, .5, 0);
+-  const wt = new THREE.Mesh(new THREE.CircleGeometry(.95, 14), new THREE.MeshStandardMaterial({ color: 0x1f3f55, roughness: .2 })); wt.rotation.x = -Math.PI / 2; wt.position.y = 1.02; well.add(wt);
+-  for (const s of [1, -1]) put(well, new THREE.Mesh(new THREE.BoxGeometry(.18, 2.4, .18), M.wood), s * 1.15, 2.1, 0);
+-  put(well, new THREE.Mesh(new THREE.BoxGeometry(2.5, .14, .14), M.wood), 0, 3.1, 0);
+-  const wr = new THREE.Mesh(new THREE.ConeGeometry(1.7, .9, 4), new THREE.MeshStandardMaterial({ map: roofBase, color: 0x8a5a3a })); wr.rotation.y = Math.PI / 4; put(well, wr, 0, 3.6, 0);
+-  scene.add(well); addCircle(0, 0, 1.45);
+-  // костёр
+-  const fx = 3.8, fz = 3.2, fire = new THREE.Group();
+-  for (let i = 0; i < 8; i++) { const a = i / 8 * 6.283; const s = new THREE.Mesh(new THREE.DodecahedronGeometry(.22, 0), M.stone); put(fire, s, Math.cos(a) * .7, .15, Math.sin(a) * .7); }
+-  for (let i = 0; i < 3; i++) { const l = new THREE.Mesh(new THREE.CylinderGeometry(.09, .09, 1.1, 6), M.wood); l.rotation.z = Math.PI / 2; l.rotation.y = i * 1.05; put(fire, l, 0, .22, 0); }
+-  flameA = new THREE.Mesh(new THREE.ConeGeometry(.35, 1.0, 6), new THREE.MeshBasicMaterial({ color: 0xff8a2a })); flameA.position.y = .75;
+-  flameB = new THREE.Mesh(new THREE.ConeGeometry(.2, .65, 6), new THREE.MeshBasicMaterial({ color: 0xffd45a })); flameB.position.y = .6;
+-  fire.add(flameA, flameB); fire.position.set(fx, 0, fz); scene.add(fire); addCircle(fx, fz, .9);
+-  // реквизит
+-  makeBarrel(-9.2, -8.8); makeBarrel(-8.4, -9.3); makeCrate(-14.8, -8.6); makeCrate(7.2, -9.2); makeBarrel(8.2, -9.0);
+-  makeBarrel(12.6, 6.0); makeCrate(11.7, 14.2); makeBarrel(-4.2, 12.2); makeCrate(5.0, 12.3); makeBarrel(-10.8, 4.6);
+-  fence(-18, -41, -8, -41); fence(-18, -41, -18, -34);
+-  fence(8, 41, 18, 41); fence(18, 34, 18, 41);
+-  fence(-41, -13, -41, -3); fence(41, 3, 41, 13);
++  put(well, new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.4, 1.05, 16, 1), M.stone), 0, .52, 0);
++  put(well, new THREE.Mesh(new THREE.TorusGeometry(1.32, .13, 6, 18), M.stone), 0, 1.06, 0).rotation.x = Math.PI / 2;
++  const wt = new THREE.Mesh(new THREE.CircleGeometry(1.0, 16), new THREE.MeshStandardMaterial({ color: 0x1f3f55, roughness: .15, metalness: .2 })); wt.rotation.x = -Math.PI / 2; wt.position.y = .98; well.add(wt);
++  for (const s of [1, -1]) put(well, new THREE.Mesh(new THREE.BoxGeometry(.22, 2.7, .22), VM.timber), s * 1.2, 2.1, 0);
++  put(well, new THREE.Mesh(new THREE.CylinderGeometry(.13, .13, 2.6, 8), M.wood), 0, 2.75, 0).rotation.z = Math.PI / 2;
++  put(well, new THREE.Mesh(new THREE.CylinderGeometry(.015, .015, .9, 4), M.iron), .35, 2.3, 0);
++  put(well, new THREE.Mesh(new THREE.CylinderGeometry(.17, .13, .24, 8), M.wood), .35, 1.8, 0);
++  const wr = new THREE.Mesh(new THREE.ConeGeometry(2.0, 1.1, 4), roofMatFor(0x8a5a3a)); wr.rotation.y = Math.PI / 4; put(well, wr, 0, 3.95, 0);
++  scene.add(well); addCircle(0, 0, 1.65);
++  // костёр: кольцо камней, поленья, пламя и тёплый свет
++  const fx = 4.2, fz = 3.6, fire = new THREE.Group();
++  for (let i = 0; i < 10; i++) { const a = i / 10 * 6.283; put(fire, new THREE.Mesh(new THREE.DodecahedronGeometry(.24 + (i % 3) * .03, 0), M.stone), Math.cos(a) * .85, .16, Math.sin(a) * .85); }
++  for (let i = 0; i < 5; i++) { const l = new THREE.Mesh(new THREE.CylinderGeometry(.09, .1, 1.15, 6), M.wood); l.rotation.z = Math.PI / 2 - .3; l.rotation.y = i * 1.26; put(fire, l, 0, .24, 0); }
++  flameA = new THREE.Mesh(new THREE.ConeGeometry(.4, 1.15, 7), new THREE.MeshBasicMaterial({ color: 0xff8a2a })); flameA.position.y = .85;
++  flameB = new THREE.Mesh(new THREE.ConeGeometry(.22, .75, 6), new THREE.MeshBasicMaterial({ color: 0xffd45a })); flameB.position.y = .68;
++  fire.add(flameA, flameB); fire.position.set(fx, 0, fz); scene.add(fire); addCircle(fx, fz, .95);
++  fireLight = new THREE.PointLight(0xff9a4a, 2.2, 14, 1.6); fireLight.position.set(fx, 1.3, fz); scene.add(fireLight);
++  // рыночная площадь вокруг колодца
++  makeStall(-9.5, -4.5, .5, 0); makeStall(9.0, -5.0, -.5, 1); makeStall(-8.5, 8.0, Math.PI - .4, 2);
++  makeLantern(-4.5, 5.5); makeLantern(5.5, -4.5);
++  makeBarrel(-14.2, -8.8); makeBarrel(-13.4, -9.3); makeCrate(-18.8, -8.6); makeCrate(12.2, -9.2); makeBarrel(13.2, -9.0);
++  makeBarrel(15.6, 8.0); makeCrate(11.7, 16.2); makeBarrel(-9.2, 13.2); makeCrate(7.0, 14.3); makeBarrel(-14.8, 6.6);
++  const fp = (a, b, c, d) => fence(...P(a, b), ...P(c, d));
++  fp(-18, -41, -8, -41); fp(-18, -41, -18, -34); fp(8, 41, 18, 41); fp(18, 34, 18, 41); fp(-41, -13, -41, -3); fp(41, 3, 41, 13);
+ }
+-// Склеиваем всю статику деревни по материалам: ~250 мешей -> ~15 (меньше вызовов отрисовки, и для теней тоже)
++
++// Склеиваем всю статику деревни по материалам: ~800 мешей -> ~15 (меньше вызовов отрисовки, и для теней тоже)
+ function bakeStatic(roots) {
+   const buckets = new Map(), kill = [];
+   for (const root of roots) {
+@@ -674,22 +848,18 @@
+   }
+   for (const o of kill) o.parent.remove(o);
+   for (const [mat, geos] of buckets) {
+-    const list = geos.every(g => g.index) ? geos : geos.map(g => g.index ? g.toNonIndexed() : g);
++    const list = geos.map(g => { const n = g.index ? g.toNonIndexed() : g; for (const k of Object.keys(n.attributes)) if (k !== 'position' && k !== 'normal' && k !== 'uv') n.deleteAttribute(k); return n; });
+     const mesh = new THREE.Mesh(mergeGeometries(list), mat); mesh.castShadow = mesh.receiveShadow = true; scene.add(mesh);
+   }
+ }
+-const villageStart = scene.children.length;
+-makeVillage();
+-bakeStatic(scene.children.slice(villageStart));
+-// Expand every map prop and its collision footprint together; character scale stays unchanged.
+-for (const child of scene.children) {
+-  if (child.isLight) { child.position.x *= MAP_SCALE; child.position.z *= MAP_SCALE; continue; }
+-  child.position.x *= MAP_SCALE; child.position.z *= MAP_SCALE;
+-  child.scale.x *= MAP_SCALE; child.scale.z *= MAP_SCALE;
+-}
++// Коллизии/дороги, созданные выше в «немасштабированных» единицах (пруд, пути), приводим к миру один раз.
+ for (const c of circles) { c.x *= MAP_SCALE; c.z *= MAP_SCALE; c.r *= MAP_SCALE; }
+ for (const b of boxes) { b.x0 *= MAP_SCALE; b.x1 *= MAP_SCALE; b.z0 *= MAP_SCALE; b.z1 *= MAP_SCALE; }
+ for (const path of paths) for (const point of path) { point[0] *= MAP_SCALE; point[1] *= MAP_SCALE; }
++// Деревня строится уже в мировых единицах (дома больше не растягиваются в 2.3 раза).
++const villageStart = scene.children.length;
++makeVillage();
++bakeStatic(scene.children.slice(villageStart));
+ 
+ /* =====================  ресурсы  ===================== */
+ const RES = {
+@@ -817,26 +987,55 @@
+ }
+ // Убраны декоративные деревья без ресурсных ID и коллизий: вся древесина мира теперь представлена
+ // добываемыми серверными узлами. Фоновая растительность остаётся только низкой травой.
+-// трава
++// Трава и цветы по всему острову: пучки изогнутых лезвий + настоящие цветки (вместо «конфетти» в текстуре).
+ {
+-  const pos = [], col = [], base = new THREE.Color(0x3f6e2a), tip = new THREE.Color(0xa6d45c);
+-  for (let k = 0; k < 3; k++) {
+-    const a = k * Math.PI / 3, ca = Math.cos(a), sa = Math.sin(a), w = .09, h = .75;
+-    for (const [x, y, c] of [[-w, 0, base], [w, 0, base], [0, h, tip]]) { pos.push(x * ca, y, x * sa); col.push(c.r, c.g, c.b); }
++  const grp = new THREE.Group(), S = MAP_SCALE;
++  const pos = [], col = [], nor = [], base = new THREE.Color(0x35602a), tip = new THREE.Color(0xa9d65e);
++  for (let k = 0; k < 5; k++) {
++    const a = k * Math.PI * .4 + rand() * .3, ca = Math.cos(a), sa = Math.sin(a), w = .07, h = rr(.55, .95), bend = rr(.08, .22), off = rr(.0, .12);
++    const P = [[-w, 0, off], [w, 0, off], [-w * .6, h * .55, off + bend * .5], [w * .6, h * .55, off + bend * .5], [0, h, off + bend]];
++    const tri = [[0, 1, 2], [1, 3, 2], [2, 3, 4]];
++    for (const t of tri) for (const i of t) {
++      const [x, y, z] = P[i], c = base.clone().lerp(tip, y / h);
++      pos.push(x * ca - z * sa, y, x * sa + z * ca); col.push(c.r, c.g, c.b); nor.push(0, 1, 0);
++    }
+   }
+   const gg = new THREE.BufferGeometry();
+-  gg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+-  gg.setAttribute('normal', new THREE.Float32BufferAttribute(new Array(9).fill(0).flatMap(() => [0, 1, 0]), 3));
+-  const N = 2000, im = new THREE.InstancedMesh(gg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }), N);
++  gg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); gg.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
++  const N = 9000, im = new THREE.InstancedMesh(gg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }), N);
++  const FN = 1600, flowerHead = new THREE.CircleGeometry(.1, 7); flowerHead.rotateX(-Math.PI / 2 + .35); flowerHead.translate(0, .3, 0);
++  const stemG = new THREE.CylinderGeometry(.012, .016, .3, 4); stemG.translate(0, .15, 0);
++  const heads = new THREE.InstancedMesh(flowerHead, new THREE.MeshStandardMaterial({ roughness: .8, side: THREE.DoubleSide }), FN);
++  const stems = new THREE.InstancedMesh(stemG, new THREE.MeshStandardMaterial({ color: 0x3f7a2f, roughness: 1 }), FN);
++  const flowerCols = [0xf5f0e0, 0xf2d94e, 0xe9667f, 0x9ec5f2, 0xc08ae6, 0xf0a04b].map(c => new THREE.Color(c));
+   const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), sc = new THREE.Vector3(), ps = new THREE.Vector3();
++  const R = CFG.BOUND - 4, clump = (x, z) => .5 + .5 * Math.sin(x * .061 + 1.3) * Math.sin(z * .053 - .4) + .25 * Math.sin(x * .17 + z * .13);
++  const ok = (x, z) => {
++    if (Math.hypot(x, z) < 8 || distToPaths(x, z) < 2.6 || closestRiverPoint(x, z).distance < RIVER_BLOCK_RADIUS + 4.5 || Math.hypot(x - PX * S, z - PZ * S) < 6.4 * S + 2.5) return false;
++    for (const b of boxes) if (x > b.x0 - .6 && x < b.x1 + .6 && z > b.z0 - .6 && z < b.z1 + .6) return false;
++    for (const c of circles) if (c.r > 0 && Math.hypot(x - c.x, z - c.z) < c.r + .3 && c.r < 3) return false;
++    return true;
++  };
+   let n = 0, tries = 0;
+-  while (n < N && tries++ < 30000) {
+-    const a = rand() * 6.283, d = Math.sqrt(rand()) * 57, x = Math.cos(a) * d, z = Math.sin(a) * d;
+-    if (d < 10 || distToPaths(x, z) < 2.2 || Math.hypot(x - PX, z - PZ) < 7.4) continue;
+-    let bad = false; for (const b of boxes) if (x > b.x0 - .5 && x < b.x1 + .5 && z > b.z0 - .5 && z < b.z1 + .5) { bad = true; break; } if (bad) continue;
+-    e.set(0, rand() * 6.28, 0); q.setFromEuler(e); const s = rr(.7, 1.6); sc.set(s, s * rr(.8, 1.4), s); ps.set(x, 0, z); m4.compose(ps, q, sc); im.setMatrixAt(n++, m4);
+-  }
+-  im.count = n; scene.add(im); grassMesh = im;
++  while (n < N && tries++ < 90000) {
++    const a = rand() * 6.283, d = Math.sqrt(rand()) * R, x = Math.cos(a) * d, z = Math.sin(a) * d;
++    if (rand() > .3 + .7 * clump(x, z) || !ok(x, z)) continue;
++    e.set(0, rand() * 6.28, 0); q.setFromEuler(e); const s = rr(.75, 1.7); sc.set(s, s * rr(.8, 1.5), s); ps.set(x, 0, z); m4.compose(ps, q, sc); im.setMatrixAt(n++, m4);
++  }
++  im.count = n;
++  let f = 0; tries = 0;
++  while (f < FN && tries++ < 60000) {
++    const cx = rr(-R, R), cz = rr(-R, R); if (Math.hypot(cx, cz) > R || clump(cx, cz) < .62) continue;
++    const cc = flowerCols[(rand() * flowerCols.length) | 0], cnt = 3 + ((rand() * 6) | 0);   // цветочные поляны одного цвета
++    for (let i = 0; i < cnt && f < FN; i++) {
++      const x = cx + rr(-2.2, 2.2), z = cz + rr(-2.2, 2.2); if (!ok(x, z)) continue;
++      e.set(rr(-.2, .2), rand() * 6.28, rr(-.2, .2)); q.setFromEuler(e); const s = rr(.8, 1.4); sc.set(s, s, s); ps.set(x, 0, z); m4.compose(ps, q, sc);
++      heads.setMatrixAt(f, m4); stems.setMatrixAt(f, m4); heads.setColorAt(f, rand() < .15 ? flowerCols[(rand() * flowerCols.length) | 0] : cc); f++;
++    }
++  }
++  heads.count = stems.count = f; heads.instanceColor.needsUpdate = true;
++  for (const o of [im, heads, stems]) { o.receiveShadow = true; grp.add(o); }
++  scene.add(grp); grassMesh = grp;
+ }
+ 
+ /* =====================  инвентарь, всплывающие надписи, частицы  ===================== */
+@@ -1008,9 +1207,96 @@
+   return { group:g, torso, suit };
+ }
+ // Одна модель у всех: синий астронавт-картошка, без Soldier.glb.
+-buildPotatoAstronaut(body, 0x438fe0);
++/* =====================  рыцарь: процедурная модель с анимацией  ===================== */
++const KM = {
++  steel: new THREE.MeshStandardMaterial({ color: 0xaeb7be, metalness: .85, roughness: .32 }),
++  darkSteel: new THREE.MeshStandardMaterial({ color: 0x4b545b, metalness: .8, roughness: .4 }),
++  mail: new THREE.MeshStandardMaterial({ color: 0x6d777d, metalness: .55, roughness: .6 }),
++  cloth: new THREE.MeshStandardMaterial({ color: 0x3d3a36, roughness: 1 }),
++  leather: new THREE.MeshStandardMaterial({ color: 0x5a3b24, roughness: .9 }),
++  skin: new THREE.MeshStandardMaterial({ color: 0xe0ad86, roughness: .85 }),
++  gold: new THREE.MeshStandardMaterial({ color: 0xd2a93c, metalness: .8, roughness: .3 })
++};
++function buildKnight(teamColor = 0x3a6fd8) {
++  const root = new THREE.Group(), tabard = new THREE.MeshStandardMaterial({ color: teamColor, roughness: .85, side: THREE.DoubleSide });
++  const add = (parent, geo, mat, x = 0, y = 0, z = 0, rx = 0, ry = 0, rz = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.set(rx, ry, rz); m.castShadow = true; parent.add(m); return m; };
++  // --- ноги: бедро + голень, шарнир в бедре
++  const mkLeg = side => {
++    const hip = new THREE.Group(); hip.position.set(side * .15, .92, 0);
++    add(hip, new THREE.CylinderGeometry(.115, .1, .5, 8), KM.cloth, 0, -.25, 0);
++    add(hip, new THREE.SphereGeometry(.11, 8, 6), KM.darkSteel, 0, -.5, .05);          // наколенник
++    const shin = new THREE.Group(); shin.position.set(0, -.5, 0); hip.add(shin);
++    add(shin, new THREE.CylinderGeometry(.09, .075, .42, 8), KM.leather, 0, -.21, 0);  // сапог
++    add(shin, new THREE.BoxGeometry(.16, .09, .3), KM.leather, 0, -.4, .06);           // стопа
++    add(shin, new THREE.CylinderGeometry(.1, .1, .08, 8), KM.darkSteel, 0, -.1, 0);    // обод голенища
++    root.add(hip); return { hip, shin };
++  };
++  const L = mkLeg(1), R = mkLeg(-1);
++  // --- торс
++  const torso = new THREE.Group(); torso.position.set(0, .92, 0); root.add(torso);
++  add(torso, new THREE.CylinderGeometry(.27, .24, .62, 10), KM.mail, 0, .31, 0);
++  add(torso, new THREE.CylinderGeometry(.285, .265, .22, 10), KM.steel, 0, .45, 0);   // нагрудник
++  add(torso, new THREE.CylinderGeometry(.26, .27, .09, 10), KM.leather, 0, .02, 0);   // пояс
++  add(torso, new THREE.BoxGeometry(.09, .08, .03), KM.gold, 0, .02, .27);             // пряжка
++  // табард (цвета команды) спереди и сзади + юбка
++  const tf = add(torso, new THREE.BoxGeometry(.3, .6, .025), tabard, 0, .22, .28); tf.rotation.x = -.04;
++  add(torso, new THREE.BoxGeometry(.3, .62, .025), tabard, 0, .22, -.27).rotation.x = .04;
++  add(torso, new THREE.BoxGeometry(.06, .24, .03), KM.gold, 0, .32, .295);            // эмблема
++  add(torso, new THREE.BoxGeometry(.2, .06, .03), KM.gold, 0, .36, .295);
++  const skirt = add(torso, new THREE.CylinderGeometry(.27, .36, .34, 10, 1, true), tabard, 0, -.12, 0);
++  // плащ
++  const cape = new THREE.Group(); cape.position.set(0, .56, -.24); torso.add(cape);
++  add(cape, new THREE.BoxGeometry(.5, .86, .03), tabard, 0, -.43, -.03).castShadow = true;
++  add(cape, new THREE.CylinderGeometry(.1, .1, .5, 6), KM.leather, 0, 0, .03, 0, 0, Math.PI / 2);
++  // горжет и наплечники
++  add(torso, new THREE.CylinderGeometry(.19, .26, .12, 10), KM.steel, 0, .64, 0);
++  for (const s of [1, -1]) add(torso, new THREE.SphereGeometry(.15, 10, 7, 0, Math.PI * 2, 0, Math.PI * .6), KM.steel, s * .33, .58, 0, 0, 0, -s * .25);
++  // --- голова
++  const head = new THREE.Group(); head.position.set(0, .72, 0); torso.add(head);
++  add(head, new THREE.SphereGeometry(.15, 12, 10), KM.skin, 0, .16, .01);
++  add(head, new THREE.SphereGeometry(.185, 14, 10, 0, Math.PI * 2, 0, Math.PI * .56), KM.steel, 0, .19, 0);   // шлем-колпак
++  add(head, new THREE.CylinderGeometry(.2, .2, .035, 14), KM.steel, 0, .2, 0);                                // поля
++  add(head, new THREE.BoxGeometry(.035, .17, .03), KM.darkSteel, 0, .14, .19);                                 // наносник
++  add(head, new THREE.BoxGeometry(.1, .018, .01), KM.cloth, 0, .17, .15);                                      // глаза-тени
++  const crest = add(head, new THREE.ConeGeometry(.06, .28, 6), tabard, 0, .46, -.02, -.25, 0, 0);              // гребень в цвет команды
++  add(head, new THREE.SphereGeometry(.04, 8, 6), KM.gold, 0, .37, 0);
++  // --- руки (шарнир в плече)
++  const mkArm = side => {
++    const sh = new THREE.Group(); sh.position.set(side * .36, .56, 0); torso.add(sh);
++    add(sh, new THREE.CylinderGeometry(.08, .07, .34, 8), KM.mail, 0, -.17, 0);
++    add(sh, new THREE.SphereGeometry(.085, 8, 6), KM.darkSteel, 0, -.34, 0);                                    // локоть
++    const fore = new THREE.Group(); fore.position.set(0, -.34, 0); sh.add(fore);
++    add(fore, new THREE.CylinderGeometry(.075, .065, .32, 8), KM.steel, 0, -.16, 0);                            // наруч
++    const hand = new THREE.Group(); hand.position.set(0, -.34, 0); fore.add(hand);
++    add(hand, new THREE.SphereGeometry(.07, 8, 6), KM.leather, 0, 0, 0);                                        // перчатка
++    return { sh, fore, hand };
++  };
++  const AL = mkArm(1), AR = mkArm(-1);
++  const rig = { root, tabard, torso, head, cape, legL: L, legR: R, armL: AL, armR: AR, handR: AR.hand, handL: AL.hand, phase: 0, speed: 0, breathe: 0 };
++  // update: speed 0 = стоит, 1 = шаг, ~1.8 = бег; swing = {pose} необязательная поза правой руки
++  rig.update = function (dt, speed, armPose) {
++    this.speed += (speed - this.speed) * Math.min(1, dt * 10);
++    const s = this.speed; this.phase += dt * (3 + s * 3.4) * (s > .05 ? 1 : 0); this.breathe += dt * 2;
++    const k = Math.min(1, s), a = Math.sin(this.phase), b = Math.sin(this.phase + Math.PI);
++    const amp = .62 * k + .2 * Math.max(0, s - 1);
++    this.legL.hip.rotation.x = a * amp; this.legR.hip.rotation.x = b * amp;
++    this.legL.shin.rotation.x = Math.max(0, -a) * amp * 1.15; this.legR.shin.rotation.x = Math.max(0, -b) * amp * 1.15;
++    this.torso.position.y = .92 + Math.abs(Math.sin(this.phase)) * .05 * k + Math.sin(this.breathe) * .006;
++    this.torso.rotation.y = a * .09 * k; this.head.rotation.y = -a * .05 * k;
++    this.torso.rotation.x = .05 * Math.min(1.5, s);
++    this.cape.rotation.x = .08 + Math.min(1.2, s) * .38 + Math.sin(this.phase * 2) * .05 * k;
++    // левая рука машет; правая (с оружием) — по позе
++    this.armL.sh.rotation.x = b * .5 * k - .08; this.armL.sh.rotation.z = -.08; this.armL.fore.rotation.x = -.25 - Math.max(0, b) * .35 * k;
++    if (armPose) { this.armR.sh.rotation.x = armPose.x; this.armR.sh.rotation.y = armPose.y || 0; this.armR.sh.rotation.z = armPose.z || 0; this.armR.fore.rotation.x = armPose.fore ?? -.5; }
++    else { this.armR.sh.rotation.x = a * .3 * k - .9; this.armR.sh.rotation.y = 0; this.armR.sh.rotation.z = .1; this.armR.fore.rotation.x = -.7; }
++  };
++  rig.update(0, 0);
++  return rig;
++}
++
++const knightRig = buildKnight(0x3a6fd8); body.add(knightRig.root); let knightSpeed = 0;
+ hasAnim = false;
+-statusEl.textContent = 'Готово. Синий астронавт-картошка готов к бою.';
++statusEl.textContent = 'Готово. Рыцарь готов к бою.';
+ function play(name) {
+   if (!hasAnim) return; const next = actions[name]; if (!next || next === active) return;
+   next.enabled = true; next.reset().setEffectiveWeight(1).fadeIn(.25).play(); if (active) active.fadeOut(.25); active = next;
+@@ -1142,7 +1428,8 @@
+   mg.fillStyle = '#b5935f'; mg.beginPath(); mg.arc(0, 0, 8.6, 0, 7); mg.fill();
+   mg.fillStyle = '#b5533a'; for (const bx of boxes) if (bx.x1 - bx.x0 > 3) mg.fillRect(bx.x0, bx.z0, bx.x1 - bx.x0, bx.z1 - bx.z0);
+   for (const r of resources) { if (r.depleted) continue; mg.fillStyle = r.type === 'tree' ? '#245c2c' : r.type === 'rock' ? '#c4c9c6' : '#f2a935'; mg.beginPath(); mg.arc(r.x, r.z, r.type === 'tree' ? 1.1 : 1.3, 0, 7); mg.fill(); }
+-  mg.fillStyle = '#ff5a4a'; for (const d of dummies) { mg.beginPath(); mg.arc(d.x, d.z, 1.2, 0, 7); mg.fill(); }
++  mg.fillStyle = '#ff5a4a'; for (const d of dummies) { if (d.fogHidden) continue; mg.beginPath(); mg.arc(d.x, d.z, 1.2, 0, 7); mg.fill(); }
++  if (FOG.enabled) { mg.globalAlpha = .93; mg.drawImage(fowMask, -FOG.WORLD / 2, -FOG.WORLD / 2, FOG.WORLD, FOG.WORLD); mg.globalAlpha = 1; }
+   mg.restore(); mg.setTransform(1, 0, 0, 1, 0, 0);
+   const fx = Math.sin(yaw), fz = Math.cos(yaw), sx = c * fx - s * fz, sy = s * fx + c * fz, ang = Math.atan2(sy, sx);
+   mg.save(); mg.translate(W / 2, W / 2); mg.rotate(ang); mg.fillStyle = '#fff'; mg.strokeStyle = '#000'; mg.lineWidth = 1.5;
+@@ -1178,6 +1465,94 @@
+ }
+ applyQuality();
+ 
++/* =====================  ТУМАН ВОЙНЫ  =====================
++   Три состояния: видно сейчас (полный цвет) / исследовано (приглушённая «память») / неизвестно (чёрное).
++   Радиус видимости совпадает с серверным VISION_RADIUS (сервер может прислать свой в world-vision).
++   Враги вне видимости не рисуются; союзники делятся обзором. Это только отображение — авторитет у сервера. */
++const FOG = { R: 20, SOURCES: 6, MASK: 256, WORLD: 300, enabled: true };
++const fowMask = document.createElement('canvas'); fowMask.width = fowMask.height = FOG.MASK;
++const fowCtx = fowMask.getContext('2d');
++fowCtx.fillStyle = '#000'; fowCtx.fillRect(0, 0, FOG.MASK, FOG.MASK);        // alpha=1 → не исследовано
++const fowTex = new THREE.CanvasTexture(fowMask); fowTex.flipY = false; fowTex.minFilter = fowTex.magFilter = THREE.LinearFilter; fowTex.generateMipmaps = false;
++const fowU = {
++  fowSrc: { value: Array.from({ length: FOG.SOURCES }, () => new THREE.Vector3(0, 0, 0)) },
++  fowMap: { value: fowTex },
++  fowK: { value: new THREE.Vector2(1 / FOG.WORLD, FOG.WORLD / 2) },
++  fowOn: { value: 1 }
++};
++const fowSources = []; let fowPaintAt = [], fowDirty = false, fowPatchT = 0;
++const FOW_VERT_DECL = 'varying vec3 vFowPos;';
++const FOW_VERT_BODY = `
++  vec4 fowP = vec4(transformed, 1.0);
++  #ifdef USE_INSTANCING
++    fowP = instanceMatrix * fowP;
++  #endif
++  vFowPos = (modelMatrix * fowP).xyz;`;
++const FOW_FRAG_DECL = `varying vec3 vFowPos; uniform vec3 fowSrc[${FOG.SOURCES}]; uniform sampler2D fowMap; uniform vec2 fowK; uniform float fowOn;
++  float fowVisNow(vec2 p) { float v = 0.0; for (int i = 0; i < ${FOG.SOURCES}; i++) { vec3 s = fowSrc[i]; if (s.z > 0.0) v = max(v, 1.0 - smoothstep(s.z * 0.68, s.z, length(p - s.xy))); } return v; }`;
++const FOW_FRAG_BODY = `
++  if (fowOn > 0.5) {
++    float vNow = fowVisNow(vFowPos.xz);
++    float ex = 1.0 - texture2D(fowMap, (vFowPos.xz + fowK.y) * fowK.x).a;
++    vec3 fc = gl_FragColor.rgb; float lum = dot(fc, vec3(.30, .59, .11));
++    vec3 memory = mix(fc, vec3(lum), .6) * vec3(.40, .44, .56);
++    vec3 outc = mix(vec3(.010, .014, .022), memory, smoothstep(0.0, 1.0, ex));
++    gl_FragColor.rgb = mix(outc, fc, vNow);
++  }`;
++function fowPatchMaterial(m) {
++  if (!m || m.userData.fow || !(m.isMeshStandardMaterial || m.isMeshBasicMaterial || m.isMeshLambertMaterial || m.isMeshPhongMaterial)) return;
++  m.userData.fow = true;
++  const prev = m.onBeforeCompile, prevKey = prev ? prev.toString() : '';
++  m.onBeforeCompile = function (sh, r) {
++    if (prev) prev.call(this, sh, r);
++    Object.assign(sh.uniforms, fowU);
++    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\n' + FOW_VERT_DECL).replace('#include <project_vertex>', '#include <project_vertex>\n' + FOW_VERT_BODY);
++    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\n' + FOW_FRAG_DECL).replace('#include <fog_fragment>', '#include <fog_fragment>\n' + FOW_FRAG_BODY);
++  };
++  m.customProgramCacheKey = () => prevKey + '|fow';
++  m.needsUpdate = true;
++}
++function fowPatchScene() {
++  scene.traverse(o => { if (o.material) { if (Array.isArray(o.material)) o.material.forEach(fowPatchMaterial); else fowPatchMaterial(o.material); } });
++}
++// Список источников обзора: я + союзники (общая видимость команды)
++function fowCollect() {
++  fowSources.length = 0; fowSources.push({ x: pos.x, z: pos.z, r: FOG.R });
++  const mine = window.mpTeam, rm = window.mpRemotes;
++  if (mine && rm) for (const r of rm.values()) if (r.team === mine && !r.dead && r.group) fowSources.push({ x: r.group.position.x, z: r.group.position.z, r: FOG.R });
++  return fowSources;
++}
++function fowInVision(x, z, margin = .95) {
++  if (!FOG.enabled) return true;
++  for (const s of fowSources) if (Math.hypot(x - s.x, z - s.z) <= s.r * margin) return true;
++  return false;
++}
++function fowPaint(sources) {
++  const k = FOG.MASK / FOG.WORLD, ctx = fowCtx; ctx.globalCompositeOperation = 'destination-out';
++  for (let i = 0; i < sources.length; i++) {
++    const s = sources[i], last = fowPaintAt[i];
++    if (last && Math.hypot(s.x - last.x, s.z - last.z) < .6) continue;
++    fowPaintAt[i] = { x: s.x, z: s.z };
++    const cx = (s.x + FOG.WORLD / 2) * k, cy = (s.z + FOG.WORLD / 2) * k, rad = s.r * k;
++    const g = ctx.createRadialGradient(cx, cy, rad * .55, cx, cy, rad * 1.02);
++    g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
++    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(cx, cy, rad * 1.02, 0, 7); ctx.fill(); fowDirty = true;
++  }
++  fowPaintAt.length = sources.length; ctx.globalCompositeOperation = 'source-over';
++}
++function fowUpdate(dt) {
++  const src = fowCollect();
++  for (let i = 0; i < FOG.SOURCES; i++) { const s = src[i], u = fowU.fowSrc.value[i]; if (s) u.set(s.x, s.z, s.r); else u.set(0, 0, 0); }
++  fowPaint(src);
++  if (fowDirty) { fowTex.needsUpdate = true; fowDirty = false; }
++  fowPatchT += dt; if (fowPatchT > .6) { fowPatchT = 0; fowPatchScene(); }
++  fowU.fowOn.value = FOG.enabled ? 1 : 0;
++}
++
++function fowApplyEntities() {
++  for (const d of dummies) { const v = fowInVision(d.x, d.z); d.g.visible = v; d.fogHidden = !v; }
++}
++
+ /* =====================  главный цикл  ===================== */
+ let yaw = 0, targetYaw = 0, gameT = 0, last = performance.now(), frame = 0, stuckT = 0, stuckD = 0, leanT = 0;
+ /* =====================  БОЙ: ветка мечей Albion  ===================== */
+@@ -1674,6 +2049,7 @@
+     _p.set(d.x, 3.15, d.z).project(camera);
+     const L = d.label;
+     if (!(_p.z < 1 && Math.abs(_p.x) < 1.1 && Math.abs(_p.y) < 1.1)) { L.el.style.display = 'none'; continue; }
++    if (d.fogHidden) { L.el.style.display = 'none'; continue; }
+     L.el.style.display = 'block'; L.el.style.left = ((_p.x * .5 + .5) * innerWidth) + 'px'; L.el.style.top = ((-_p.y * .5 + .5) * innerHeight) + 'px';
+     const nm = `${d.name} · Σ ${d.total.toLocaleString('ru-RU')}`; if (nm !== L.nm.textContent) L.nm.textContent = nm;
+     const b = []; for (const k in d.st) b.push(BADGES[k](d.st[k])); for (const k in d.dots) b.push(DOTNAMES[k]);
+@@ -1696,8 +2072,8 @@
+   return g;
+ }
+ const weaponR = new THREE.Group(), weaponL = new THREE.Group(); player.add(weaponR, weaponL);
+-let boneR = null, boneL = null;
+-function onModelReady(model) { model.traverse(o => { if (o.isBone) { if (/RightHand$/.test(o.name)) boneR = o; else if (/LeftHand$/.test(o.name)) boneL = o; } }); }
++let boneR = knightRig.handR, boneL = knightRig.handL;   // оружие крепится к рукам рыцаря
++function onModelReady(model) { return; model.traverse(o => { if (o.isBone) { if (/RightHand$/.test(o.name)) boneR = o; else if (/LeftHand$/.test(o.name)) boneL = o; } }); }
+ function buildWeaponModel(look){
+  if(look?.type!=='axe'&&look?.type!=='mace')return buildSword(look);
+  const g=new THREE.Group(),len=look.len||1.3,style=look.style||look.type;
+@@ -1835,6 +2211,19 @@
+   if (bone) { bone.getWorldPosition(_hv); player.worldToLocal(_hv); holder.position.copy(_hv); } else holder.position.set(fb[0], fb[1], fb[2]);
+ }
+ function swing(kind, dur) { swingS = { kind, t: 0, dur }; }
++// Поза правой руки рыцаря следует за замахом оружия
++function knightArmPose() {
++  if (!swingS) return null;
++  const T = swingS.t, D = swingS.dur, k = Math.min(1, T / D), e = 1 - Math.pow(1 - k, 3), rec = T > D ? Math.max(0, 1 - (T - D) / .15) : 1;
++  let x = -.9, y = 0, fore = -.7;
++  switch (swingS.kind) {
++    case 'slash': x = -1.9 + 1.7 * e; y = -.55 + 1.1 * e; fore = -.45; break;
++    case 'chop': x = -2.8 + 2.4 * e; fore = -.25 - .5 * (1 - e); break;
++    case 'stab': x = -1.5; fore = -.15 - .85 * Math.sin(e * Math.PI); break;
++    case 'spin': x = -1.4; y = -.4 + e * Math.PI * 4; fore = -.3; break;
++  }
++  return { x: -.9 + (x + .9) * rec, y: y * rec, z: .1, fore: -.7 + (fore + .7) * rec };
++}
+ function updateWeapon(dt) {
+   const w = WEAPONS[loadout.weapon];
+   placeHand(weaponR, boneR, [-.5, 1.15, .3]); if (w.dual) placeHand(weaponL, boneL, [.5, 1.15, .3]);
+@@ -1989,7 +2378,7 @@
+     const p = toScreen(pos.x, 3.4, pos.z); gbar.style.display = 'block'; gbar.style.left = p.x + 'px'; gbar.style.top = p.y + 'px'; gfill.style.width = Math.min(100, gather.t / def.time * 100) + '%';
+     if (gather.t >= def.time) finishGather(r);
+   } else { body.rotation.x += (0 - body.rotation.x) * Math.min(1, dt * 10); if (!gather.active) gbar.style.display = 'none'; }
+-  if (!hasAnim) body.position.y = moving ? Math.abs(Math.sin(gameT * 10)) * .12 : 0;
++  knightSpeed = dashing ? 2.2 : moving ? (running ? 1.8 : 1) * Math.min(1.6, msMul()) : 0;
+ }
+ function updateHover() {
+   let r = null, dm = null;
+@@ -2013,11 +2402,12 @@
+     const k = deathAnim * deathAnim * (3 - 2 * deathAnim);
+     body.rotation.z = 1.48 * k; body.rotation.x = .12 * k; body.position.y = -.12 * k;
+     weaponR.rotation.z = -.35 * k; weaponL.rotation.z = -.35 * k;
+-  } else updateWeapon(dt);
++  } else { updateWeapon(dt); knightRig.update(dt, knightSpeed, knightArmPose()); }
++  fowUpdate(dt); fowApplyEntities();
+   updateRespawn(); updateChips(dt); updateCamera(dt);
+   for (const r of resources) if (r.pop < 1) { r.pop = Math.min(1, r.pop + dt * 2.2); r.mesh.scale.setScalar(r.s * (.2 + .8 * r.pop)); }
+   if (marker.visible) { const k = 1 + .15 * Math.sin(gameT * 8); marker.scale.set(k, k, k); }
+-  flameA.scale.set(1, 1 + .25 * Math.sin(gameT * 13), 1); flameA.rotation.y += dt * 3; flameB.scale.set(1, 1 + .3 * Math.sin(gameT * 17 + 1), 1);
++  flameA.scale.set(1, 1 + .25 * Math.sin(gameT * 13), 1); flameA.rotation.y += dt * 3; flameB.scale.set(1, 1 + .3 * Math.sin(gameT * 17 + 1), 1); if (fireLight) fireLight.intensity = 2.0 + .5 * Math.sin(gameT * 11) + .3 * Math.sin(gameT * 23 + 2);
+   if (frame % 4 === 0) updateHover(); if (frame % 6 === 1) drawMini(); if (frame % 2 === 0) { updateLabels(); renderHud(); }
+   renderer.render(scene, camera);
+ }
+@@ -2049,7 +2439,7 @@
+   document.body.appendChild(mpPingBadge);
+ 
+   let mpName = 'Игрок-' + Math.floor(100 + Math.random() * 900);
+-  const remotes = new Map();
++  const remotes = new Map(); window.mpRemotes = remotes;
+   let mpId = null, socket = null, lastSend = 0, mpTargetId = null, lastAttack = 0, lastInputSend = 0, lastPingSend = 0, pingMs = null, lastMpFrame = 0;
+   window.mpConnected = false;
+   window.mpEconomySend = payload => {
+@@ -2138,24 +2528,19 @@
+   function addRemote(p) {
+     if (!p || p.id === mpId || remotes.has(p.id)) return;
+     const group = new THREE.Group();
+-    const material = new THREE.MeshStandardMaterial({color:p.team === 'red' ? 0xc94d42 : 0x438fe0, roughness:.9});
+-    const potato = new THREE.Group();
+-    const mesh = new THREE.Mesh(new THREE.SphereGeometry(.48, 12, 10), material);
+-    mesh.scale.set(.88, 1.18, .78); mesh.position.y = .82; mesh.castShadow = true; mesh.userData.mpPlayerId = p.id; potato.add(mesh);
+-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(.35, 12, 8, 0, Math.PI * 2, 0, Math.PI * .58), new THREE.MeshStandardMaterial({color:0xb8d9e8, roughness:.45, metalness:.25}));
+-    helmet.position.set(0, 1.32, 0); helmet.castShadow = true; potato.add(helmet);
+-    const visor = new THREE.Mesh(new THREE.SphereGeometry(.245, 12, 8, 0, Math.PI * 2, .28, 1.05), new THREE.MeshStandardMaterial({color:0x142a3d, roughness:.22, metalness:.35, emissive:0x071827}));
+-    visor.scale.set(1, .62, .55); visor.position.set(0, 1.34, .22); potato.add(visor);
+-    const pack = new THREE.Mesh(new THREE.BoxGeometry(.34, .52, .22), new THREE.MeshStandardMaterial({color:0xd6dce1, roughness:.8})); pack.position.set(0, .83, -.36); pack.castShadow = true; potato.add(pack);
+-    const bootMat = new THREE.MeshStandardMaterial({color:0x243746, roughness:1});
+-    for (const x of [-.2,.2]) { const boot = new THREE.Mesh(new THREE.SphereGeometry(.14, 8, 6), bootMat); boot.scale.set(1,.65,1.3); boot.position.set(x,.17,.04); potato.add(boot); }
++    const teamHex = p.team === 'red' ? 0xc94d42 : 0x3a6fd8;
++    const rig = buildKnight(teamHex), material = rig.tabard, potato = new THREE.Group();
++    potato.add(rig.root);
++    // Невидимая «капсула» для выбора цели кликом (как раньше тело-картошка)
++    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(.55, .55, 1.9, 10), new THREE.MeshBasicMaterial({ visible: false }));
++    mesh.position.y = .95; mesh.userData.mpPlayerId = p.id; potato.add(mesh);
+     potato.userData.mpPlayerId = p.id; group.add(potato);
+     const label = makeLabel(p.name); label.userData.mpPlayerId = p.id; group.add(label);
+     group.position.set(Number(p.x)||0, 0, Number(p.z)||0);
+     group.rotation.y = Number(p.rotation)||0;
+     scene.add(group);
+     const hp = Number.isFinite(Number(p.hp)) ? Number(p.hp) : 1000;
+-    remotes.set(p.id, {group, mesh, potato, label, material, team:p.team, targetX:group.position.x, targetZ:group.position.z, targetRot:group.rotation.y, name:p.name||'Игрок', hp, dead:hp <= 0, charges:Number(p.charges)||0, chargeExpiresAt:Number(p.chargeExpiresAt)||0, swingT:0});
++    remotes.set(p.id, {group, mesh, potato, rig, label, material, team:p.team, baseColor:teamHex, targetX:group.position.x, targetZ:group.position.z, targetRot:group.rotation.y, name:p.name||'Игрок', hp, dead:hp <= 0, charges:Number(p.charges)||0, chargeExpiresAt:Number(p.chargeExpiresAt)||0, swingT:0});
+     if (hp <= 0) setRemoteDead(remotes.get(p.id), true);
+     remoteMeshes.set(p.id, mesh);
+   }
+@@ -2163,7 +2548,7 @@
+     if (!r) return;
+     r.dead = dead;
+     r.potato.rotation.z = dead ? 1.42 : 0;
+-    r.mesh.material.color.setHex(dead ? 0x777777 : 0x438fe0);
++    r.material.color.setHex(dead ? 0x777777 : (r.baseColor || 0x3a6fd8));
+     r.potato.position.y = dead ? -.02 : 0;
+     r.label.visible = !dead;
+   }
+@@ -2182,7 +2567,7 @@
+     if (r.snapshots.length > 12) r.snapshots.splice(0, r.snapshots.length - 12);
+     r.targetX = Number(p.x)||0; r.targetZ = Number(p.z)||0;
+     r.targetRot = Number(p.rotation)||0; r.hp = Number.isFinite(Number(p.hp)) ? Number(p.hp) : r.hp;
+-    if (p.team) { r.team=p.team; r.material?.color.setHex(p.team === 'red' ? 0xc94d42 : 0x438fe0); }
++    if (p.team) { r.team=p.team; r.baseColor = p.team === 'red' ? 0xc94d42 : 0x3a6fd8; if (!r.dead) r.material?.color.setHex(r.baseColor); }
+     r.charges = Number(p.charges)||0; r.chargeExpiresAt = Number(p.chargeExpiresAt)||0; r.weapon = p.weapon || r.weapon || 'broadsword';
+     r.statuses = p.statuses || r.statuses || {};
+     setRemoteDead(r, r.hp <= 0);
+@@ -2233,6 +2618,7 @@
+       } else if (msg.type === 'factory-menu-closed') {
+         closeEconomy(); if(window.mpToast && msg.message) window.mpToast(msg.message);
+       } else if (msg.type === 'world-vision') {
++        if (Number.isFinite(Number(msg.visionRadius)) && Number(msg.visionRadius) > 4) FOG.R = Number(msg.visionRadius);
+         // Reconcile the visible resource set whenever the server updates vision.
+         // Empty snapshots are meaningful: don't leave client-only fallback resources on the map.
+         syncResourceWorld(Array.isArray(msg.resources) ? msg.resources : []);
+@@ -2477,8 +2863,21 @@
+         r.renderRot = a.rot + dRot * t;
+         while (snaps.length > 2 && snaps[1].t < renderAt - 250) snaps.shift();
+       } else { r.renderX = r.targetX; r.renderZ = r.targetZ; r.renderRot = r.targetRot; }
++      const px0 = r.group.position.x, pz0 = r.group.position.z;
+       r.group.position.x += (r.renderX - r.group.position.x) * smooth;
+       r.group.position.z += (r.renderZ - r.group.position.z) * smooth;
++      if (r.rig && !r.dead) {
++        const spd = Math.hypot(r.group.position.x - px0, r.group.position.z - pz0) / Math.max(.001, frameDt) / CFG.WALK;
++        let pose = null;
++        if (r.swingT > 0) { const k = 1 - r.swingT, e = 1 - Math.pow(1 - k, 3); pose = { x: -2.6 + 2.2 * e, y: 0, z: .1, fore: -.4 }; }
++        r.rig.update(frameDt, spd > .3 ? Math.min(2, spd) : 0, pose);
++        const wid = r.weapon || 'broadsword';
++        if (r.weaponShown !== wid && typeof WEAPONS !== 'undefined' && WEAPONS[wid]) {
++          if (r.weaponObj) { r.rig.handR.remove(r.weaponObj); r.weaponObj.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
++          r.weaponObj = buildWeaponModel(WEAPONS[wid].look); r.weaponObj.rotation.x = Math.PI / 2 + .5; r.weaponObj.position.set(0, 0, .02); r.rig.handR.add(r.weaponObj); r.weaponShown = wid;
++        }
++      }
++      r.fogHidden = !fowInVision(r.group.position.x, r.group.position.z); r.group.visible = !r.fogHidden;
+       let dr = r.renderRot - r.group.rotation.y; while (dr > Math.PI) dr -= Math.PI * 2; while (dr < -Math.PI) dr += Math.PI * 2;
+       r.group.rotation.y += dr * smooth;
+     }
+--- a/server.js
++++ b/server.js
+@@ -64,8 +64,9 @@
+   }
+   return best;
+ }
++const BRIDGE_HALF_L = 9.2, BRIDGE_HALF_W = 3.1; // размеры видимого настила моста; синхронно с клиентом
+ function isBridgeCrossing(x, z) {
+-  return RIVER_BRIDGES.some(([bx, bz]) => Math.abs(x - bx) <= 4.15 && Math.abs(z - bz) <= 2.15);
++  return RIVER_BRIDGES.some(([bx, bz]) => Math.abs(x - bx) <= BRIDGE_HALF_L && Math.abs(z - bz) <= BRIDGE_HALF_W);
+ }
+ function isRiverBlocked(x, z) {
+   return !isBridgeCrossing(x, z) && closestRiverPoint(x, z).distance < RIVER_BLOCK_RADIUS;
+@@ -417,7 +418,7 @@
+ function factoryWorldSnapshot(viewer) { return worldFactories.filter(f => !viewer || isInVision(viewer,f.x,f.z)).map(publicFactory); }
+ function sendVisionSnapshot(p) {
+   const now=Date.now(); if(now-(p.lastVisionSyncAt||0)<VISION_SYNC_MS)return; p.lastVisionSyncAt=now;
+-  send(p.ws,{type:"world-vision",players:snapshot(p),resources:resourceWorldSnapshot(p),factories:factoryWorldSnapshot(p)});
++  send(p.ws,{type:"world-vision",visionRadius:VISION_RADIUS,players:snapshot(p),resources:resourceWorldSnapshot(p),factories:factoryWorldSnapshot(p)});
+ }
+ function economySnapshot(p) {
+   const e = p.economy || { items: {}, factories: [] };
+--- a/tests/pvp.integration.js
++++ b/tests/pvp.integration.js
+@@ -57,8 +57,8 @@
+ assert.ok(clientHtml.includes("Broad, irregular ground cover patches"), "ground texture includes clearly visible large-scale color variation");
+ assert.ok(serverSource.includes('ship: { name: "Корабль", inputs: { plank: 20, iron_ingot: 4 }, output: { ship: 1 }, seconds: 45, station: "shipyard" }'), "ship construction consumes refined materials at a shipyard");
+ assert.ok(serverSource.includes('shipyard: { name: "Верфь", cost: { wood: 20, stone: 12, plank: 8 }, recipe: "ship" }'), "shipyard has a server-validated construction cost");
+-assert.ok(clientHtml.includes("addPortDock(-49, -1); addPortDock(49, 1)"), "map has docks at both river mouths");
+-assert.ok(clientHtml.includes("addPrototypeBoat(1.5, -42.5, 0)"), "map includes prototype ship visuals");
++assert.ok(clientHtml.includes("addPortDock(-111, -1); addPortDock(111, 1)"), "map has docks at both river mouths");
++assert.ok(clientHtml.includes("addPrototypeBoat(riverCenter[0][0] + 5, -121, 0)"), "map includes prototype ship visuals");
+ assert.ok(clientHtml.includes("{id:'shipyard',name:'Верфь'") && clientHtml.includes("{id:'ship',name:'Корабль'"), "economy UI exposes shipyard construction and ship production");
+ assert.ok(serverSource.includes("Math.hypot(p.x - node.x, p.z - node.z) > 3.6"), "resource gathering validates server-side proximity");
+ assert.ok(serverSource.includes("closestRiverPoint(leftX, z).distance < 5.5") && serverSource.includes("closestRiverPoint(rightX, z).distance < 5.5"), "server resource generation excludes the river and its banks on both mirrored sides");
+@@ -71,7 +71,7 @@
+ assert.ok(clientHtml.includes("function isRiverBlocked(x, z)"), "client collision system treats the river as an obstacle");
+ assert.ok(!clientHtml.includes("createLocalResourceFallback();"), "resource nodes remain server-authoritative");
+ assert.ok(clientHtml.includes("const RIVER_BLOCK_RADIUS = 3.15 * MAP_SCALE;"), "client river collision leaves a narrow, consistent bank margin");
+-assert.ok(clientHtml.includes("Math.abs(x - bx) <= 4.15 && Math.abs(z - bz) <= 2.15"), "bridge collision matches the visible bridge deck footprint");
++assert.ok(clientHtml.includes("Math.abs(x - bx) <= BRIDGE_HALF_L && Math.abs(z - bz) <= BRIDGE_HALF_W"), "bridge collision matches the visible bridge deck footprint");
+ assert.ok(clientHtml.includes("only the three bridge decks permit crossing"), "client movement collision preserves the three bridge crossings");
+ assert.ok(serverSource.includes("const MAP_SCALE = 2.3;") && clientHtml.includes("const MAP_SCALE = 2.3;"), "server and client use the same expanded map scale");
+ assert.ok(serverSource.includes("function chooseTeam()") && serverSource.includes("team===p.team"), "server assigns balanced teams and prevents friendly fire");
+@@ -116,10 +116,10 @@
+ assert.ok(clientHtml.includes("sp.target === 'ground' || groundAoE.has(String(abilityId))"), "multiplayer AoE casts face their ground aim point");
+ assert.ok(clientHtml.includes("float coastLimit = 0.90"), "world ground is clipped to an irregular island shoreline");
+ assert.ok(clientHtml.includes("const riverCenter = [[0,-55]"), "world map includes a central winding river");
+-assert.ok(clientHtml.includes("addRiverBridge(0, -28)") && clientHtml.includes("addRiverBridge(0, 28)"), "river prototype includes two visible crossings");
+-assert.ok(clientHtml.includes("makeHouse(-13, -37") && clientHtml.includes("makeHouse(37, -7") && clientHtml.includes("makeHouse(-13, 37"), "village buildings are distributed across distinct island regions");
++assert.ok(clientHtml.includes("for (const [bx, bz] of riverBridges) addRiverBridge(bx, bz);") && clientHtml.includes("[[0,-28],[-7,0],[0,28]]"), "river prototype includes two visible crossings");
++assert.ok(clientHtml.includes("[-13, -37, 8, 6.6") && clientHtml.includes("[37, -7, 8, 6.6") && clientHtml.includes("[-13, 37, 7.4, 6.4"), "village buildings are distributed across distinct island regions");
+ assert.ok(clientHtml.includes("[[0, -8], [0, -20], [0, -28], [-5, -34], [-13, -37]]") && clientHtml.includes("[[0, 0], [-7, 0], [-18, -2], [-27, -5], [-37, -7]]"), "road network connects outer villages to river crossings and central hub");
+-assert.ok(clientHtml.includes("addRiverBridge(-7, 0)"), "central river route has a crossing near the hub");
++assert.ok(clientHtml.includes("[-7,0]") && clientHtml.includes("addRiverBridge(bx, bz)"), "central river route has a crossing near the hub");
+ assert.ok(clientHtml.includes("color: 0x1b5977"), "island is surrounded by ocean rather than an outer grass plane");
+ assert.ok(clientHtml.includes("window.mpClearTarget(true);"), "Escape clears the selected PvP target");
+ assert.ok(clientHtml.includes("if (econPanel.classList.contains('open')) return;"), "Escape closes an open inventory panel before clearing the target");
