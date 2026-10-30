@@ -19,6 +19,9 @@ jobs:
       - name: Check server JavaScript
         if: always()
         run: node --check server.js
+      - name: Check siege client JavaScript
+        if: always()
+        run: node --check siege/siege-client.js
       - name: Check inline game scripts
         if: always()
         run: |
