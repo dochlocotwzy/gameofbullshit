@@ -203,7 +203,7 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     const resourceYield = resourceNode.kind === "wood" ? 3 : 2;
     // Move the second player into the same visible area so the depletion broadcast can be verified without leaking hidden nodes.
     b.send(JSON.stringify({type:"state",x:resourceNode.x,z:resourceNode.z,rotation:0}));
-    await waitMessage(a, m => m.type === "player" && m.player?.id === bId);
+    // Enemy movement is not broadcast through fog of war; continue without expecting a hidden player update.
     a.send(JSON.stringify({type:"state",x:resourceNode.x,z:resourceNode.z,rotation:0}));
     a.send(JSON.stringify({type:"economy-gather",resource:resourceNode.kind,nodeId:resourceNode.id,requestId:"resource-test-1"}));
     const gatheredEconomy = await waitMessage(a, m => m.type === "economy-state" && m.action === "gather" && m.ok === true);
