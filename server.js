@@ -744,11 +744,12 @@ wss.on("connection", (ws) => {
       if (factory.hp<=0) {
         const owner=players.get(factory.ownerId);
         if(owner?.economy) owner.economy.factories=owner.economy.factories.filter(f=>f.id!==factory.id);
+        else if(factory.ownerProfileToken){const profile=playerStore.get(factory.ownerProfileToken);if(profile){profile.factories=profile.factories.filter(f=>Number(f.id)!==Number(factory.id));playerStore.save(factory.ownerProfileToken,profile);}}
         worldFactories.splice(worldFactories.indexOf(factory),1);
         for(const player of players.values()) if(player.activeFactoryId===factory.id){player.activeFactoryId=null;send(player.ws,{type:"factory-menu-closed",message:"Фабрика уничтожена."});}
         broadcast({type:"factory-destroyed",factoryId:factory.id,byTeam:p.team});
         if(owner)sendEconomy(owner,"Фабрика уничтожена. Незавершённые материалы потеряны.");
-      } else broadcast({type:"factory-damaged",factory:publicFactory(factory)});
+      } else { const owner=players.get(factory.ownerId); if(owner)savePersistentProfile(owner); else if(factory.ownerProfileToken){const profile=playerStore.get(factory.ownerProfileToken);if(profile){const saved=profile.factories.find(f=>Number(f.id)===Number(factory.id));if(saved)saved.hp=factory.hp;playerStore.save(factory.ownerProfileToken,profile);}} broadcast({type:"factory-damaged",factory:publicFactory(factory)}); }
       return;
     }
     if (msg.type === "state") {
