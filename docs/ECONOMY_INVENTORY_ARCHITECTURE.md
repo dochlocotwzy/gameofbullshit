@@ -13,13 +13,13 @@
 - Every equipment instance stores current and maximum durability.
 - On death, equipped gear is rolled independently: it either breaks and is destroyed, or drops into the world for another player to loot. Higher tier means higher break probability. Backpack contents are not automatically dropped.
 - Server owns inventory, item instances, equipment, durability, blueprints, crafting, trade, loot and death-drop resolution.
-- Player inventory/profile data survives reconnects and server restarts, but a round reset deliberately wipes every profile, including offline players, and clears inventory, equipment, factories, blueprints, craft jobs and world gear drops. A starter T1 broadsword is restored so the next round can begin.
+- Player inventory/profile data survives reconnects and server restarts, but a round reset deliberately wipes every profile, including offline players, and clears inventory, equipment, factories, blueprints, craft jobs and world gear drops. A starter T1 broadsword is restored so the next round can begin. This reset is global and is not limited to currently connected players.
 
 ## Identity and persistence
 
 The current prototype has no account/login system and creates a new random player ID for every WebSocket connection. A display name is not a safe account key. The first implementation uses a random client profile token stored in browser local storage and validated server-side. This is a reconnect identity, not account-grade authentication; users can transfer it and losing browser storage loses access to the profile. A future account system should replace this token.
 
-The server writes profile data atomically to `GAME_DATA_DIR/player-profiles.json`. Render must mount a persistent disk and set `GAME_DATA_DIR` to its mount path. Without a mounted persistent disk, the server filesystem may be ephemeral and restart persistence cannot be guaranteed.
+The server writes profile data atomically to `GAME_DATA_DIR/player-profiles.json`. Player-owned crafting stations and active crafting jobs are included in the saved profile and restored on reconnect. Render must mount a persistent disk and set `GAME_DATA_DIR` to its mount path. Without a mounted persistent disk, the server filesystem may be ephemeral and restart persistence cannot be guaranteed.
 
 ## Tier and quality
 
