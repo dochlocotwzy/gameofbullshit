@@ -64,8 +64,9 @@ function closestRiverPoint(x, z) {
   }
   return best;
 }
+const BRIDGE_HALF_L = 9.2, BRIDGE_HALF_W = 3.1; // размеры видимого настила моста; синхронно с клиентом
 function isBridgeCrossing(x, z) {
-  return RIVER_BRIDGES.some(([bx, bz]) => Math.abs(x - bx) <= 4.15 && Math.abs(z - bz) <= 2.15);
+  return RIVER_BRIDGES.some(([bx, bz]) => Math.abs(x - bx) <= BRIDGE_HALF_L && Math.abs(z - bz) <= BRIDGE_HALF_W);
 }
 function isRiverBlocked(x, z) {
   return !isBridgeCrossing(x, z) && closestRiverPoint(x, z).distance < RIVER_BLOCK_RADIUS;
@@ -417,7 +418,7 @@ function publicFactory(f) { return { id:f.id, type:f.type, name:FACTORY_TYPES[f.
 function factoryWorldSnapshot(viewer) { return worldFactories.filter(f => !viewer || isInVision(viewer,f.x,f.z)).map(publicFactory); }
 function sendVisionSnapshot(p) {
   const now=Date.now(); if(now-(p.lastVisionSyncAt||0)<VISION_SYNC_MS)return; p.lastVisionSyncAt=now;
-  send(p.ws,{type:"world-vision",players:snapshot(p),resources:resourceWorldSnapshot(p),factories:factoryWorldSnapshot(p)});
+  send(p.ws,{type:"world-vision",visionRadius:VISION_RADIUS,players:snapshot(p),resources:resourceWorldSnapshot(p),factories:factoryWorldSnapshot(p)});
 }
 function economySnapshot(p) {
   const e = p.economy || { items: {}, factories: [] };
