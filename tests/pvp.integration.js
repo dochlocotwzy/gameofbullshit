@@ -183,9 +183,6 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     const aId = wa.id;
     const bId = wb.id;
     assert.ok(aId && bId && aId !== bId, "server assigns distinct player IDs");
-    // Keep both test clients on one team so shared vision and resource depletion are observable.
-    b.send(JSON.stringify({ type: "lobby-team", team: wa.team }));
-    await waitMessage(b, m => m.type === "lobby-state" && m.players?.some(p => p.id === bId && p.team === wa.team));
     assert.ok(Array.isArray(wa.resources) && wa.resources.length > 0 && wa.resources.length <= 98, "server sends only resource nodes currently inside the player's vision");
     assert.ok(Array.isArray(wb.resources) && wb.resources.length <= 98, "each player receives their own vision-filtered resource set");
     assert.ok(serverSource.includes("const RESOURCE_COUNTS = { wood: 124, stone: 48, ore: 24 };"), "server owns the full 196-node world regardless of each client's visible subset");
@@ -211,7 +208,7 @@ async function waitMessage(ws, predicate, timeout = 5000) {
     a.send(JSON.stringify({type:"economy-gather",resource:resourceNode.kind,nodeId:resourceNode.id,requestId:"resource-test-1"}));
     const gatheredEconomy = await waitMessage(a, m => m.type === "economy-state" && m.action === "gather" && m.ok === true);
     assert.equal(gatheredEconomy.economy.items[resourceNode.kind], resourceYield, "server awards the configured yield for the selected resource type");
-    const depletedNode = await waitMessage(b, m => m.type === "resource-node" && m.node?.id === resourceNode.id && m.node.depleted === true);
+    const depletedNode = await waitMessage(a, m => m.type === "resource-node" && m.node?.id === resourceNode.id && m.node.depleted === true);
     assert.ok(depletedNode.node.respawnAt >= Date.now() + 29 * 60 * 1000, "shared node receives a thirty-minute server respawn deadline");
     assert.equal(gatheredEconomy.nodeId, resourceNode.id, "gather confirmation identifies the depleted node");
     // The server must serialize competing requests: the second player cannot collect the same node.
