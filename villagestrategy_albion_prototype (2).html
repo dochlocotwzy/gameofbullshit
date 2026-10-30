@@ -71,7 +71,14 @@
   .fl.dmg.dot{color:#ff6a5a;font-size:13px}
   .fl.dmg.info{color:#cfa8ff;font-size:14px}
   #economy-open{position:fixed;left:14px;bottom:144px;z-index:20;padding:7px 10px;font:600 12px system-ui;background:#14201be8;border:1px solid #d7c18b66;color:#f3efe3;border-radius:9px;cursor:pointer}
-  #economy-panel{position:fixed;left:16px;bottom:190px;transform:none;z-index:1100;width:min(430px,calc(100vw - 32px));max-height:min(64vh,560px);overflow:auto;padding:12px;background:#101a15f5;border:1px solid #d7c18b88;border-radius:12px;box-shadow:0 12px 40px #000a;display:none;backdrop-filter:blur(12px)}
+  #economy-panel{position:fixed;left:18px;top:50%;bottom:auto;transform:translateY(-50%);z-index:1100;width:min(460px,calc(100vw - 36px));max-height:72vh;overflow:auto;padding:12px;background:linear-gradient(145deg,#17251df5,#0b120ff7);border:1px solid #d7c18b99;border-radius:13px;box-shadow:0 14px 44px #000b;display:none;backdrop-filter:blur(14px)}
+  #economy-panel .econ-tabs{display:flex;gap:4px;flex-wrap:wrap;margin:10px 0 8px;position:sticky;top:-12px;padding:6px 0;background:#101a15f5;z-index:2}
+  #economy-panel .econ-tabs button{flex:1 1 21%;min-width:76px;font-size:10px;padding:7px 4px}
+  #economy-panel .econ-card{background:linear-gradient(145deg,#ffffff0b,#00000018);border-color:#d7c18b30}
+  #economy-panel .econ-card .durability{height:5px;border-radius:5px;background:#0009;overflow:hidden;margin:5px 0}
+  #economy-panel .econ-card .durability i{display:block;height:100%;background:linear-gradient(90deg,#a84a38,#d8bd64,#7fbd79)}
+  #economy-panel .econ-card .tier{color:#e9d39a;font-size:10px}
+  #economy-panel .econ-card .rarity{font-size:10px;color:#9fc5a4}
   #economy-panel.open{display:block}
   #economy-panel h2{margin:0 0 4px;font-size:16px}
   #economy-panel h3{font-size:12px;color:#f1d99a;margin:10px 0 6px}
@@ -88,7 +95,7 @@
   #economy-panel .econ-muted{color:#aab8aa;font-size:10px;line-height:1.4}
   #economy-panel #econ-close{background:#392b25;border-color:#c88c7566}
   #interact-hint{position:fixed;left:50%;bottom:104px;transform:translateX(-50%);z-index:25;padding:6px 10px;background:#101a15e8;border:1px solid #d7c18b77;border-radius:8px;color:#f3efe3;font-size:12px;pointer-events:none;display:none}
-  @media(max-width:600px){#economy-open{bottom:135px}#economy-panel{left:8px;bottom:174px;width:min(380px,calc(100vw - 16px));max-height:58vh;padding:9px}#economy-panel .econ-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#inv{gap:3px;padding:5px}.slot{width:60px}}
+  @media(max-width:600px){#economy-open{bottom:135px}#economy-panel{left:8px;top:48%;bottom:auto;transform:translateY(-50%);width:min(390px,calc(100vw - 16px));max-height:62vh;padding:9px}#economy-panel .econ-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#inv{gap:3px;padding:5px}.slot{width:60px}}
 
 </style>
 <script src="/lobby/lobby-client.js"></script>
@@ -120,16 +127,18 @@
 <section id="economy-panel" aria-label="Инвентарь, крафт и фабрики">
   <div class="econ-head"><div><h2 id="econ-title">🎒 Инвентарь</h2><div class="econ-muted" id="econ-status">Подключение к серверу…</div></div><button id="econ-close" title="Закрыть (Esc)">✕</button></div>
   <div class="econ-tabs" role="tablist" aria-label="Разделы">
-    <button type="button" class="active" data-econ-tab="items" role="tab" aria-selected="true">🎒 Предметы</button>
+    <button type="button" class="active" data-econ-tab="items" role="tab" aria-selected="true">🎒 Склад</button>
+    <button type="button" data-econ-tab="equipment" role="tab" aria-selected="false">🛡 Экипировка</button>
     <button type="button" data-econ-tab="craft" role="tab" aria-selected="false">⚒ Крафт</button>
     <button type="button" data-econ-tab="factories" role="tab" aria-selected="false">🏭 Фабрики</button>
     <button type="button" data-econ-tab="trade" role="tab" aria-selected="false">🪙 Торговец</button>
   </div>
   <div data-econ-view="items"><div id="econ-items" class="econ-grid"></div></div>
+  <div data-econ-view="equipment" hidden><h3>Надето</h3><div id="econ-equipped" class="econ-grid"></div><h3>Сумка</h3><div id="econ-gear" class="econ-grid"></div></div>
   <div data-econ-view="craft" hidden><h3>Чертежи и производство</h3><div id="econ-recipes" class="econ-grid"></div></div>
   <div data-econ-view="factories" hidden><h3>Построить производство</h3><div id="econ-buildings" class="econ-grid"></div><h3>Твои производственные линии</h3><div id="econ-factories" class="econ-grid"></div></div>
   <div data-econ-view="trade" hidden><h3>Торговая лавка</h3><p class="econ-muted">Купи недостающие материалы или продай излишки. Покупка по полной цене, продажа — за 70% цены. Торговля серверная.</p><div id="econ-trader" class="econ-grid"></div></div>
-  <p class="econ-muted">Прототип: производство серверное, сохранение между перезапусками пока не подключено.</p>
+  <p class="econ-muted">Предметы и экипировка хранятся на сервере. Раунд сбрасывает склад и снаряжение.</p>
 </section>
 <div id="cpanel" class="glass">
   <h2>⚔️ Бой: ветка мечей</h2>
@@ -1041,7 +1050,7 @@ function applyResourceNode(node) {
 
 /* =====================  инвентарь, всплывающие надписи, частицы  ===================== */
 const inv = { wood: 0, stone: 0, ore: 0 };
-const ECON_LABELS = { gold:["🪙","Золото"], wood:["🪵","Древесина"], stone:["🪨","Камень"], ore:["⛏️","Руда"], plank:["🪚","Доски"], charcoal:["⚫","Древесный уголь"], stone_block:["🧱","Каменный блок"], iron_ingot:["🔩","Железный слиток"], steel_ingot:["⚙️","Стальной слиток"], tool_kit:["🧰","Набор инструментов"], ship:["⛵","Корабль"] };
+const ECON_LABELS = { gold:["🪙","Золото"], wood:["🪵","Древесина"], stone:["🪨","Камень"], ore:["⛏️","Руда"], plank:["🪚","Доски"], charcoal:["⚫","Древесный уголь"], stone_block:["🧱","Каменный блок"], iron_ingot:["🔩","Железный слиток"], steel_ingot:["⚙️","Стальной слиток"], mithril_ingot:["💠","Мифриловый слиток"], adamantite_ingot:["🔷","Адамантитовый слиток"], minor_healing_potion:["🧪","Малое лечебное зелье"], minor_energy_potion:["🔮","Малое зелье энергии"], battle_stew:["🍲","Походное рагу"], greater_healing_potion:["🧴","Большое лечебное зелье"], tool_kit:["🧰","Набор инструментов"], ship:["⛵","Корабль"] };
 let economyState = { items:{gold:100,wood:0,stone:0,ore:0,plank:0,charcoal:0,stone_block:0,iron_ingot:0,steel_ingot:0,tool_kit:0,ship:0}, factories:[] };
 const pendingHarvests = new Map();
 const econPanel = $('#economy-panel');
@@ -1067,6 +1076,11 @@ function renderEconomyState(data) {
   const items = economyState.items || {};
   $('#econ-status').textContent = window.mpConnected ? (data?.message || 'Сервер синхронизирован') : 'Оффлайн: экономика доступна только на сервере';
   $('#econ-items').innerHTML = Object.entries(ECON_LABELS).map(([id,meta])=>`<div class="econ-card"><b>${meta[0]} ${meta[1]}</b><span>${Math.max(0,Number(items[id])||0)}</span></div>`).join('');
+  const equipped = economyState.equipment || {};
+  const gear = economyState.gear || [];
+  const gearCard = (item, equippedSlot = false) => { const name=(window.mpWeaponCatalog?.[item.weaponId]?.name)||item.weaponId||item.itemId||'Снаряжение'; const pct=Math.max(0,Math.min(100,Number(item.durability||0)/Math.max(1,Number(item.maxDurability||1))*100)); return `<div class="econ-card"><b>${name}</b><small class="tier">${item.tier||'T1'} · ${item.quality||'ordinary'}</small><div class="durability"><i style="width:${pct}%"></i></div><small>Прочность: ${item.durability||0}/${item.maxDurability||0}</small>${equippedSlot?' <span class="rarity">Надето</span>':`<button data-econ="equip" data-id="${String(item.id||'').replace(/[^a-zA-Z0-9_-]/g,'')}">Экипировать</button>`}</div>`; };
+  $('#econ-equipped').innerHTML = Object.entries(equipped).length ? Object.entries(equipped).map(([slot,item])=>gearCard(item,true)).join('') : '<div class="econ-card">Экипировка пуста</div>';
+  $('#econ-gear').innerHTML = gear.length ? gear.map(item=>gearCard(item,false)).join('') : '<div class="econ-card">В сумке пока нет экипировки</div>';
   const activeFactory = (economyState.factories || []).find(f => Number(f.id) === Number(economyState.activeFactoryId));
   const recipes = [
     {id:'plank',name:'Доски',icon:'🪚',inputs:'2 древесины',output:'1 доска',station:'Лесопилка',stationId:'sawmill'},
@@ -1077,15 +1091,20 @@ function renderEconomyState(data) {
     {id:'steel_ingot',name:'Стальной слиток',icon:'⚙️',inputs:'2 железных слитка + 2 угля',output:'1 стальной слиток',station:'Плавильня',stationId:'smelter'},
     {id:'ship',name:'Корабль',icon:'⛵',inputs:'20 досок + 4 железных слитка',output:'1 корабль',station:'Верфь',stationId:'shipyard'}
   ];
-  $('#econ-recipes').innerHTML = recipes.map(r=>{const enabled=!!activeFactory&&activeFactory.type===r.stationId&&!activeFactory.running&&Number(activeFactory.buildingUntil||0)<=Date.now();return `<div class="econ-card"><b>${r.icon} ${r.name}</b><small>Расход: ${r.inputs}<br>Выход: ${r.output}<br>Станция: ${r.station}</small><button data-econ="craft" data-id="${r.id}" ${enabled?'':'disabled'}>Запустить производство</button></div>`;}).join('');
+  const basicRecipes = recipes.map(r=>{const enabled=!!activeFactory&&activeFactory.type===r.stationId&&!activeFactory.running&&Number(activeFactory.buildingUntil||0)<=Date.now();return `<div class="econ-card"><b>${r.icon} ${r.name}</b><small>Расход: ${r.inputs}<br>Выход: ${r.output}<br>Станция: ${r.station}</small><button data-econ="craft" data-id="${r.id}" ${enabled?'':'disabled'}>Запустить производство</button></div>`;}).join('');
+  const weaponCards = Object.entries(window.mpWeaponCatalog||{}).flatMap(([weaponId,meta])=>['T1','T2','T3','T4','T5'].map(tier=>{const bp=`blueprint:${weaponId}:${tier}`,count=Number(items[bp]||0),enabled=!!activeFactory&&activeFactory.type==='forge'&&!activeFactory.running&&Number(activeFactory.buildingUntil||0)<=Date.now()&&count>0;return `<div class="econ-card"><b>⚔️ ${meta.name} · ${tier}</b><small>Одноразовый чертёж: ${count}<br>Станция: Кузница · качество случайное</small><button data-econ="craft-weapon" data-id="${weaponId}" data-tier="${tier}" ${enabled?'':'disabled'}>Изготовить</button></div>`;})).join('');
+  $('#econ-recipes').innerHTML = basicRecipes + '<h3>Оружие</h3>' + weaponCards;
   const buildings = [
+    {id:'forge',name:'Кузница',cost:'14 древесины + 10 камня + 6 железных слитков',recipe:'Изготавливает оружие T1–T5'},
     {id:'sawmill',name:'Лесопилка',cost:'8 древесины + 4 камня',recipe:'Производит доски'},
     {id:'smelter',name:'Плавильня',cost:'6 древесины + 8 камня',recipe:'Производит железные слитки'},
     {id:'shipyard',name:'Верфь',cost:'20 древесины + 12 камня + 8 досок',recipe:'Строит корабли'}
   ];
   $('#econ-buildings').innerHTML = buildings.map(b=>`<div class="econ-card"><b>🏭 ${b.name}</b><small>${b.recipe}<br>Строительство: ${b.cost}</small><button data-econ="build" data-id="${b.id}">Построить</button></div>`).join('');
-  const traderItems = Object.entries({wood:2,stone:3,ore:5,plank:5,charcoal:4,stone_block:7,iron_ingot:12,steel_ingot:28,tool_kit:18,ship:120});
-  $('#econ-trader').innerHTML = traderItems.map(([id,price])=>{const meta=ECON_LABELS[id]||['📦',id],stock=Number(items[id])||0;return `<div class="econ-card"><b>${meta[0]} ${meta[1]}</b><small>Купить: ${price} золота · продать: ${Math.floor(price*.7)} золота<br>В инвентаре: ${stock}</small><button data-econ="trade-buy" data-id="${id}" data-amount="1">Купить 1</button><button data-econ="trade-buy" data-id="${id}" data-amount="5">Купить 5</button><button data-econ="trade-sell" data-id="${id}" data-amount="1" ${stock<1?'disabled':''}>Продать 1</button><button data-econ="trade-sell" data-id="${id}" data-amount="5" ${stock<5?'disabled':''}>Продать 5</button></div>`}).join('');
+  const traderItems = Object.entries({wood:2,stone:3,ore:5,plank:5,charcoal:4,stone_block:7,iron_ingot:12,steel_ingot:28,mithril_ingot:55,adamantite_ingot:95,minor_healing_potion:18,minor_energy_potion:28,battle_stew:55,greater_healing_potion:110,tool_kit:18,ship:120});
+  const resourceShop = traderItems.map(([id,price])=>{const meta=ECON_LABELS[id]||['📦',id],stock=Number(items[id])||0;return `<div class="econ-card"><b>${meta[0]} ${meta[1]}</b><small>Купить: ${price} золота · продать: ${Math.floor(price*.7)} золота<br>В инвентаре: ${stock}</small><button data-econ="trade-buy" data-id="${id}" data-amount="1">Купить 1</button><button data-econ="trade-sell" data-id="${id}" data-amount="1" ${stock<1?'disabled':''}>Продать 1</button></div>`}).join('');
+  const blueprintShop = Object.entries(window.mpWeaponCatalog||{}).flatMap(([weaponId,meta])=>['T1','T2','T3','T4','T5'].map(tier=>{const price=35*({T1:1,T2:2,T3:3,T4:4,T5:5}[tier]**2);return `<div class="econ-card"><b>📜 ${meta.name} · ${tier}</b><small>Одноразовый чертёж · ${price} золота</small><button data-econ="blueprint-buy" data-id="${weaponId}" data-tier="${tier}">Купить чертёж</button></div>`;})).join('');
+  $('#econ-trader').innerHTML = '<h3>Материалы и расходники</h3>' + resourceShop + '<h3>Чертежи оружия</h3>' + blueprintShop;
   const factories = economyState.factories || [];
   $('#econ-factories').innerHTML = factories.length ? factories.map(f=>{
     const progress=Math.max(0,Math.min(100,Math.round((f.progress||0)*100)));
@@ -1097,7 +1116,7 @@ function renderEconomyState(data) {
 window.renderEconomyState = renderEconomyState;
 const econTabs = [...econPanel.querySelectorAll('[data-econ-tab]')];
 function setEconomyTab(tab) {
-  const titles = {items:'🎒 Инвентарь',craft:'📐 Чертежи и крафт',factories:'🏭 Фабрики',trade:'🪙 Торговец'};
+  const titles = {items:'🎒 Склад',equipment:'🛡 Экипировка',craft:'📐 Чертежи и крафт',factories:'🏭 Фабрики',trade:'🪙 Торговец'};
   econPanel.querySelectorAll('[data-econ-view]').forEach(view=>{view.hidden=view.dataset.econView!==tab;});
   econTabs.forEach(button=>{const active=button.dataset.econTab===tab;button.classList.toggle('active',active);button.setAttribute('aria-selected',String(active));});
   $('#econ-title').textContent=titles[tab]||titles.items;
@@ -1118,6 +1137,9 @@ econPanel.addEventListener('click',ev=>{
   const b=ev.target.closest('button[data-econ]'); if(!b)return;
   const id=b.dataset.id, action=b.dataset.econ;
   if(action==='craft')econSend({type:'economy-craft',recipe:id});
+  else if(action==='equip')econSend({type:'economy-equip',itemId:id});
+  else if(action==='craft-weapon')econSend({type:'economy-craft-weapon',weaponId:id,tier:b.dataset.tier});
+  else if(action==='blueprint-buy')econSend({type:'economy-blueprint-buy',weaponId:id,tier:b.dataset.tier});
   else if(action==='build'){pendingFactoryType=id;closeEconomy();if(window.mpToast)window.mpToast('Выбери свободное место на суше кликом по земле.');}
   else if(action==='run')econSend({type:'economy-run',factoryId:Number(id)});
   else if(action==='stop')econSend({type:'economy-stop',factoryId:Number(id)});
