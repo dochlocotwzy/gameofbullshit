@@ -64,8 +64,8 @@ assert.ok(serverSource.includes("Math.hypot(p.x - node.x, p.z - node.z) > 3.6"),
 assert.ok(serverSource.includes("closestRiverPoint(leftX, z).distance < 5.5") && serverSource.includes("closestRiverPoint(rightX, z).distance < 5.5"), "server resource generation excludes the river and its banks on both mirrored sides");
 assert.ok(serverSource.includes("function isRiverBlocked(x, z)"), "server blocks player positions inside the river");
 assert.ok(serverSource.includes("function safeLandPosition(fromX, fromZ, toX, toZ)"), "server dash movement cannot cross the river outside bridge corridors");
-assert.ok(serverSource.includes("const candidate = { x: Math.round((-31 + Math.cos(angle)*radius) * MAP_SCALE * 100) / 100, z: Math.round((-7 + Math.sin(angle)*radius) * MAP_SCALE * 100) / 100 };"), "player spawn and respawn positions are assigned around the left village");
-assert.ok(serverSource.includes("return isRiverBlocked(candidate.x, candidate.z) ? safeLandPosition(-31*MAP_SCALE, -7*MAP_SCALE, candidate.x, candidate.z) : candidate;"), "left-village spawn and respawn positions are kept on dry land");
+assert.ok(serverSource.includes("const baseX = (team === \"red\" ? 31 : -31);") && serverSource.includes("function spawnPosition(index, team = \"blue\")"), "players spawn on their team-specific bases");
+assert.ok(serverSource.includes("return isRiverBlocked(candidate.x, candidate.z) ? safeLandPosition(baseX*MAP_SCALE, -7*MAP_SCALE, candidate.x, candidate.z) : candidate;"), "team-base spawn and respawn positions are kept on dry land");
 assert.ok(serverSource.includes("accepted = safeLandPosition(p.x, p.z, accepted.x, accepted.z)"), "server clamps river entry to last valid land point instead of snapping to old position");
 assert.ok(clientHtml.includes("style:base.style||w.id") && clientHtml.includes("function buildWeaponModel(look)"), "weapon families have data-driven visual identities and custom meshes");
 assert.ok(clientHtml.includes("function isRiverBlocked(x, z)"), "client collision system treats the river as an obstacle");
