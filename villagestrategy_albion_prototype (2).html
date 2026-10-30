@@ -1080,7 +1080,8 @@ function renderEconomyState(data) {
   const currentWeaponLabel = $('#econ-current-weapon');
   if(currentWeaponLabel)currentWeaponLabel.textContent=equippedMainHand ? ((window.mpWeaponCatalog?.[equippedMainHand.weaponId]?.name)||equippedMainHand.weaponId)+' · '+(equippedMainHand.tier||'T1') : 'Нет оружия';
   $('#econ-status').textContent = window.mpConnected ? (data?.message || 'Сервер синхронизирован') : 'Оффлайн: экономика доступна только на сервере';
-  $('#econ-items').innerHTML = Object.entries(ECON_LABELS).map(([id,meta])=>`<div class="econ-card"><b>${meta[0]} ${meta[1]}</b><span>${Math.max(0,Number(items[id])||0)}</span></div>`).join('');
+  const consumableIds=new Set(['minor_healing_potion','minor_energy_potion','battle_stew','greater_healing_potion']);
+  $('#econ-items').innerHTML = Object.entries(ECON_LABELS).map(([id,meta])=>{const count=Math.max(0,Number(items[id])||0);return `<div class="econ-card"><b>${meta[0]} ${meta[1]}</b><span>${count}</span>${consumableIds.has(id)?`<button data-econ="use" data-id="${id}" ${count<1?'disabled':''}>Использовать</button>`:''}</div>`;}).join('');
   const equipped = economyState.equipment || {};
   const gear = economyState.gear || [];
   const gearCard = (item, equippedSlot = false) => { const name=(window.mpWeaponCatalog?.[item.weaponId]?.name)||item.weaponId||item.itemId||'Снаряжение'; const pct=Math.max(0,Math.min(100,Number(item.durability||0)/Math.max(1,Number(item.maxDurability||1))*100)); return `<div class="econ-card"><b>${name}</b><small class="tier">${item.tier||'T1'} · ${item.quality||'ordinary'}</small><div class="durability"><i style="width:${pct}%"></i></div><small>Прочность: ${item.durability||0}/${item.maxDurability||0}</small>${equippedSlot?' <span class="rarity">Надето</span>':`<button data-econ="equip" data-id="${String(item.id||'').replace(/[^a-zA-Z0-9_-]/g,'')}">Экипировать</button>`}</div>`; };
@@ -1097,8 +1098,10 @@ function renderEconomyState(data) {
     {id:'ship',name:'Корабль',icon:'⛵',inputs:'20 досок + 4 железных слитка',output:'1 корабль',station:'Верфь',stationId:'shipyard'}
   ];
   const basicRecipes = recipes.map(r=>{const enabled=!!activeFactory&&activeFactory.type===r.stationId&&!activeFactory.running&&Number(activeFactory.buildingUntil||0)<=Date.now();return `<div class="econ-card"><b>${r.icon} ${r.name}</b><small>Расход: ${r.inputs}<br>Выход: ${r.output}<br>Станция: ${r.station}</small><button data-econ="craft" data-id="${r.id}" ${enabled?'':'disabled'}>Запустить производство</button></div>`;}).join('');
-  const weaponCards = Object.entries(window.mpWeaponCatalog||{}).flatMap(([weaponId,meta])=>['T1','T2','T3','T4','T5'].map(tier=>{const bp=`blueprint:${weaponId}:${tier}`,count=Number(items[bp]||0),enabled=!!activeFactory&&activeFactory.type==='forge'&&!activeFactory.running&&Number(activeFactory.buildingUntil||0)<=Date.now()&&count>0;return `<div class="econ-card"><b>⚔️ ${meta.name} · ${tier}</b><small>Одноразовый чертёж: ${count}<br>Станция: Кузница · качество случайное</small><button data-econ="craft-weapon" data-id="${weaponId}" data-tier="${tier}" ${enabled?'':'disabled'}>Изготовить</button></div>`;})).join('');
-  $('#econ-recipes').innerHTML = basicRecipes + '<h3>Оружие</h3>' + weaponCards;
+  const activeCraftJob=(economyState.craftJobs||[]).find(job=>Number(job.stationId)===Number(activeFactory?.id));
+  const weaponCards = Object.entries(window.mpWeaponCatalog||{}).flatMap(([weaponId,meta])=>['T1','T2','T3','T4','T5'].map(tier=>{const bp=`blueprint:${weaponId}:${tier}`,count=Number(items[bp]||0),enabled=!!activeFactory&&activeFactory.type==='forge'&&!activeFactory.running&&!activeCraftJob&&Number(activeFactory.buildingUntil||0)<=Date.now()&&count>0;return `<div class="econ-card"><b>⚔️ ${meta.name} · ${tier}</b><small>Одноразовый чертёж: ${count}<br>Станция: Кузница · качество случайное</small><button data-econ="craft-weapon" data-id="${weaponId}" data-tier="${tier}" ${enabled?'':'disabled'}>Изготовить</button></div>`;})).join('');
+  const craftJobCards=(economyState.craftJobs||[]).map(job=>{const left=Math.max(0,Math.ceil((Number(job.finishAt)-Date.now())/1000));return `<div class="econ-card"><b>⚒ Изготовление оружия</b><small>${job.item?.weaponId||'Оружие'} · ${job.item?.tier||''} · ${job.item?.quality||''}<br>${left>0?'Осталось: '+left+' сек.':'Готово к выдаче'}</small></div>`;}).join('');
+  $('#econ-recipes').innerHTML = craftJobCards + basicRecipes + '<h3>Оружие</h3>' + weaponCards;
   const buildings = [
     {id:'forge',name:'Кузница',cost:'14 древесины + 10 камня + 6 железных слитков',recipe:'Изготавливает оружие T1–T5'},
     {id:'sawmill',name:'Лесопилка',cost:'8 древесины + 4 камня',recipe:'Производит доски'},
@@ -1114,7 +1117,7 @@ function renderEconomyState(data) {
   $('#econ-factories').innerHTML = factories.length ? factories.map(f=>{
     const progress=Math.max(0,Math.min(100,Math.round((f.progress||0)*100)));
     const state=Number(f.buildingUntil||0)>Date.now() ? `Строится · ${Math.ceil((Number(f.buildingUntil)-Date.now())/1000)} с` : f.running ? `Работает · ${Math.ceil((f.remainingMs||0)/1000)} с · ${progress}%` : 'Ожидает запуска';
-    return `<div class="econ-card"><b>🏭 ${f.name} №${f.id}</b><small>${state}<br>Рецепт: ${({plank:'доски',iron_ingot:'железные слитки',sword:'мечи',ship:'корабли'})[f.recipe]||f.recipe}</small><button data-econ="run" data-id="${f.id}" ${f.running?'disabled':''}>Запустить</button><button data-econ="stop" data-id="${f.id}" ${f.running?'':'disabled'}>Отменить цикл</button></div>`;
+    const isForge=f.type==='forge';const pending=(economyState.craftJobs||[]).some(job=>Number(job.stationId)===Number(f.id));return `<div class="econ-card"><b>🏭 ${f.name} №${f.id}</b><small>${state}<br>Рецепт: ${({plank:'доски',iron_ingot:'железные слитки',sword:'мечи',ship:'корабли',forge:'оружие T1–T5'})[f.recipe]||f.recipe}</small>${isForge?`<span class="rarity">${pending?'Занята изготовлением':'Готова к работе'}</span>`:`<button data-econ="run" data-id="${f.id}" ${f.running?'disabled':''}>Запустить</button><button data-econ="stop" data-id="${f.id}" ${f.running?'':'disabled'}>Отменить цикл</button>`}</div>`;
   }).join('') : '<div class="econ-card">Пока нет фабрик. Построй первую выше.</div>';
   $('#c-wood').textContent = items.wood || 0; $('#c-stone').textContent = items.stone || 0; $('#c-ore').textContent = items.ore || 0;
 }
@@ -1147,6 +1150,7 @@ econPanel.addEventListener('click',ev=>{
   const b=ev.target.closest('button[data-econ]'); if(!b)return;
   const id=b.dataset.id, action=b.dataset.econ;
   if(action==='craft')econSend({type:'economy-craft',recipe:id});
+  else if(action==='use')econSend({type:'economy-use',item:id});
   else if(action==='equip')econSend({type:'economy-equip',itemId:id});
   else if(action==='craft-weapon')econSend({type:'economy-craft-weapon',weaponId:id,tier:b.dataset.tier});
   else if(action==='blueprint-buy')econSend({type:'economy-blueprint-buy',weaponId:id,tier:b.dataset.tier});
