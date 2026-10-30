@@ -99,7 +99,7 @@ const players = new Map();
 const playerStore = createPlayerStore();
 function savePersistentProfile(p) {
   if (!p?.profileToken) return false;
-  return playerStore.save(p.profileToken, { items: p.economy?.items || {}, equipment: p.equipment || {}, gear: p.economy?.gear || [], craftJobs: p.economy?.craftJobs || [], factories: [], blueprints: p.blueprints || {} });
+  return playerStore.save(p.profileToken, { items: p.economy?.items || {}, equipment: p.equipment || {}, gear: p.economy?.gear || [], craftJobs: p.economy?.craftJobs || [], factories: p.economy?.factories || [], blueprints: p.blueprints || {} });
 }
 function resetRoundProfile(p) {
   p.economy = { items: { ...DEFAULT_ITEMS }, gear: [], craftJobs: [], factories: [], nextFactoryId: 1, lastGatherAt: {} };
@@ -572,6 +572,13 @@ wss.on("connection", (ws) => {
           p.economy.items = { ...DEFAULT_ITEMS, ...saved.items };
           p.economy.gear = Array.isArray(saved.gear) ? saved.gear : [];
           p.economy.craftJobs = Array.isArray(saved.craftJobs) ? saved.craftJobs : [];
+          p.economy.factories = [];
+          for(const savedFactory of (saved.factories||[])){
+            let restored=worldFactories.find(f=>f.ownerProfileToken===p.profileToken&&Number(f.id)===Number(savedFactory.id));
+            if(!restored){restored={...savedFactory,id:nextWorldFactoryId++,ownerId:p.id,ownerName:p.name,team:p.team,ownerProfileToken:p.profileToken};worldFactories.push(restored);broadcast({type:"factory-created",factory:publicFactory(restored)});}
+            else {restored.ownerId=p.id;restored.ownerName=p.name;restored.team=p.team;}
+            p.economy.factories.push(restored);
+          }
           p.equipment = { ...saved.equipment };
           p.blueprints = { ...saved.blueprints };
           const equipped = p.equipment.main_hand;
@@ -700,7 +707,7 @@ wss.on("connection", (ws) => {
       if (!Number.isFinite(x)||!Number.isFinite(z)||Math.hypot(p.x-x,p.z-z)>18||!factoryPlacementClear(x,z)) { sendEconomy(p, "Здесь нельзя разместить фабрику: выбери свободное место на суше подальше от построек."); return; }
       if (!hasItems(items, def.cost)) { sendEconomy(p, "Не хватает ресурсов для строительства."); return; }
       takeItems(items, def.cost);
-      const factory = { id:nextWorldFactoryId++, type, recipe:def.recipe, ownerId:p.id, ownerName:p.name, team:p.team, x, z, hp:600, buildingUntil:Date.now()+5000, buildingDuration:5000, running:false, startedAt:0, duration:0 };
+      const factory = { id:nextWorldFactoryId++, type, recipe:def.recipe, ownerId:p.id, ownerProfileToken:p.profileToken, ownerName:p.name, team:p.team, x, z, hp:600, buildingUntil:Date.now()+5000, buildingDuration:5000, running:false, startedAt:0, duration:0 };
       p.economy.factories.push(factory); worldFactories.push(factory);
       broadcast({type:"factory-created",factory:publicFactory(factory)});
       sendEconomy(p, `Начато строительство: ${def.name}`, {factory:publicFactory(factory)});
