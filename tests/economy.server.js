@@ -50,7 +50,7 @@ assert.equal(A.last("lobby-state").phase, "playing", "two clients enter the same
 // The red client approaches the single neutral merchant on the east side of the river.
 A.say({ type: "state", x: 22, z: 0, rotation: 0 });
 A.say({ type: "economy-merchant-open" });
-assert.ok(A.last("economy-state").message.includes("нейтральному торговцу"));
+assert.ok(A.last("economy-state").message.includes("нейтральному торговцу"), "merchant response: "+A.last("economy-state").message+"; player: "+JSON.stringify(A.last("player")?.player));
 A.say({ type: "economy-blueprint-buy", weaponId: "broadsword", tier: "T1" });
 let state = A.last("economy-state").economy;
 assert.equal(state.items.gold, 65, "T1 blueprint costs 35 gold");
