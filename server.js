@@ -587,11 +587,11 @@ wss.on("connection", (ws) => {
           p.equipment = { ...saved.equipment };
           p.blueprints = { ...saved.blueprints };
           const equipped = p.equipment.main_hand;
-          if (equipped?.kind === "weapon" && WEAPON_DAMAGE[equipped.weaponId]) {
+          if (equipped?.kind === "weapon" && WEAPON_DAMAGE[equipped.weaponId] && Number(equipped.durability)>0) {
             p.weapon = equipped.weaponId; p.branch = ALBION_WEAPONS[equipped.weaponId]?.branch || null;
             if(p.branch){const branch=ALBION_BRANCHES[p.branch],passives=Object.keys(branch.passives);p.loadout={q:branch.q.includes(p.loadout?.q)?p.loadout.q:branch.q[0],w:branch.w.includes(p.loadout?.w)?p.loadout.w:branch.w[0],p:passives.includes(p.loadout?.p)?p.loadout.p:passives[0]};}
             else p.loadout={q:"strike",w:"cyclone",p:"deepcuts"};
-          }
+          } else { p.weapon=null; p.branch=null; }
         }
       }
       lobby.refresh();
