@@ -37,13 +37,19 @@ Consumable drop definitions are data-driven and have lower chances than ordinary
 
 There is one visible merchant NPC at the central neutral position (world x=20.7, z=0), outside the team safe zones. Players use F to interact; E remains reserved for the weapon ability. Inventory, equipment, crafting and merchant panels are compact overlays, not full-screen screens, and leave the 3D world visible.
 
-## Rollout
+The merchant sells base/refined materials, consumables and one-use weapon blueprints, and buys stackable goods plus spare weapons/armor from the backpack. Gear resale is server-priced from tier, quality and remaining durability: `floor(20 × tierOrder² × qualityFactor × durabilityRatio × 0.55)`, with a minimum of 1 gold. Equipped items cannot be sold directly; unequip them first.
 
-1. Add configuration, persistence primitives and isolated unit tests.
-2. Add stable profile token handoff and server profile hydration/saving.
-3. Add item instances, tiers, durability and round-reset wipe.
-4. Add weapon blueprints, crafting stations, merchant interaction and recipe catalog for all current weapon branches.
-5. Add death drop/break world entities and pickup flow.
-6. Add rare consumable drops and item rarity presentation.
-7. Replace legacy free weapon selection with server-validated equipment while preserving the combat ability system.
-8. Rework the compact UI and test the full economic loop with two independent clients.
+## Implementation status and validation
+
+Implemented on `feature/economy-inventory-crafting` (PR #8, draft):
+
+- Data-driven T1-T5 tiers, four craft-quality grades, recipes for all weapon IDs in the current server catalog, and weighted consumable drop definitions.
+- Atomic JSON profile store, reconnect hydration, persistent player-built stations and craft jobs, plus a global round-reset wipe (including offline profiles).
+- One neutral merchant, server-side distance checks for trade/blueprint purchase/gear resale, forge-only weapon crafting, gear equip, durability loss, death break/drop and pickup.
+- Compact inventory, equipment, crafting, factories and merchant tabs; local weapon presentation is hidden when the server reports no equipped weapon.
+
+Latest GitHub Actions validation passed on the PR branch: economy/profile unit tests, loot/durability/death-drop tests, crafting/equipment engine tests, a two-client server-handler integration test (merchant range enforcement, reconnect hydration and round reset), existing lobby/siege integration tests, and JavaScript syntax checks. The server integration test uses a mocked WebSocket transport around the real server handler; it does not prove browser rendering or live network behavior.
+
+Not yet verified: browser automation/visual playthrough, a positive end-to-end path through the siege gate to buy a blueprint and craft at a built forge, and two-client testing against the deployed Render service. Render persistent-disk configuration is also external to this repository and remains a deployment prerequisite.
+
+The first implementation has weapon instances and armor-compatible data paths, but the current playable catalog contains weapons only; armor item definitions and armor slots remain future content.
