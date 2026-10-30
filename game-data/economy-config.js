@@ -55,6 +55,8 @@ function weaponRecipe(weaponId, tierId) {
   if (!tier || !/^[a-z0-9_-]{2,64}$/i.test(String(weaponId || ""))) return null;
   const multiplier = tier.order;
   const material = tier.material;
+  const inputs = { wood: 4 + multiplier * 2, plank: 2 + multiplier };
+  inputs[material] = (inputs[material] || 0) + 3 + multiplier;
   return {
     id: `weapon:${weaponId}:${tierId}`,
     kind: "weapon",
@@ -62,11 +64,7 @@ function weaponRecipe(weaponId, tierId) {
     tier: tierId,
     station: "forge",
     seconds: 12 + multiplier * 7,
-    inputs: {
-      wood: 4 + multiplier * 2,
-      [material]: 3 + multiplier,
-      plank: 2 + multiplier
-    },
+    inputs,
     blueprint: `blueprint:${weaponId}:${tierId}`
   };
 }
