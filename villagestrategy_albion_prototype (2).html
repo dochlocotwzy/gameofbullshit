@@ -56,6 +56,7 @@
   #cpanel{position:fixed;right:14px;top:196px;width:190px;padding:9px 11px;font-size:12px;line-height:1.5}
   #cpanel h2{font-size:13px;margin:0 0 5px}
   #cpanel label{display:flex;justify-content:space-between;align-items:center;gap:6px;margin:3px 0}
+  #cpanel label:has(#selWeapon){display:none}
   #cpanel select{width:128px;font:inherit;font-size:11.5px;background:#0a120e;color:#f3efe3;border:1px solid #fff4;border-radius:6px;padding:2px}
   #cpanel .chk{justify-content:flex-start;margin-top:6px;color:#ffd9a0}
   #cpanel .st{margin-top:6px;padding-top:5px;border-top:1px solid #ffffff20;color:#cfd8cf}
@@ -141,7 +142,8 @@
   <p class="econ-muted">Предметы и экипировка хранятся на сервере. Раунд сбрасывает склад и снаряжение.</p>
 </section>
 <div id="cpanel" class="glass">
-  <h2>⚔️ Бой: ветка мечей</h2>
+  <h2>⚔️ Боевая подготовка</h2>
+  <div class="st">Экипировано: <b id="econ-current-weapon">Меч</b></div>
   <label>Меч <select id="selWeapon"></select></label>
   <label>Q <select id="selQ"></select></label>
   <label>W <select id="selW"></select></label>
@@ -1074,6 +1076,9 @@ function renderEconomyState(data) {
   }
   if (data && data.economy) { economyState = data.economy; }
   const items = economyState.items || {};
+  const equippedMainHand = economyState.equipment?.main_hand;
+  const currentWeaponLabel = $('#econ-current-weapon');
+  if(currentWeaponLabel)currentWeaponLabel.textContent=equippedMainHand ? ((window.mpWeaponCatalog?.[equippedMainHand.weaponId]?.name)||equippedMainHand.weaponId)+' · '+(equippedMainHand.tier||'T1') : 'Нет оружия';
   $('#econ-status').textContent = window.mpConnected ? (data?.message || 'Сервер синхронизирован') : 'Оффлайн: экономика доступна только на сервере';
   $('#econ-items').innerHTML = Object.entries(ECON_LABELS).map(([id,meta])=>`<div class="econ-card"><b>${meta[0]} ${meta[1]}</b><span>${Math.max(0,Number(items[id])||0)}</span></div>`).join('');
   const equipped = economyState.equipment || {};
@@ -2388,6 +2393,7 @@ function renderHud() {
 function fillSelect(sel, items, cur) { sel.innerHTML = ''; for (const [id, n] of items) { const o = document.createElement('option'); o.value = id; o.textContent = n; sel.appendChild(o); } sel.value = cur; }
 const saveLoadout = () => { try { localStorage.setItem('vs_loadout', JSON.stringify(loadout)); } catch (e) { } };
 function setWeapon(id) {
+  if (window.mpConnected) { toast("Оружие меняется через экипировку в инвентаре."); return; }
   if (!WEAPONS[id]) return; loadout.weapon = id; configureBranchOptions(id); $('#selWeapon').value = id; takeCharges(); cd.q = cd.w = cd.e = 0; swingS = null;
   if (window.mpConnected && typeof window.mpSetWeapon === 'function') window.mpSetWeapon(id);
   rebuildWeapons(); renderSlots(); saveLoadout(); toast(WEAPONS[id].name + (WEAPONS[id].hands === 2 ? ' (двуручный)' : ' (одноручный)'));
@@ -2742,6 +2748,10 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
           pingMs = Math.max(0, Math.round(performance.now() - sentAt));
           mpPingBadge.textContent = 'ПИНГ: ' + pingMs + ' мс';
         }
+      } else if (msg.type === 'combat-loadout') {
+        loadout.weapon = WEAPONS[msg.weapon] ? msg.weapon : 'broadsword';
+        if(msg.loadout){loadout.q=msg.loadout.q||loadout.q;loadout.w=msg.loadout.w||loadout.w;loadout.p=msg.loadout.p||loadout.p;}
+        configureBranchOptions(loadout.weapon);$('#selWeapon').value=loadout.weapon;renderSlots();renderHud();saveLoadout();
       } else if (msg.type === 'welcome') {
         succeed();
         socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free}));
