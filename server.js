@@ -8,6 +8,9 @@ const { createSiege } = require("./siege/siege-server");
 let siege = null; // создаётся ниже, после players/send/broadcast
 const { ITEM_DEFINITIONS } = require("./game-data/catalog");
 const { createPlayerStore, validProfileToken, DEFAULT_ITEMS } = require("./game-data/player-store");
+const { craftWeapon, equipGear } = require("./game-data/economy-engine");
+const { TIERS, weaponRecipe, rollConsumableDrop } = require("./game-data/economy-config");
+const { applyDurabilityLoss, resolveDeathGear, makeWorldDrop } = require("./game-data/loot-system");
 const ALBION_PACK = require("./albion-weapon-branches.json");
 const ALBION_BRANCHES = ALBION_PACK.branches;
 const ALBION_WEAPONS = Object.fromEntries(Object.entries(ALBION_BRANCHES).flatMap(([branchId, branch]) => branch.weapons.map(weapon => [weapon.id, { ...weapon, branch: branchId }])));
@@ -94,10 +97,10 @@ const players = new Map();
 const playerStore = createPlayerStore();
 function savePersistentProfile(p) {
   if (!p?.profileToken) return false;
-  return playerStore.save(p.profileToken, { items: p.economy?.items || {}, equipment: p.equipment || {}, factories: [], blueprints: p.blueprints || {} });
+  return playerStore.save(p.profileToken, { items: p.economy?.items || {}, equipment: p.equipment || {}, gear: p.economy?.gear || [], factories: [], blueprints: p.blueprints || {} });
 }
 function resetRoundProfile(p) {
-  p.economy = { items: { ...DEFAULT_ITEMS }, factories: [], nextFactoryId: 1, lastGatherAt: {} };
+  p.economy = { items: { ...DEFAULT_ITEMS }, gear: [], factories: [], nextFactoryId: 1, lastGatherAt: {} };
   p.equipment = { main_hand: { id: "starter-broadsword", kind: "weapon", weaponId: "broadsword", tier: "T1", quality: "ordinary", durability: 100, maxDurability: 100 } };
   p.blueprints = {};
   p.weapon = "broadsword";
@@ -474,7 +477,7 @@ function sendVisionSnapshot(p) {
 }
 function economySnapshot(p) {
   const e = p.economy || { items: {}, factories: [] };
-  return { items: { ...(e.items || {}) }, equipment: { ...(p.equipment || {}) }, blueprints: { ...(p.blueprints || {}) }, activeFactoryId:p.activeFactoryId || null, factories: (e.factories || []).map(f => ({ ...publicFactory(f), progress:Math.max(0,Math.min(1, f.duration ? (Date.now()-f.startedAt)/f.duration : 0)), remainingMs:f.running ? Math.max(0,f.startedAt+f.duration-Date.now()) : 0 })) };
+  return { items: { ...(e.items || {}) }, gear: (e.gear || []).map(item => ({ ...item })), equipment: { ...(p.equipment || {}) }, blueprints: { ...(p.blueprints || {}) }, activeFactoryId:p.activeFactoryId || null, factories: (e.factories || []).map(f => ({ ...publicFactory(f), progress:Math.max(0,Math.min(1, f.duration ? (Date.now()-f.startedAt)/f.duration : 0)), remainingMs:f.running ? Math.max(0,f.startedAt+f.duration-Date.now()) : 0 })) };
 }
 function factoryReady(f) { return !!f && (!f.buildingUntil || f.buildingUntil <= Date.now()); }
 function factoryNear(p, f, range=7.5) { return !!f && Math.hypot(p.x-f.x,p.z-f.z)<=range; }
@@ -515,7 +518,7 @@ wss.on("connection", (ws) => {
   const team = chooseTeam();
   const spawnIndex = freeSpawnIndex(team, null);
   const spawn = spawnPosition(spawnIndex, team);
-  const p = { id, ws, spawnIndex, team, profileToken: null, equipment: { main_hand: { id: "starter-broadsword", kind: "weapon", weaponId: "broadsword", tier: "T1", quality: "ordinary", durability: 100, maxDurability: 100 } }, blueprints: {}, economy: { items: { ...DEFAULT_ITEMS }, factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, lastVisionSyncAt:0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
+  const p = { id, ws, spawnIndex, team, profileToken: null, equipment: { main_hand: { id: "starter-broadsword", kind: "weapon", weaponId: "broadsword", tier: "T1", quality: "ordinary", durability: 100, maxDurability: 100 } }, blueprints: {}, economy: { items: { ...DEFAULT_ITEMS }, gear: [], factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, lastVisionSyncAt:0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
   players.set(id, p);
   lobby.onConnect(p);
   send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(p), resources: resourceWorldSnapshot(p), factories:factoryWorldSnapshot(p) });
@@ -538,6 +541,7 @@ wss.on("connection", (ws) => {
         const saved = playerStore.get(p.profileToken);
         if (saved) {
           p.economy.items = { ...DEFAULT_ITEMS, ...saved.items };
+          p.economy.gear = Array.isArray(saved.gear) ? saved.gear : [];
           p.equipment = { ...saved.equipment };
           p.blueprints = { ...saved.blueprints };
           const equipped = p.equipment.main_hand;
