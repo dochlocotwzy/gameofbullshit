@@ -1313,6 +1313,7 @@ addEventListener('keydown', e => {
   const tag=e.target?.tagName?.toLowerCase();
   if(tag==='input'||tag==='textarea'||tag==='select'||e.target?.isContentEditable) return;
   if(e.code==='KeyF') {
+    if (window.Siege?.tryGate()) { e.preventDefault(); return; }
     const factory=nearestFactory(7.5,true);
     if(factory){e.preventDefault();openFactoryMenu(factory);return;}
     // F activates a nearby resource when no owned factory is in interaction range.
@@ -1323,11 +1324,12 @@ addEventListener('keydown', e => {
     if(nearby){e.preventDefault();orderGather(nearby.r);if(window.mpToast)window.mpToast('Начинаем сбор ближайшего ресурса');}
     else if(window.mpToast)window.mpToast('Подойдите вплотную к ресурсу или объекту для взаимодействия.');
   } else if(e.code==='KeyG') {
+    if (window.Siege?.startAttack()) { e.preventDefault(); return; }
     const enemy=nearestFactory(6.2,false);
     if(enemy && enemy.data.team && enemy.data.team!==window.mpTeam){e.preventDefault();window.mpDamageFactory?.(enemy.data.id);}
   }
 });
-addEventListener('keyup', e => keys[e.code] = false);
+addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'KeyG') window.Siege?.stopAttack(); });
 addEventListener('blur', () => { for (const k in keys) keys[k] = false; mouseDown = false; });
 
 const order = { mode: null, x: 0, z: 0, res: null }, gather = { active: false, t: 0 };
@@ -2410,6 +2412,7 @@ function loop(now) {
   if (marker.visible) { const k = 1 + .15 * Math.sin(gameT * 8); marker.scale.set(k, k, k); }
   flameA.scale.set(1, 1 + .25 * Math.sin(gameT * 13), 1); flameA.rotation.y += dt * 3; flameB.scale.set(1, 1 + .3 * Math.sin(gameT * 17 + 1), 1); if (fireLight) fireLight.intensity = 2.0 + .5 * Math.sin(gameT * 11) + .3 * Math.sin(gameT * 23 + 2);
   if (frame % 4 === 0) updateHover(); if (frame % 6 === 1) drawMini(); if (frame % 2 === 0) { updateLabels(); renderHud(); }
+  window.Siege?.tick(); window.Siege?.resolve(pos, .5);
   renderer.render(scene, camera);
 }
 requestAnimationFrame(loop);
@@ -2601,10 +2604,13 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       socket.send(JSON.stringify({type:'weapon',weapon:loadout.weapon}));
       socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w,p:loadout.p}));
       socket.send(JSON.stringify({type:'lobby-get'}));
+      window.Siege?.init({ THREE, scene, send: payload => socket?.readyState === WebSocket.OPEN && socket.send(JSON.stringify(payload)), getPos: () => pos, getTeam: () => window.mpTeam, toast: message => window.mpToast?.(message) });
+      socket.send(JSON.stringify({type:'siege-get'}));
       resolve();
     });
     socket.addEventListener('message', event => {
       let msg; try { msg = JSON.parse(event.data); } catch { return; }
+      if (window.Siege && window.Siege.handle(msg)) return;
       if (window.Lobby && window.Lobby.handle(msg)) {
         if (msg.type === 'lobby-state') {
           const self = msg.players?.find(p => p.id === msg.you);
