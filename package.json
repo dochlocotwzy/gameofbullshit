@@ -6,7 +6,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node tests/lobby.integration.js && node tests/siege.integration.js && node tests/siege.server.js"
+    "test": "node tests/economy.unit.js && node tests/loot-system.unit.js && node tests/economy-engine.unit.js && node tests/lobby.integration.js && node tests/siege.integration.js && node tests/siege.server.js"
   },
   "engines": {
     "node": ">=18"
