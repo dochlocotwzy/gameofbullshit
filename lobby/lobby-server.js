@@ -1,6 +1,6 @@
 "use strict";
 const TEAMS = ["blue", "red"];
-function createLobby({ players, send, broadcast, maxPlayers = 40, minPlayers = 1, allowLateJoin = true, onStart = () => {} }) {
+function createLobby({ players, send, broadcast, maxPlayers = 40, minPlayers = 1, allowLateJoin = true, onStart = () => {}, onTeamChange = () => {}, onReset = () => {} }) {
   const perTeam = Math.floor(maxPlayers / 2);
   let phase = "lobby";
   let hostId = null;
@@ -19,7 +19,7 @@ function createLobby({ players, send, broadcast, maxPlayers = 40, minPlayers = 1
     if (team === "auto") team = count("blue") <= count("red") ? "blue" : "red";
     if (!TEAMS.includes(team)) return;
     if (p.team !== team && count(team) >= perTeam) return send(p.ws, { type: "lobby-error", message: "Команда заполнена." });
-    p.team = team; p.lobbyReady = false;
+    p.team = team; p.lobbyReady = false; onTeamChange(p);
     broadcast({ type: "player", player: { id: p.id, name: p.name, team: p.team } });
     pushState();
   }
@@ -34,7 +34,7 @@ function createLobby({ players, send, broadcast, maxPlayers = 40, minPlayers = 1
         if (!canStart()) { send(p.ws, { type: "lobby-error", message: "Не все игроки готовы." }); return true; }
         phase = "playing"; broadcast({ type: "lobby-started" }); pushState(); onStart(list()); break;
       case "lobby-reset":
-        if (p.id === hostId) { phase = "lobby"; list().forEach(x => { x.lobbyReady = false; }); pushState(); }
+        if (p.id === hostId) { phase = "lobby"; list().forEach(x => { x.lobbyReady = false; }); onReset(); pushState(); }
         break;
     }
     return true;
