@@ -71,7 +71,7 @@ assert.equal(A2.last("economy-state").economy.items.gold, 45, "profile survives 
 assert.equal(A2.last("economy-state").economy.items["blueprint:broadsword:T1"], 1, "unconsumed blueprint survives reconnect");
 
 // A round reset is global, including profiles whose owners are offline.
-A2.say({ type: "lobby-reset" });
+B.say({ type: "lobby-reset" });
 A2.say({ type: "economy-get" });
 assert.equal(A2.last("economy-state").economy.items.gold, 100, "round reset restores starting currency");
 assert.equal(A2.last("economy-state").economy.items["blueprint:broadsword:T1"] || 0, 0, "round reset removes unused blueprints");
