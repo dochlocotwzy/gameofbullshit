@@ -106,7 +106,14 @@ function createPlayerStore(options = {}) {
     return save(token, current);
   }
 
-  return { get, save, resetRound, flush, get file() { return file; } };
+  function resetAllProfiles() {
+    load();
+    for (const token of Object.keys(profiles)) profiles[token] = createDefaultProfile();
+    flush();
+    return Object.keys(profiles).length;
+  }
+
+  return { get, save, resetRound, resetAllProfiles, flush, get file() { return file; } };
 }
 
 module.exports = { createPlayerStore, validProfileToken, createDefaultProfile, DEFAULT_ITEMS };
