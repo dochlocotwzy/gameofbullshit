@@ -99,10 +99,10 @@ const players = new Map();
 const playerStore = createPlayerStore();
 function savePersistentProfile(p) {
   if (!p?.profileToken) return false;
-  return playerStore.save(p.profileToken, { items: p.economy?.items || {}, equipment: p.equipment || {}, gear: p.economy?.gear || [], factories: [], blueprints: p.blueprints || {} });
+  return playerStore.save(p.profileToken, { items: p.economy?.items || {}, equipment: p.equipment || {}, gear: p.economy?.gear || [], craftJobs: p.economy?.craftJobs || [], factories: [], blueprints: p.blueprints || {} });
 }
 function resetRoundProfile(p) {
-  p.economy = { items: { ...DEFAULT_ITEMS }, gear: [], factories: [], nextFactoryId: 1, lastGatherAt: {} };
+  p.economy = { items: { ...DEFAULT_ITEMS }, gear: [], craftJobs: [], factories: [], nextFactoryId: 1, lastGatherAt: {} };
   p.equipment = { main_hand: { id: "starter-broadsword", kind: "weapon", weaponId: "broadsword", tier: "T1", quality: "ordinary", durability: 100, maxDurability: 100 } };
   p.blueprints = {};
   p.weapon = "broadsword";
@@ -499,7 +499,7 @@ function sendVisionSnapshot(p) {
 }
 function economySnapshot(p) {
   const e = p.economy || { items: {}, factories: [] };
-  return { items: { ...(e.items || {}) }, gear: (e.gear || []).map(item => ({ ...item })), equipment: { ...(p.equipment || {}) }, blueprints: { ...(p.blueprints || {}) }, activeFactoryId:p.activeFactoryId || null, factories: (e.factories || []).map(f => ({ ...publicFactory(f), progress:Math.max(0,Math.min(1, f.duration ? (Date.now()-f.startedAt)/f.duration : 0)), remainingMs:f.running ? Math.max(0,f.startedAt+f.duration-Date.now()) : 0 })) };
+  return { items: { ...(e.items || {}) }, gear: (e.gear || []).map(item => ({ ...item })), craftJobs: (e.craftJobs || []).map(job => ({ ...job })), equipment: { ...(p.equipment || {}) }, blueprints: { ...(p.blueprints || {}) }, activeFactoryId:p.activeFactoryId || null, factories: (e.factories || []).map(f => ({ ...publicFactory(f), progress:Math.max(0,Math.min(1, f.duration ? (Date.now()-f.startedAt)/f.duration : 0)), remainingMs:f.running ? Math.max(0,f.startedAt+f.duration-Date.now()) : 0 })) };
 }
 function factoryReady(f) { return !!f && (!f.buildingUntil || f.buildingUntil <= Date.now()); }
 function factoryNear(p, f, range=7.5) { return !!f && Math.hypot(p.x-f.x,p.z-f.z)<=range; }
@@ -512,6 +512,13 @@ function factoryPlacementClear(x,z) {
   return !worldFactories.some(f=>Math.hypot(x-f.x,z-f.z)<12);
 }
 function getActiveFactory(p) { const f=worldFactories.find(item=>item.id===p.activeFactoryId && item.ownerId===p.id); return factoryReady(f)&&factoryNear(p,f)?f:null; }
+function processCraftJobs(p) {
+  if (!Array.isArray(p.economy?.craftJobs) || !p.economy.craftJobs.length) return false;
+  const now=Date.now(); let changed=false;
+  for(let i=p.economy.craftJobs.length-1;i>=0;i--){const job=p.economy.craftJobs[i];if(Number(job.finishAt)>now)continue;p.economy.gear.push({...job.item});p.economy.craftJobs.splice(i,1);const station=worldFactories.find(f=>f.id===job.stationId);if(station){station.running=false;station.startedAt=0;station.duration=0;}changed=true;}
+  if(changed)sendEconomy(p,"Изготовление завершено. Оружие помещено в сумку.");
+  return changed;
+}
 function sendEconomy(p, message = "Склад обновлён.", extra = {}) {
   if (p.economy) p.economy.lastUiUpdate = Date.now();
   savePersistentProfile(p);
@@ -540,7 +547,7 @@ wss.on("connection", (ws) => {
   const team = chooseTeam();
   const spawnIndex = freeSpawnIndex(team, null);
   const spawn = spawnPosition(spawnIndex, team);
-  const p = { id, ws, spawnIndex, team, profileToken: null, equipment: { main_hand: { id: "starter-broadsword", kind: "weapon", weaponId: "broadsword", tier: "T1", quality: "ordinary", durability: 100, maxDurability: 100 } }, blueprints: {}, economy: { items: { ...DEFAULT_ITEMS }, gear: [], factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, lastVisionSyncAt:0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
+  const p = { id, ws, spawnIndex, team, profileToken: null, equipment: { main_hand: { id: "starter-broadsword", kind: "weapon", weaponId: "broadsword", tier: "T1", quality: "ordinary", durability: 100, maxDurability: 100 } }, blueprints: {}, economy: { items: { ...DEFAULT_ITEMS }, gear: [], craftJobs: [], factories: [], nextFactoryId: 1, lastGatherAt: {} }, name: "Игрок", x: spawn.x, y: 0, z: spawn.z, rotation: 0, hp: PLAYER_MAX_HP, lastUpdate: 0, lastAttack: 0, lastAbility: 0, lastVisionSyncAt:0, respawnTimer: null, input: {x:0,z:0,running:false}, moveTarget: null, testMode: false, statuses: {}, charges: 0, energy: 100, abilityCooldowns: {}, weapon: "broadsword", loadout: {q:"strike",w:"cyclone",p:"deepcuts"}, autoCount: 0, chargeExpiresAt: 0, pendingAttack: null };
   players.set(id, p);
   lobby.onConnect(p);
   send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, players: snapshot(p), resources: resourceWorldSnapshot(p), factories:factoryWorldSnapshot(p), loot:lootWorldSnapshot(p) });
@@ -564,6 +571,7 @@ wss.on("connection", (ws) => {
         if (saved) {
           p.economy.items = { ...DEFAULT_ITEMS, ...saved.items };
           p.economy.gear = Array.isArray(saved.gear) ? saved.gear : [];
+          p.economy.craftJobs = Array.isArray(saved.craftJobs) ? saved.craftJobs : [];
           p.equipment = { ...saved.equipment };
           p.blueprints = { ...saved.blueprints };
           const equipped = p.equipment.main_hand;
@@ -573,6 +581,7 @@ wss.on("connection", (ws) => {
       lobby.refresh();
       broadcast({ type: "player", player: publicPlayer(p) }, p.id);
       send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, profileToken:p.profileToken, players: snapshot(p), resources: resourceWorldSnapshot(p), factories:factoryWorldSnapshot(p) });
+      processCraftJobs(p);
       sendEconomy(p, "Профиль загружен.");
       send(ws,{type:"combat-loadout",weapon:p.weapon,branch:p.branch,loadout:p.loadout});
       return;
@@ -603,6 +612,15 @@ wss.on("connection", (ws) => {
       sendEconomy(p, `+${RESOURCE_YIELDS[kind]} ${kind === "wood" ? "древесины" : kind === "stone" ? "камня" : "руды"}${consumableDrop ? " · найдено: "+consumableDrop.label : ""}`, {action:"gather",requestId,ok:true,resource:kind,nodeId,respawnAt:node.respawnAt,loot:consumableDrop});
       return;
     }
+    if (msg.type === "economy-use") {
+      const item=String(msg.item||""),count=Number(p.economy.items[item]||0);
+      if(count<1){sendEconomy(p,"Этого расходника нет в сумке.");return;}
+      if(item==="minor_healing_potion"||item==="greater_healing_potion"){const heal=item==="greater_healing_potion"?500:220;p.hp=Math.min(PLAYER_MAX_HP,p.hp+heal);broadcast({type:"player",player:publicPlayer(p)});}
+      else if(item==="minor_energy_potion"){p.energy=Math.min(100,(p.energy||0)+35);send(ws,{type:"combat-resource",energy:p.energy,charges:p.charges||0,statuses:p.statuses||{}});}
+      else if(item==="battle_stew"){if(!p.statuses)p.statuses={};p.statuses.attackBuff={value:.12,until:Date.now()+30000,sourceId:p.id};broadcast({type:"combat-status",targetId:p.id,statuses:p.statuses});}
+      else {sendEconomy(p,"Этот предмет нельзя использовать.");return;}
+      p.economy.items[item]=count-1;sendEconomy(p,"Расходник использован.");return;
+    }
     if (msg.type === "economy-merchant-open") {
       if (Math.hypot(p.x-MERCHANT_POSITION.x,p.z-MERCHANT_POSITION.z)>MERCHANT_RANGE) { sendEconomy(p,"Торговец слишком далеко."); return; }
       p.merchantOpen = true; sendEconomy(p,"Ты подошёл к нейтральному торговцу.",{merchant:{x:MERCHANT_POSITION.x,z:MERCHANT_POSITION.z}}); return;
@@ -619,9 +637,14 @@ wss.on("connection", (ws) => {
     if (msg.type === "economy-craft-weapon") {
       const weaponId=String(msg.weaponId||""), tierId=String(msg.tier||"T1"), station=getActiveFactory(p);
       if (!station || station.type!=="forge" || station.running) { sendEconomy(p,"Для изготовления оружия нужна свободная кузница рядом с тобой."); return; }
+      if((p.economy.craftJobs||[]).some(job=>job.stationId===station.id)){sendEconomy(p,"Кузница уже занята изготовлением.");return;}
       const result=craftWeapon({items:p.economy.items,gear:p.economy.gear,equipment:p.equipment},weaponId,tierId);
       if (!result.ok) { sendEconomy(p,result.reason==="missing-blueprint"?"Нужен одноразовый чертёж.":"Не хватает материалов для изготовления."); return; }
-      sendEconomy(p,`Изготовлено оружие ${weaponId} ${tierId} · качество ${result.item.quality}.`,{crafted:result.item}); return;
+      p.economy.gear=p.economy.gear.filter(item=>item.id!==result.item.id);
+      const recipe=weaponRecipe(weaponId,tierId),startedAt=Date.now();
+      p.economy.craftJobs.push({id:crypto.randomUUID(),stationId:station.id,item:result.item,startedAt,finishAt:startedAt+recipe.seconds*1000});
+      station.running=true;station.startedAt=startedAt;station.duration=recipe.seconds*1000;
+      sendEconomy(p,`Начато изготовление ${weaponId} ${tierId} · качество ${result.item.quality}.`,{crafting:true,crafted:result.item}); return;
     }
     if (msg.type === "economy-equip") {
       const result=equipGear({gear:p.economy.gear,equipment:p.equipment},String(msg.itemId||""));
@@ -696,6 +719,7 @@ wss.on("connection", (ws) => {
     if (msg.type === "economy-stop") {
       const id = Number(msg.factoryId), factory = p.economy.factories.find(f => f.id === id);
       if (!factory || p.activeFactoryId!==factory.id || !factoryReady(factory) || !factoryNear(p,factory) || !factory.running) { sendEconomy(p, "Нет доступного активного производства."); return; }
+      if((p.economy.craftJobs||[]).some(job=>job.stationId===factory.id)){sendEconomy(p,"Изготовление оружия нельзя отменить после списания чертежа и материалов.");return;}
       const recipe = ECONOMY_RECIPES[factory.recipe];
       if (recipe) addItems(p.economy.items, recipe.inputs);
       factory.running = false; factory.startedAt = 0; factory.duration = 0;
@@ -1043,6 +1067,7 @@ const gameTick = setInterval(() => {
   for (let i=worldLoot.length-1;i>=0;i--) if(worldLoot[i].expiresAt<=resourceNow){const expired=worldLoot.splice(i,1)[0];broadcastLoot({type:"loot-removed",lootId:expired.id,x:expired.x,z:expired.z});}
   const dt = TICK_MS / 1000;
   for (const p of players.values()) {
+    processCraftJobs(p);
     p.energy = Math.min(100, (p.energy ?? 100) + 4 * dt);
     const now = Date.now();
     if (p.economy?.factories) {
