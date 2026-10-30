@@ -56,6 +56,9 @@ assert.equal(A.last("economy-state").economy.items.gold, 100, "remote blueprint 
 B.say({ type: "economy-trade", side: "buy", item: "wood", amount: 10 });
 assert.ok(B.last("economy-state").message.includes("рядом с нейтральным торговцем"));
 assert.equal(B.last("economy-state").economy.items.gold, 100, "remote trade cannot spend gold");
+B.say({ type: "economy-gear-sell", itemId: "not-owned" });
+assert.ok(B.last("economy-state").message.includes("только нейтральному торговцу"));
+assert.equal(B.last("economy-state").economy.items.gold, 100, "remote gear sale cannot create currency");
 A.ws.emit("close");
 const A2 = client("MerchantBuyer", profileToken);
 A2.hello();
