@@ -672,6 +672,16 @@ wss.on("connection", (ws) => {
       }
       sendEconomy(p,"Экипировка обновлена."); send(ws,{type:"combat-loadout",weapon:p.weapon,branch:p.branch,loadout:p.loadout}); return;
     }
+    if (msg.type === "economy-gear-sell") {
+      if (Math.hypot(p.x-MERCHANT_POSITION.x,p.z-MERCHANT_POSITION.z)>MERCHANT_RANGE) { sendEconomy(p,"Продать экипировку можно только нейтральному торговцу."); return; }
+      const itemId=String(msg.itemId||""),index=(p.economy.gear||[]).findIndex(item=>item.id===itemId),item=p.economy.gear[index];
+      if(!item || !["weapon","armor"].includes(item.kind)){sendEconomy(p,"Этот предмет нельзя продать.");return;}
+      const tier=TIERS[item.tier]||TIERS.T1,qualityFactor={ordinary:1,good:1.15,excellent:1.35,outstanding:1.7}[item.quality]||1;
+      const durability=Math.max(0,Math.min(1,Number(item.durability||0)/Math.max(1,Number(item.maxDurability||1))));
+      const price=Math.max(1,Math.floor(20*tier.order*tier.order*qualityFactor*durability*.55));
+      p.economy.gear.splice(index,1);p.economy.items.gold=(p.economy.items.gold||0)+price;
+      sendEconomy(p,`Продано снаряжение ${item.weaponId||item.itemId||item.kind} за ${price} золота.`,{sold:{itemId,price}});return;
+    }
     if (msg.type === "loot-pickup") {
       const lootId=String(msg.lootId||""), index=worldLoot.findIndex(drop=>drop.id===lootId), drop=worldLoot[index];
       if(!drop || drop.expiresAt<=Date.now() || Math.hypot(p.x-drop.x,p.z-drop.z)>3.5 || p.hp<=0){sendEconomy(p,"Предмет уже забрали или он слишком далеко.");return;}
