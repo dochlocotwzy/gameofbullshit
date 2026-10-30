@@ -394,6 +394,8 @@ function placeAtBase(p, notify) {
 }
 function resetMatch() {
   if (siege) siege.reset();
+  playerStore.resetAllProfiles();
+  for(const drop of worldLoot.splice(0))broadcastLoot({type:"loot-removed",lootId:drop.id,x:drop.x,z:drop.z});
   for (const f of worldFactories.splice(0)) broadcast({ type: "factory-destroyed", factoryId: f.id, byTeam: null });
   for (const q of players.values()) {
     clearTimeout(q.respawnTimer); q.respawnTimer = null; q.hp = PLAYER_MAX_HP; q.statuses = {}; q.pendingAttack = null;
