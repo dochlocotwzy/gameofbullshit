@@ -5,7 +5,8 @@
   "description": "WebSocket multiplayer server for VillageStrategy prototype",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node tests/lobby.integration.js && node tests/siege.integration.js && node tests/siege.server.js"
   },
   "engines": {
     "node": ">=18"
