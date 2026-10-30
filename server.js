@@ -420,6 +420,7 @@ function damageEquippedDurability(p, amount = 1) {
   else p.equipment.main_hand = updated;
   savePersistentProfile(p);
   sendEconomy(p, updated.durability <= 0 ? "Оружие сломалось от использования." : "Прочность оружия снижена.");
+  if(updated.durability<=0)send(p.ws,{type:"combat-loadout",weapon:null,branch:null,loadout:p.loadout});
 }
 let nextWorldFactoryId = 1;
 const RESOURCE_YIELDS = { wood: 3, stone: 2, ore: 2 };
@@ -573,6 +574,7 @@ wss.on("connection", (ws) => {
       broadcast({ type: "player", player: publicPlayer(p) }, p.id);
       send(ws, { type: "welcome", id, player: publicPlayer(p), team:p.team, profileToken:p.profileToken, players: snapshot(p), resources: resourceWorldSnapshot(p), factories:factoryWorldSnapshot(p) });
       sendEconomy(p, "Профиль загружен.");
+      send(ws,{type:"combat-loadout",weapon:p.weapon,branch:p.branch,loadout:p.loadout});
       return;
     }
     if (msg.type === "latency-ping") {
