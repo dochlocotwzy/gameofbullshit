@@ -75,7 +75,7 @@
   function normalizeUrl(s) {
     if (/^wss?:\/\//.test(s)) return s.replace(/\/?$/, "").replace(/\/multiplayer$/, "") + "/multiplayer";
     if (/^https?:\/\//.test(s)) { const u = new URL(s); return (u.protocol === "https:" ? "wss:" : "ws:") + "//" + u.host + "/multiplayer"; }
-    const secure = location.protocol === "https:" && !/^(localhost|127\.|192\.168\.)/.test(s);
+    const secure = (location.protocol === "https:" || location.protocol === "file:") && !/^(localhost|127\.|192\.168\.)/.test(s);
     return (secure ? "wss://" : "ws://") + s.replace(/\/$/, "") + "/multiplayer";
   }
   function show(view) { root.classList.remove("hidden"); el.connectView.style.display = view === "connect" ? "" : "none"; el.roomView.style.display = view === "room" ? "" : "none"; }
