@@ -48,6 +48,8 @@ const MOVE_SPEED = 5.2;
 const RUN_SPEED = 8.0;
 const MAP_SCALE = 2.3;
 const WORLD_BOUND = 126.5;
+const MERCHANT_POSITION = Object.freeze({ x: 20.7, z: 0 });
+const MERCHANT_RANGE = 5.5;
 const VISION_RADIUS = 20;
 const VISION_SYNC_MS = 250;
 const TICK_MS = 50;
@@ -270,6 +272,7 @@ function applyEffects(target,effects,sourceId) {
 }
 function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
   const now=Date.now(), branch=ALBION_BRANCHES[ability.branch], weaponBranch=ALBION_WEAPONS[p.weapon]?.branch||null;
+  if (!p.equipment?.main_hand || Number(p.equipment.main_hand.durability)<=0) return;
   const validLoadout=slot==="e"?WEAPON_E[p.weapon]===abilityId:p.loadout?.[slot]===abilityId;
   if(!branch||weaponBranch!==ability.branch||slot!==ability.slot||!validLoadout){send(ws,{type:"combat",result:"invalid-ability",abilityId,slot,energy:p.energy});return;}
   if(p.hp<=0||p.statuses?.stun||p.statuses?.air||p.statuses?.silence||(p.statuses?.cannotAttack&&p.statuses.cannotAttack.until>now)){send(ws,{type:"combat",result:"disabled",abilityId,energy:p.energy});return;}
@@ -366,6 +369,7 @@ function handleAlbionAbility(p, ws, msg, ability, abilityId, slot) {
     },landingDelay);
   }
   if(ability.zone?.selfEffects)applyEffects(p,ability.zone.selfEffects,p.id);
+  damageEquippedDurability(p, 1);
   send(ws,{type:"combat-resource",energy:p.energy,abilityId,cooldownUntil:p.abilityCooldowns[abilityId]||0,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
 }
 function spawnPosition(index, team = "blue") {
@@ -397,10 +401,24 @@ function resetMatch() {
   }
   for (const q of players.values()) { send(q.ws, { type: "player", player: publicPlayer(q) }); broadcast({ type: "player", player: publicPlayer(q) }, q.id); }
 }
-function scheduleRespawn(target){if(target.respawnTimer)return;target.respawnTimer=setTimeout(()=>{const spawn=spawnPosition(target.spawnIndex,target.team);target.hp=PLAYER_MAX_HP;target.x=spawn.x;target.z=spawn.z;target.rotation=0;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.moveTarget=null;target.input={x:0,z:0,running:false};target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
+function scheduleRespawn(target){if(target.respawnTimer)return; const resolved=resolveDeathGear(target.equipment||{}); target.equipment=resolved.remaining; target.weapon=target.equipment.main_hand?.weaponId||null; for(const entry of resolved.dropped){const drop=makeWorldDrop(entry,{x:target.x,z:target.z});worldLoot.push(drop);broadcastLoot({type:"loot-created",loot:publicLoot(drop)});} if(resolved.broken.length)sendEconomy(target,`При смерти сломалось предметов: ${resolved.broken.length}.`); savePersistentProfile(target); target.respawnTimer=setTimeout(()=>{const spawn=spawnPosition(target.spawnIndex,target.team);target.hp=PLAYER_MAX_HP;target.x=spawn.x;target.z=spawn.z;target.rotation=0;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.moveTarget=null;target.input={x:0,z:0,running:false};target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
 const RESOURCE_RESPAWN_MS = 30 * 60 * 1000;
 const RESOURCE_COUNTS = { wood: 124, stone: 48, ore: 24 };
 const worldFactories = [];
+const worldLoot = [];
+function publicLoot(drop) { return { id:drop.id, slot:drop.slot, item:{...drop.item}, x:drop.x, z:drop.z, expiresAt:drop.expiresAt }; }
+function lootWorldSnapshot(viewer) { return worldLoot.filter(drop => drop.expiresAt > Date.now() && (!viewer || isInVision(viewer,drop.x,drop.z))).map(publicLoot); }
+function broadcastLoot(payload) { for (const viewer of players.values()) if (isInVision(viewer,payload.x,payload.z)) send(viewer.ws,payload); }
+function damageEquippedDurability(p, amount = 1) {
+  const item = p.equipment?.main_hand;
+  if (!item) return;
+  const updated = applyDurabilityLoss(item, amount);
+  if (!updated) return;
+  if (updated.durability <= 0) { delete p.equipment.main_hand; p.weapon = null; }
+  else p.equipment.main_hand = updated;
+  savePersistentProfile(p);
+  sendEconomy(p, updated.durability <= 0 ? "Оружие сломалось от использования." : "Прочность оружия снижена.");
+}
 let nextWorldFactoryId = 1;
 const RESOURCE_YIELDS = { wood: 3, stone: 2, ore: 2 };
 const worldResources = [];
@@ -465,6 +483,7 @@ const ECONOMY_RECIPES = {
   ship: { name: "Корабль", inputs: { plank: 20, iron_ingot: 4 }, output: { ship: 1 }, seconds: 45, station: "shipyard" }
 };
 const FACTORY_TYPES = {
+  forge: { name: "Кузница", cost: { wood: 14, stone: 10, iron_ingot: 6 }, recipe: "forge" },
   sawmill: { name: "Лесопилка", cost: { wood: 8, stone: 4 }, recipe: "plank" },
   smelter: { name: "Плавильня", cost: { wood: 6, stone: 8 }, recipe: "iron_ingot" },
   shipyard: { name: "Верфь", cost: { wood: 20, stone: 12, plank: 8 }, recipe: "ship" }
@@ -473,7 +492,7 @@ function publicFactory(f) { return { id:f.id, type:f.type, name:FACTORY_TYPES[f.
 function factoryWorldSnapshot(viewer) { return worldFactories.filter(f => !viewer || isInVision(viewer,f.x,f.z)).map(publicFactory); }
 function sendVisionSnapshot(p) {
   const now=Date.now(); if(now-(p.lastVisionSyncAt||0)<VISION_SYNC_MS)return; p.lastVisionSyncAt=now;
-  send(p.ws,{type:"world-vision",players:snapshot(p),resources:resourceWorldSnapshot(p),factories:factoryWorldSnapshot(p)});
+  send(p.ws,{type:"world-vision",players:snapshot(p),resources:resourceWorldSnapshot(p),factories:factoryWorldSnapshot(p),loot:lootWorldSnapshot(p)});
 }
 function economySnapshot(p) {
   const e = p.economy || { items: {}, factories: [] };
@@ -574,11 +593,50 @@ wss.on("connection", (ws) => {
       node.depleted = true;
       node.respawnAt = now + RESOURCE_RESPAWN_MS;
       p.economy.items[kind] = (p.economy.items[kind] || 0) + RESOURCE_YIELDS[kind];
+      const consumableDrop=rollConsumableDrop();
+      if(consumableDrop)p.economy.items[consumableDrop.id]=(p.economy.items[consumableDrop.id]||0)+1;
       broadcastResource(node);
-      sendEconomy(p, `+${RESOURCE_YIELDS[kind]} ${kind === "wood" ? "древесины" : kind === "stone" ? "камня" : "руды"}`, {action:"gather",requestId,ok:true,resource:kind,nodeId,respawnAt:node.respawnAt});
+      sendEconomy(p, `+${RESOURCE_YIELDS[kind]} ${kind === "wood" ? "древесины" : kind === "stone" ? "камня" : "руды"}${consumableDrop ? " · найдено: "+consumableDrop.label : ""}`, {action:"gather",requestId,ok:true,resource:kind,nodeId,respawnAt:node.respawnAt,loot:consumableDrop});
       return;
     }
+    if (msg.type === "economy-merchant-open") {
+      if (Math.hypot(p.x-MERCHANT_POSITION.x,p.z-MERCHANT_POSITION.z)>MERCHANT_RANGE) { sendEconomy(p,"Торговец слишком далеко."); return; }
+      p.merchantOpen = true; sendEconomy(p,"Ты подошёл к нейтральному торговцу.",{merchant:{x:MERCHANT_POSITION.x,z:MERCHANT_POSITION.z}}); return;
+    }
+    if (msg.type === "economy-blueprint-buy") {
+      if (Math.hypot(p.x-MERCHANT_POSITION.x,p.z-MERCHANT_POSITION.z)>MERCHANT_RANGE) { sendEconomy(p,"Чертежи продаются только у нейтрального торговца."); return; }
+      const weaponId=String(msg.weaponId||""), tierId=String(msg.tier||"T1"), recipe=weaponRecipe(weaponId,tierId);
+      if (!recipe || (!WEAPON_DAMAGE[weaponId] && !ALBION_WEAPONS[weaponId])) { sendEconomy(p,"Такого чертежа нет в ассортименте."); return; }
+      const price=35*TIERS[tierId].order*TIERS[tierId].order;
+      if ((p.economy.items.gold||0)<price) { sendEconomy(p,"Не хватает золота на чертёж."); return; }
+      p.economy.items.gold-=price; p.economy.items[recipe.blueprint]=(p.economy.items[recipe.blueprint]||0)+1;
+      sendEconomy(p,`Куплен одноразовый чертёж: ${weaponId} ${tierId}.`,{blueprint:{weaponId,tier:tierId,price}}); return;
+    }
+    if (msg.type === "economy-craft-weapon") {
+      const weaponId=String(msg.weaponId||""), tierId=String(msg.tier||"T1"), station=getActiveFactory(p);
+      if (!station || station.type!=="forge" || station.running) { sendEconomy(p,"Для изготовления оружия нужна свободная кузница рядом с тобой."); return; }
+      const result=craftWeapon({items:p.economy.items,gear:p.economy.gear,equipment:p.equipment},weaponId,tierId);
+      if (!result.ok) { sendEconomy(p,result.reason==="missing-blueprint"?"Нужен одноразовый чертёж.":"Не хватает материалов для изготовления."); return; }
+      sendEconomy(p,`Изготовлено оружие ${weaponId} ${tierId} · качество ${result.item.quality}.`,{crafted:result.item}); return;
+    }
+    if (msg.type === "economy-equip") {
+      const result=equipGear({gear:p.economy.gear,equipment:p.equipment},String(msg.itemId||""));
+      if (!result.ok) { sendEconomy(p,"Этот предмет нельзя экипировать."); return; }
+      const item=p.equipment.main_hand;
+      if (item?.kind==="weapon" && WEAPON_DAMAGE[item.weaponId]) {
+        p.weapon=item.weaponId; p.branch=ALBION_WEAPONS[item.weaponId]?.branch||null;
+        if(p.branch){const branch=ALBION_BRANCHES[p.branch],passiveIds=Object.keys(branch.passives);p.loadout={q:branch.q[0],w:branch.w[0],p:passiveIds[0]};}
+      }
+      sendEconomy(p,"Экипировка обновлена."); send(ws,{type:"combat-loadout",weapon:p.weapon,branch:p.branch,loadout:p.loadout}); return;
+    }
+    if (msg.type === "loot-pickup") {
+      const lootId=String(msg.lootId||""), index=worldLoot.findIndex(drop=>drop.id===lootId), drop=worldLoot[index];
+      if(!drop || drop.expiresAt<=Date.now() || Math.hypot(p.x-drop.x,p.z-drop.z)>3.5 || p.hp<=0){sendEconomy(p,"Предмет уже забрали или он слишком далеко.");return;}
+      p.economy.gear.push({...drop.item}); worldLoot.splice(index,1);
+      broadcastLoot({type:"loot-removed",lootId}); sendEconomy(p,"Подобран предмет экипировки."); return;
+    }
     if (msg.type === "economy-trade") {
+      if (Math.hypot(p.x-MERCHANT_POSITION.x,p.z-MERCHANT_POSITION.z)>MERCHANT_RANGE) { sendEconomy(p,"Торговать можно только рядом с нейтральным торговцем."); return; }
       const item = String(msg.item || ""), side = String(msg.side || ""), amount = Math.floor(Number(msg.amount) || 0);
       const prices = { wood:2, stone:3, ore:5, plank:5, charcoal:4, stone_block:7, iron_ingot:12, steel_ingot:28, tool_kit:18, ship:120 };
       if (!ECONOMY_ITEMS.has(item) || item === "gold" || !Number.isFinite(amount) || amount < 1 || amount > 99 || !prices[item] || !["buy","sell"].includes(side)) { sendEconomy(p,"Эта сделка недоступна."); return; }
@@ -739,6 +797,7 @@ wss.on("connection", (ws) => {
     }
     if (msg.type === "attack") {
       const now = Date.now();
+      if (!p.equipment?.main_hand || Number(p.equipment.main_hand.durability)<=0) { send(ws,{type:"combat",result:"no-weapon"}); return; }
       if (p.hp <= 0 || p.statuses?.stun || p.statuses?.air || (p.statuses?.cannotAttack && p.statuses.cannotAttack.until > now) || now - p.lastAttack < ATTACK_COOLDOWN_MS / (1 + Math.max(0,Number(p.statuses?.attackSpeed?.value)||0)) || p.pendingAttack) return;
       const target = players.get(String(msg.targetId || ""));
       if (!target || target.id === p.id || target.hp <= 0 || target.team === p.team) return;
@@ -798,6 +857,7 @@ wss.on("connection", (ws) => {
       broadcast({type:"combat-status",targetId:target.id,statuses:target.statuses});
       send(ws,{type:"combat-resource",energy:p.energy,charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,statuses:p.statuses||{}});
       broadcast({ type: "combat-hit", attackerId: p.id, targetId: target.id, damage: actualDealt, hp: target.hp, kind: "auto" });
+      damageEquippedDurability(p, 1);
       broadcast({ type: "player", player: publicPlayer(target) });
       if (target.hp === 0) scheduleRespawn(target);
       }, 180);
@@ -805,6 +865,7 @@ wss.on("connection", (ws) => {
     }
     if (msg.type === "ability-hit") {
       const now=Date.now();
+      if (!p.equipment?.main_hand || Number(p.equipment.main_hand.durability)<=0) { send(ws,{type:"combat",result:"no-weapon"}); return; }
       if(p.hp<=0)return;
       if(p.statuses?.silence||p.statuses?.stun||p.statuses?.air){send(ws,{type:"combat",result:"disabled",abilityId:String(msg.abilityId||""),energy:p.energy});return;}
       if(now-p.lastAbility<250)return;
