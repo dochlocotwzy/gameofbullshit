@@ -854,7 +854,7 @@ wss.on("connection", (ws) => {
           return;
         }
       const weapon = p.weapon || "broadsword";
-      const baseDamage = WEAPON_DAMAGE[weapon] || WEAPON_DAMAGE.broadsword;
+      const baseDamage = Math.round((WEAPON_DAMAGE[weapon] || WEAPON_DAMAGE.broadsword) * (Number(p.equipment?.main_hand?.powerMultiplier)||1));
       const outgoingWeak = p.statuses?.weak && p.statuses.weak.until > now ? Math.max(0, Math.min(.9, Number(p.statuses.weak.value) || 0)) : 0;
       const attackBonus = ["attackBuff","interruptAttackBuff","bloodthirstAttackBuff","damageBuff"].reduce((sum,key) => { const st=p.statuses?.[key]; return sum + (st && st.until > now ? Math.max(0,Number(st.value)||0) : 0); }, 0);
       const damage = Math.round(baseDamage * (1 + attackBonus) * (1 - outgoingWeak) * (armorBreakMultiplier(target,now)));
@@ -990,9 +990,9 @@ wss.on("connection", (ws) => {
         return;
       }
       let castDamage=ability.damage*(Number(p.equipment?.main_hand?.powerMultiplier)||1);
-      if(abilityId==="mightyBlow")castDamage=[269,432,649,918][Math.min(3,p.charges||0)];
-      if(abilityId==="charge")castDamage=[390,560,780,1030][Math.min(3,p.charges||0)];
-      if(abilityId==="carvingDash")castDamage=[260,340,430,540][Math.min(3,p.charges||0)];
+      if(abilityId==="mightyBlow")castDamage=[269,432,649,918][Math.min(3,p.charges||0)]*(Number(p.equipment?.main_hand?.powerMultiplier)||1);
+      if(abilityId==="charge")castDamage=[390,560,780,1030][Math.min(3,p.charges||0)]*(Number(p.equipment?.main_hand?.powerMultiplier)||1);
+      if(abilityId==="carvingDash")castDamage=[260,340,430,540][Math.min(3,p.charges||0)]*(Number(p.equipment?.main_hand?.powerMultiplier)||1);
       if(abilityId==="cyclone"&&(p.charges||0)>0){castDamage=162;p.charges--;if(p.charges<=0)p.chargeExpiresAt=0;}
       if(["mightyBlow","charge","carvingDash"].includes(abilityId)){p.charges=0;p.chargeExpiresAt=0;}
       for(const victim of victims){
@@ -1016,7 +1016,7 @@ wss.on("connection", (ws) => {
             const defenseReduction2=defense2>0?Math.min(.5,defense2/(defense2+200)):0;
             const outgoingWeak2=p.statuses?.weak&&p.statuses.weak.until>Date.now()?Math.max(0,Math.min(.9,Number(p.statuses.weak.value)||0)):0;
             const vulnerability2=victim.statuses?.armorBreak&&victim.statuses.armorBreak.until>Date.now()?(1+Math.max(0,Number(victim.statuses.armorBreak.value)||0)):1;
-            const secondDamage=Math.max(0,Math.round((ability.secondDamage||480)*(1-reduction2)*(1-defenseReduction2)*(1-outgoingWeak2)*vulnerability2));
+            const secondDamage=Math.max(0,Math.round((ability.secondDamage||480)*(Number(p.equipment?.main_hand?.powerMultiplier)||1)*(1-reduction2)*(1-defenseReduction2)*(1-outgoingWeak2)*vulnerability2));
             const secondActual=absorbShield(victim,secondDamage);victim.hp=Math.max(0,victim.hp-secondActual);
             broadcast({type:"combat-hit",attackerId:p.id,targetId:victim.id,damage:secondActual,hp:victim.hp,kind:"ability",slot,abilityId,hitIndex:1});
             if(victim.hp===0&&!victim.respawnTimer)scheduleRespawn(victim);
