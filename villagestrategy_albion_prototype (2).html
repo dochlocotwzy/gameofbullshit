@@ -80,6 +80,7 @@
   #economy-panel .econ-card .durability i{display:block;height:100%;background:linear-gradient(90deg,#a84a38,#d8bd64,#7fbd79)}
   #economy-panel .econ-card .tier{color:#e9d39a;font-size:10px}
   #economy-panel .econ-card .rarity{font-size:10px;color:#9fc5a4}
+  #economy-panel .rarity.common{color:#c5c5c5}#economy-panel .rarity.uncommon{color:#65bd79}#economy-panel .rarity.rare{color:#5c9ee8}#economy-panel .rarity.epic{color:#b47be8}
   #economy-panel.open{display:block}
   #economy-panel h2{margin:0 0 4px;font-size:16px}
   #economy-panel h3{font-size:12px;color:#f1d99a;margin:10px 0 6px}
@@ -1080,8 +1081,9 @@ function renderEconomyState(data) {
   const currentWeaponLabel = $('#econ-current-weapon');
   if(currentWeaponLabel)currentWeaponLabel.textContent=equippedMainHand ? ((window.mpWeaponCatalog?.[equippedMainHand.weaponId]?.name)||equippedMainHand.weaponId)+' · '+(equippedMainHand.tier||'T1') : 'Нет оружия';
   $('#econ-status').textContent = window.mpConnected ? (data?.message || 'Сервер синхронизирован') : 'Оффлайн: экономика доступна только на сервере';
-  const consumableIds=new Set(['minor_healing_potion','minor_energy_potion','battle_stew','greater_healing_potion']);
-  $('#econ-items').innerHTML = Object.entries(ECON_LABELS).map(([id,meta])=>{const count=Math.max(0,Number(items[id])||0);return `<div class="econ-card"><b>${meta[0]} ${meta[1]}</b><span>${count}</span>${consumableIds.has(id)?`<button data-econ="use" data-id="${id}" ${count<1?'disabled':''}>Использовать</button>`:''}</div>`;}).join('');
+  const consumableRarities={minor_healing_potion:['common','Обычный'],minor_energy_potion:['uncommon','Необычный'],battle_stew:['rare','Редкий'],greater_healing_potion:['epic','Эпический']};
+  const consumableIds=new Set(Object.keys(consumableRarities));
+  $('#econ-items').innerHTML = Object.entries(ECON_LABELS).map(([id,meta])=>{const count=Math.max(0,Number(items[id])||0),rarity=consumableRarities[id];return `<div class="econ-card"><b>${meta[0]} ${meta[1]}</b>${rarity?`<small class="rarity ${rarity[0]}">${rarity[1]}</small>`:''}<span>${count}</span>${consumableIds.has(id)?`<button data-econ="use" data-id="${id}" ${count<1?'disabled':''}>Использовать</button>`:''}</div>`;}).join('');
   const equipped = economyState.equipment || {};
   const gear = economyState.gear || [];
   const gearCard = (item, equippedSlot = false) => { const name=(window.mpWeaponCatalog?.[item.weaponId]?.name)||item.weaponId||item.itemId||'Снаряжение'; const pct=Math.max(0,Math.min(100,Number(item.durability||0)/Math.max(1,Number(item.maxDurability||1))*100)); return `<div class="econ-card"><b>${name}</b><small class="tier">${item.tier||'T1'} · ${item.quality||'ordinary'}</small><div class="durability"><i style="width:${pct}%"></i></div><small>Прочность: ${item.durability||0}/${item.maxDurability||0}</small>${equippedSlot?' <span class="rarity">Надето</span>':`<button data-econ="equip" data-id="${String(item.id||'').replace(/[^a-zA-Z0-9_-]/g,'')}">Экипировать</button>`}</div>`; };
