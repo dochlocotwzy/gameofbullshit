@@ -1900,6 +1900,7 @@ function configureBranchOptions(id){
  if($('#selP'))fillSelect($('#selP'),ps.map(k=>[k,PASSIVES[k].name]),loadout.p);
 }
 
+window.mpHasEquippedWeapon = true;
 let loadout = { weapon: 'broadsword', q: 'strike', w: 'cyclone', p: 'deepcuts' };
 try { const s = JSON.parse(localStorage.getItem('vs_loadout') || 'null'); if (s) loadout = { ...loadout, ...s }; } catch (e) { }
 if (!WEAPONS[loadout.weapon]) loadout.weapon = 'broadsword';
@@ -2756,9 +2757,10 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
           mpPingBadge.textContent = 'ПИНГ: ' + pingMs + ' мс';
         }
       } else if (msg.type === 'combat-loadout') {
-        loadout.weapon = WEAPONS[msg.weapon] ? msg.weapon : 'broadsword';
+        window.mpHasEquippedWeapon = !!WEAPONS[msg.weapon];
+        loadout.weapon = window.mpHasEquippedWeapon ? msg.weapon : 'broadsword';
         if(msg.loadout){loadout.q=msg.loadout.q||loadout.q;loadout.w=msg.loadout.w||loadout.w;loadout.p=msg.loadout.p||loadout.p;}
-        configureBranchOptions(loadout.weapon);$('#selWeapon').value=loadout.weapon;renderSlots();renderHud();saveLoadout();
+        configureBranchOptions(loadout.weapon);$('#selWeapon').value=loadout.weapon;rebuildWeapons();weaponR.visible=window.mpHasEquippedWeapon;weaponL.visible=window.mpHasEquippedWeapon&&!!WEAPONS[loadout.weapon].dual;renderSlots();renderHud();saveLoadout();
       } else if (msg.type === 'welcome') {
         succeed();
         socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free}));
