@@ -106,6 +106,8 @@ function resetRoundProfile(p) {
   p.equipment = { main_hand: { id: "starter-broadsword", kind: "weapon", weaponId: "broadsword", tier: "T1", quality: "ordinary", durability: 100, maxDurability: 100 } };
   p.blueprints = {};
   p.weapon = "broadsword";
+  p.branch = null;
+  p.loadout = { q:"strike", w:"cyclone", p:"deepcuts" };
   p.activeFactoryId = null;
   savePersistentProfile(p);
 }
@@ -155,7 +157,7 @@ function send(ws, payload) {
 function isInVision(observer, x, z) { return !!observer && Math.hypot(observer.x - x, observer.z - z) <= VISION_RADIUS; }
 function snapshot(viewer) {
   return [...players.values()].filter(other => other.id !== viewer?.id && (!viewer || isInVision(viewer, other.x, other.z))).map(p => ({
-    id: p.id, name: p.name, team: p.team, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp, statuses: p.statuses || {}, charges: p.charges || 0, chargeExpiresAt: p.chargeExpiresAt || 0, weapon: p.weapon || "broadsword"
+    id: p.id, name: p.name, team: p.team, x: p.x, y: p.y, z: p.z, rotation: p.rotation, hp: p.hp, statuses: p.statuses || {}, charges: p.charges || 0, chargeExpiresAt: p.chargeExpiresAt || 0, weapon: p.weapon || null
   }));
 }
 function broadcast(payload, exceptId) {
@@ -185,7 +187,7 @@ function broadcast(payload, exceptId) {
 const lobby = createLobby({ players, send, broadcast, maxPlayers: MAX_PLAYERS, minPlayers: 1,
   onTeamChange: p => placeAtBase(p, true),
   onReset: () => resetMatch() });
-siege = createSiege({ players, send, broadcast, attackRange: ATTACK_RANGE, cooldownMs: ATTACK_COOLDOWN_MS, damageFor: p => WEAPON_DAMAGE[p.weapon] || WEAPON_DAMAGE.broadsword });
+siege = createSiege({ players, send, broadcast, attackRange: ATTACK_RANGE, cooldownMs: ATTACK_COOLDOWN_MS, damageFor: p => p.equipment?.main_hand && Number(p.equipment.main_hand.durability)>0 ? (WEAPON_DAMAGE[p.weapon] || 0) : 0 });
 
 function publicPlayer(p) { return {id:p.id,name:p.name,team:p.team,x:p.x,y:0,z:p.z,rotation:p.rotation,hp:p.hp,statuses:p.statuses||{},charges:p.charges||0,chargeExpiresAt:p.chargeExpiresAt||0,weapon:p.weapon||null}; }
 function chooseTeam() { let blue=0,red=0; for(const player of players.values()){if(player.team==="blue")blue++;else if(player.team==="red")red++;} if(blue===red)return crypto.randomInt(0,2)?"blue":"red"; return blue<red?"blue":"red"; }
@@ -401,7 +403,7 @@ function resetMatch() {
   }
   for (const q of players.values()) { send(q.ws, { type: "player", player: publicPlayer(q) }); broadcast({ type: "player", player: publicPlayer(q) }, q.id); }
 }
-function scheduleRespawn(target){if(target.respawnTimer)return; const resolved=resolveDeathGear(target.equipment||{}); target.equipment=resolved.remaining; target.weapon=target.equipment.main_hand?.weaponId||null; for(const entry of resolved.dropped){const drop=makeWorldDrop(entry,{x:target.x,z:target.z});worldLoot.push(drop);broadcastLoot({type:"loot-created",loot:publicLoot(drop)});} if(resolved.broken.length)sendEconomy(target,`При смерти сломалось предметов: ${resolved.broken.length}.`); savePersistentProfile(target); target.respawnTimer=setTimeout(()=>{const spawn=spawnPosition(target.spawnIndex,target.team);target.hp=PLAYER_MAX_HP;target.x=spawn.x;target.z=spawn.z;target.rotation=0;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.moveTarget=null;target.input={x:0,z:0,running:false};target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
+function scheduleRespawn(target){if(target.respawnTimer)return; const resolved=resolveDeathGear(target.equipment||{}); target.equipment=resolved.remaining; target.weapon=target.equipment.main_hand?.weaponId||null; for(const entry of resolved.dropped){const drop=makeWorldDrop(entry,{x:target.x,z:target.z});worldLoot.push(drop);broadcastLoot({type:"loot-created",loot:publicLoot(drop),x:drop.x,z:drop.z});} sendEconomy(target,`Смерть: выпало ${resolved.dropped.length}, сломалось ${resolved.broken.length} предметов.`); target.respawnTimer=setTimeout(()=>{const spawn=spawnPosition(target.spawnIndex,target.team);target.hp=PLAYER_MAX_HP;target.x=spawn.x;target.z=spawn.z;target.rotation=0;target.statuses={};target.charges=0;target.chargeExpiresAt=0;target.autoCount=0;target.moveTarget=null;target.input={x:0,z:0,running:false};target.respawnTimer=null;broadcast({type:"respawn",player:publicPlayer(target)});},5000);}
 const RESOURCE_RESPAWN_MS = 30 * 60 * 1000;
 const RESOURCE_COUNTS = { wood: 124, stone: 48, ore: 24 };
 const worldFactories = [];
@@ -564,7 +566,7 @@ wss.on("connection", (ws) => {
           p.equipment = { ...saved.equipment };
           p.blueprints = { ...saved.blueprints };
           const equipped = p.equipment.main_hand;
-          if (equipped?.kind === "weapon" && WEAPON_DAMAGE[equipped.weaponId]) p.weapon = equipped.weaponId;
+          if (equipped?.kind === "weapon" && WEAPON_DAMAGE[equipped.weaponId]) { p.weapon = equipped.weaponId; p.branch = ALBION_WEAPONS[equipped.weaponId]?.branch || null; }
         }
       }
       lobby.refresh();
@@ -633,7 +635,7 @@ wss.on("connection", (ws) => {
       const lootId=String(msg.lootId||""), index=worldLoot.findIndex(drop=>drop.id===lootId), drop=worldLoot[index];
       if(!drop || drop.expiresAt<=Date.now() || Math.hypot(p.x-drop.x,p.z-drop.z)>3.5 || p.hp<=0){sendEconomy(p,"Предмет уже забрали или он слишком далеко.");return;}
       p.economy.gear.push({...drop.item}); worldLoot.splice(index,1);
-      broadcastLoot({type:"loot-removed",lootId}); sendEconomy(p,"Подобран предмет экипировки."); return;
+      broadcastLoot({type:"loot-removed",lootId,x:drop.x,z:drop.z}); sendEconomy(p,"Подобран предмет экипировки."); return;
     }
     if (msg.type === "economy-trade") {
       if (Math.hypot(p.x-MERCHANT_POSITION.x,p.z-MERCHANT_POSITION.z)>MERCHANT_RANGE) { sendEconomy(p,"Торговать можно только рядом с нейтральным торговцем."); return; }
@@ -953,7 +955,7 @@ wss.on("connection", (ws) => {
           broadcast({type:"combat-effect",phase:"impact",attackerId:p.id,abilityId,targetIds:impactVictims.map(v=>v.id),x:p.x,z:p.z,originX:p.x,originZ:p.z,aimX:p.x,aimZ:p.z,rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||null});
           broadcast({type:"player",player:publicPlayer(p)});
         },800);
-        broadcast({type:"combat-effect",phase:"cast",attackerId:p.id,abilityId,targetIds:[],x:p.x,z:p.z,originX:p.x,originZ:p.z,aimX:p.x,aimZ:p.z,rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||"broadsword"});
+        broadcast({type:"combat-effect",phase:"cast",attackerId:p.id,abilityId,targetIds:[],x:p.x,z:p.z,originX:p.x,originZ:p.z,aimX:p.x,aimZ:p.z,rotation:p.rotation,charges:p.charges||0,weapon:p.weapon||null});
         broadcast({type:"player",player:publicPlayer(p)});
         return;
       }
