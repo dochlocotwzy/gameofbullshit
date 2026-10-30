@@ -2614,7 +2614,9 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       // Stop exposing/gathering client-generated fallback nodes once multiplayer connects.
       syncResourceWorld([]);
       mpStatus.textContent = 'Мультиплеер: подключён · ' + mpName;
-      socket.send(JSON.stringify({type:'hello', name:mpName}));
+      let profileToken = localStorage.getItem('gob_profile_token');
+      if (!profileToken) { profileToken = (crypto.randomUUID ? crypto.randomUUID() : 'gob_' + Array.from(crypto.getRandomValues(new Uint8Array(24)), b => b.toString(16).padStart(2,'0')).join('')); localStorage.setItem('gob_profile_token', profileToken); }
+      socket.send(JSON.stringify({type:'hello', name:mpName, profileToken}));
       socket.send(JSON.stringify({type:'weapon',weapon:loadout.weapon}));
       socket.send(JSON.stringify({type:'loadout',q:loadout.q,w:loadout.w,p:loadout.p}));
       socket.send(JSON.stringify({type:'lobby-get'}));
