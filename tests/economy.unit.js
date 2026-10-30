@@ -25,14 +25,17 @@ try {
   const profile = store.get(token);
   profile.items.wood = 17;
   profile.equipment.main_hand = { id: "item-1", durability: 80 };
+  profile.craftJobs = [{ id: "job-1", finishAt: 9999 }];
   assert.equal(store.save(token, profile), true);
   const reloaded = createPlayerStore({ dataDir: dir }).get(token);
   assert.equal(reloaded.items.wood, 17);
   assert.equal(reloaded.equipment.main_hand.durability, 80);
+  assert.equal(reloaded.craftJobs[0].id, "job-1");
   const reset = createPlayerStore({ dataDir: dir });
   assert.equal(reset.resetRound(token), true);
   const afterReset = createPlayerStore({ dataDir: dir }).get(token);
   assert.equal(afterReset.items.wood, 0);
+  assert.deepEqual(afterReset.craftJobs, []);
   assert.equal(afterReset.equipment.main_hand.weaponId, "broadsword");
 } finally {
   fs.rmSync(dir, { recursive: true, force: true });
