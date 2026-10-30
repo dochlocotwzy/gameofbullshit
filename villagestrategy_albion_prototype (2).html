@@ -2594,6 +2594,18 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
     mpName = name || mpName;
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => fail(new Error('Сервер не ответил за 15 секунд')), 15000);
+    const succeed = () => {
+      if (settled) return;
+      settled = true; clearTimeout(timeout); resolve();
+    };
+    const fail = error => {
+      if (settled) return;
+      settled = true; clearTimeout(timeout);
+      reject(error);
+      if (socket && socket.readyState < WebSocket.CLOSING) socket.close();
+    };
     socket = new WebSocket(url || (proto + '//' + location.host + '/multiplayer'));
     socket.addEventListener('open', () => {
       window.mpConnected = true;
@@ -2606,7 +2618,6 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       socket.send(JSON.stringify({type:'lobby-get'}));
       window.Siege?.init({ THREE, scene, send: payload => socket?.readyState === WebSocket.OPEN && socket.send(JSON.stringify(payload)), getPos: () => pos, getTeam: () => window.mpTeam, toast: message => window.mpToast?.(message) });
       socket.send(JSON.stringify({type:'siege-get'}));
-      resolve();
     });
     socket.addEventListener('message', event => {
       let msg; try { msg = JSON.parse(event.data); } catch { return; }
@@ -2640,6 +2651,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
           mpPingBadge.textContent = 'ПИНГ: ' + pingMs + ' мс';
         }
       } else if (msg.type === 'welcome') {
+        succeed();
         socket.send(JSON.stringify({type:'test-mode', enabled:TEST.free}));
         mpId = msg.id;
         if (msg.player && Number.isFinite(Number(msg.player.x)) && Number.isFinite(Number(msg.player.z))) player.position.set(Number(msg.player.x), 0, Number(msg.player.z));
@@ -2775,13 +2787,14 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
       else if (msg.type === 'error') mpStatus.textContent = 'Мультиплеер: ' + msg.message;
     });
     socket.addEventListener('close', () => {
+      if (!settled) fail(new Error('Сервер закрыл соединение до ответа'));
       window.mpConnected = false;
       mpStatus.textContent = 'Мультиплеер: отключён';
       if (window.Lobby) window.Lobby.show('connect');
     });
     socket.addEventListener('error', () => {
       mpStatus.textContent = 'Мультиплеер: ошибка соединения';
-      reject(new Error('Нет соединения с сервером'));
+      fail(new Error('Нет соединения с сервером'));
     });
     });
   }
@@ -2925,6 +2938,7 @@ addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; cam
   }
   Lobby.mount({
     defaultServer: location.host,
+    autoConnect: true,
     send: m => socket?.readyState === WebSocket.OPEN && socket.send(JSON.stringify(m)),
     onConnect: (url, name) => connect(url, name),
     onLeave: () => socket?.close(),
