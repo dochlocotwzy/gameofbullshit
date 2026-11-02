@@ -227,7 +227,7 @@ function mstep(m,dt){if(m.dead>0){m.dead-=dt;if(m.dead<=0){m.hp=m.mhp;m.x=m.hx;m
 const segDist=(px,pz,ax,az,bx,bz)=>{const dx=bx-ax,dz=bz-az,l=dx*dx+dz*dz,t=l?Math.max(0,Math.min(1,((px-ax)*dx+(pz-az)*dz)/l)):0;return Math.hypot(px-(ax+t*dx),pz-(az+t*dz))};
 function pjstep(dt){for(const q of S.pj){q.life-=dt;q.ox=q.x;q.oz=q.z;
  if(q.tid){const e=S.ents.get(q.tid);if(!e||e.dead>0){q.life=0;continue}const dx=e.x-q.x,dz=e.z-q.z,d=Math.hypot(dx,dz);
-  const nx=q.x+dx/d*q.spd*dt,nz=q.z+dz/d*q.spd*dt;let block=null,bd=1.15;for(const o of S.ents.values()){if(o.loc!==q.loc||o.dead>0||!(o.k==="s"||o.k==="b")||o.id===e.id)continue;const sd=segDist(o.x,o.z,q.x,q.z,nx,nz);if(sd<bd){bd=sd;block=o}}if(block){const own=S.ents.get(q.own);hurt(block,q.dmg,own);q.life=0}else if(d<.7){const o=S.ents.get(q.own);hurt(e,q.dmg,o);cc(e,q);if(q.dotV)addDot(e,o,q);if(o&&S.t<o.xaT)for(const f of S.ents.values())if(hostile(o,f)&&dist(f,e.x,e.z)<5)hurt(f,23*C.g.dmgK*C.tierM[o.wt]/C.tierM[5],o);q.life=0}else{q.x=nx;q.z=nz}}
+  const nx=q.x+dx/d*q.spd*dt,nz=q.z+dz/d*q.spd*dt;let block=null,bd=1.15;for(const o of S.ents.values()){if(o.loc!==q.loc||o.dead>0||!(o.k==="s"||o.k==="b")||o.id===e.id)continue;const sd=segDist(o.x,o.z,q.x,q.z,nx,nz);if(sd<bd){bd=sd;block=o}}if(block){if(block.k==="s"){const own=S.ents.get(q.own);hurt(block,q.dmg,own)}q.life=0}else if(d<.7){const o=S.ents.get(q.own);hurt(e,q.dmg,o);cc(e,q);if(q.dotV)addDot(e,o,q);if(o&&S.t<o.xaT)for(const f of S.ents.values())if(hostile(o,f)&&dist(f,e.x,e.z)<5)hurt(f,23*C.g.dmgK*C.tierM[o.wt]/C.tierM[5],o);q.life=0}else{q.x=nx;q.z=nz}}
  else{q.x+=q.vx*dt;q.z+=q.vz*dt;for(const e of S.ents.values())if(!"rbl".includes(e.k)&&!(e.dead>0)&&e.team!==q.team&&e.loc===q.loc&&dist(e,q.x,q.z)<1){if(q.pierce){q.hit=q.hit||new Set;if(q.hit.has(e.id))continue;q.hit.add(e.id)}hurt(e,q.dmg,S.ents.get(q.own));cc(e,q);if(!q.pierce){q.life=0;break}}}}
  S.pj=S.pj.filter(q=>q.life>0)}
 function cast(p,i,tx,tz){const s=C.spell[p.sel[SK[i]]];if(!s||p.dead>0||S.t<p.st||p.cds[i]>0)return;
@@ -339,10 +339,9 @@ function botThink(b,dt){if(!b.isBot||b.dead>0)return;b.bot.think-=dt;if(b.bot.th
  const foe=botEnemyTarget(b);
  if(foe){b.bot.nodeId=null;cmd(b,{t:"tg",id:foe.id});botUseSkill(b,foe);return}
  if(b.tid){const t=S.ents.get(b.tid);if(t&&hostile(b,t)){if(t.k==="m")botUseSkill(b,t);return}b.tid=null}
- if(b.bot.retreating&&b.loc===town){b.bot.retreating=false;b.hp=Math.min(b.mhp,b.hp+b.mhp*.35)}
  const rawCount=Object.entries(b.bag).reduce((n,[k,v])=>n+(k.startsWith("r:")?v:0),0);
  // Keep a healthy stockpile cycle: process actual gathered materials in town, then return to the field.
- if(b.loc===town){b.bot.nodeId=null;botDeposit(b);b.bot.returning=false;if(botRefine(b))return;if(botCraft(b))return;
+ if(b.loc===town){b.bot.nodeId=null;botDeposit(b);b.bot.returning=false;if(b.bot.retreating){b.hp=Math.min(b.mhp,b.hp+b.mhp*.35);b.bot.retreating=false}if(botRefine(b))return;if(botCraft(b))return;
   const H=LS(b).size/2,portal={x:0,z:town===6?H-3:-H+3};if(dist(b,portal.x,portal.z)>2.2)botMove(b,portal.x,portal.z);return}
  if(b.loc!==work){const H=LS(b).size/2,pz=b.team===1?H-3:-H+3;botMove(b,0,pz);return}
  if(rawCount>=8){b.bot.nodeId=null;if(!b.bot.returning){b.bot.cycle++;b.bot.returning=true}const H=LS(b).size/2;botMove(b,0,b.team===1?-H+3:H-3);return}
