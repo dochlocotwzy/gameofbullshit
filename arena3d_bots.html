@@ -221,8 +221,8 @@ function pstep(p,dt){p.moving=false;p.atk=Math.max(0,p.atk-dt);p.cdA-=dt;p.later
  for(const r of S.ents.values())if(r.k==="r"&&r.loc===p.loc&&!(r.dead>0)&&dist(p,r.x,r.z)<1.8){r.dead=C.g.resRespawn;addBag(p,"r:"+r.ty+":"+r.tr,C.g.resAmt);S.ev.push({t:"r",x:r.x,z:r.z,v:C.g.resAmt,ty:r.ty,tr:r.tr})}}
 function mstep(m,dt){if(m.dead>0){m.dead-=dt;if(m.dead<=0){m.hp=m.mhp;m.x=m.hx;m.z=m.hz}return}
  m.moving=false;m.atk=Math.max(0,m.atk-dt);m.cd-=dt;if(S.t<m.st)return;const sp=C.mob.spd*(S.t<m.sl?m.slF:1);let b=null,bd=C.mob.aggro;
- for(const p of S.ents.values())if(p.k==="p"&&p.loc===m.loc&&!(p.dead>0)){const d=dist(p,m.x,m.z);if(d<bd){bd=d;b=p}}
- if(b&&dist(m,m.hx,m.hz)<25){if(bd>C.mob.range)go(m,b.x,b.z,sp,dt);else{m.face=Math.atan2(b.x-m.x,b.z-m.z);if(m.cd<=0){m.cd=C.mob.cd;m.atk=.4;hurt(b,m.dmg*(S.t<m.wkT?1-.02*m.wk:1),m)}}}
+ for(const p of S.ents.values())if(p.k==="p"&&p.loc===m.loc&&!(p.dead>0)){const d=dist(p,m.x,m.z);const aggro=d<C.mob.aggro*(p.isBot?1.3:1);if(aggro&&d<bd){bd=d;b=p}}
+ if(b&&dist(m,m.hx,m.hz)<25){if(bd>C.mob.range)go(m,b.x,b.z,sp,dt);else{m.face=Math.atan2(b.x-m.x,b.z-m.z);if(m.cd<=0){m.cd=C.mob.cd;m.atk=.4;hurt(b,m.dmg*(S.t<m.wkT?1-.02*m.wk:1),m);if(b.isBot)b.bot.lastMobHit=S.t}}}
  else if(dist(m,m.hx,m.hz)>.5){go(m,m.hx,m.hz,sp,dt);m.hp=Math.min(m.mhp,m.hp+m.mhp*.1*dt)}}
 function pjstep(dt){for(const q of S.pj){q.life-=dt;q.ox=q.x;q.oz=q.z;
  if(q.tid){const e=S.ents.get(q.tid);if(!e||e.dead>0){q.life=0;continue}const dx=e.x-q.x,dz=e.z-q.z,d=Math.hypot(dx,dz);
@@ -327,7 +327,8 @@ function botEnemyTarget(b){
 function botThink(b,dt){if(!b.isBot||b.dead>0)return;b.bot.think-=dt;if(b.bot.think>0)return;b.bot.think=.4;
  const town=botTown(b),work=botWorkLoc(b);
  // Critical health: break contact and return to the team's city instead of fighting to the death.
- if(!b.arena&&b.hp/b.mhp<.28&&b.loc!==town){b.tid=null;b.bot.nodeId=null;const H=LS(b).size/2;botMove(b,0,b.team===1?-H+3:H-3);return}
+ if(!b.arena&&b.hp/b.mhp<.52&&b.loc!==town){b.tid=null;b.bot.nodeId=null;b.bot.retreating=true;const H=LS(b).size/2;botMove(b,0,b.team===1?-H+3:H-3);return}
+ if(!b.arena&&b.hp/b.mhp<.52&&b.loc===town){b.bot.retreating=false}
  // Arena decision-making is separate from open-world PvP: the squad adapts
  // its posture to the match state before choosing a target.
  if(b.arena&&!S.arena?.active)return;
@@ -364,8 +365,22 @@ function arenaTeamState(team){
  const ahead=ownPower+ownSiege*.7>foePower+foeSiege*.7+.45;
  return {own,foe,structures,enemyStructures,castle,enemyCastle,behind,ahead,ownPower,foePower,towerN,enemyTowerN};
 }
+function botTryBuild(b,st){
+ if(!S.arena?.active||b.dead>0||b.bot.buildCd>S.t)return false;
+ const enemyNear=st.foe.some(e=>e.dead<=0&&dist(b,e.x,e.z)<34);
+ const ownTowers=st.structures.filter(e=>e.kind==="tower").length;
+ const candidates=[];
+ // Build defensive barriers around the surviving castle when the frontline is under pressure.
+ if(enemyNear||ownTowers<3)candidates.push(["barricade",b.x+(b.id%2?4:-4),b.z+(b.team===1?8:-8)]);
+ // Siege weapons are placed behind the frontline, not in the enemy half.
+ if(st.enemyStructures.length&&stockHave(b.team,"f:bar:4")>=18)candidates.push(["ballista",b.x+(b.id%2?6:-6),b.z+(b.team===1?12:-12)]);
+ if(st.enemyStructures.length&&stockHave(b.team,"f:block:4")>=12)candidates.push(["catapult",b.x+(b.id%2?-7:7),b.z+(b.team===1?15:-15)]);
+ for(const [kind,x,z] of candidates){if(placeSiegeStructure(b.team,kind,x,z,b)){b.bot.buildCd=S.t+18;return true}}
+ b.bot.buildCd=S.t+8;return false;
+}
 function botArenaThink(b){
  const st=arenaTeamState(b.team),near=(e,r)=>e&&dist(b,e.x,e.z)<=r;
+ if(botTryBuild(b,st))return true;
  const liveFoes=st.foe.filter(e=>e.dead<=0),liveAllies=st.own.filter(e=>e.dead<=0);
  // In a losing position, stop feeding isolated attackers: rally around surviving
  // towers/castle and remove enemies threatening the defensive line.
@@ -397,7 +412,7 @@ function botStep(dt){for(const b of S.ents.values())if(b.k==="p"&&b.isBot)botThi
 function arenaSpawn(team,i=0){return {x:(i%3-1)*5,z:team===1?-76+i*2:76-i*2}}
 function cloneArenaSoldier(src,team,i){const q=arenaSpawn(team,i),u=newP(team);u.loc=7;u.x=u.px=q.x;u.z=u.pz=q.z;u.arena=true;u.arenaUnit=true;u.isBot=true;u.name=(team===1?"Синий":"Красный")+" солдат "+(i+1);u.items=src.items.map(x=>({...x}));u.ew=src.ew;u.eqA={...src.eqA};u.sel={...src.sel};u.bag={...src.bag};u.w=src.w;u.wt=src.wt;u.a=src.a;u.at=src.at;u.mhp=mhpOf(u);u.hp=u.mhp;u.bot={phase:"arena",think:0,nodeId:null};fixSel(u);return u}
 function addArenaStructure(team,kind,x,z,hp,name){return add({k:"s",arena:true,kind,team,loc:7,x,z,hp,mhp:hp,dead:0,name,face:0,cd:0,dmg:kind==="tower"?32:0,range:kind==="tower"?19:0})}
-function placeSiegeStructure(team,kind,x,z){if(!S.arena?.active||ME.loc!==7||ME.team!==team)return false;
+function placeSiegeStructure(team,kind,x,z,builder=ME){if(!S.arena?.active||builder.loc!==7||builder.team!==team||builder.dead>0)return false;
  const defs={barricade:{cost:{"f:plank:4":12},hp:900,range:0,dmg:0,r:1.7},ballista:{cost:{"f:bar:4":18,"f:plank:4":10},hp:650,range:22,dmg:95,r:2},catapult:{cost:{"f:plank:4":24,"f:block:4":12,"f:bar:4":8},hp:480,range:25,dmg:145,r:2.5}};
  const d=defs[kind];if(!d)return false;const H=LS(ME).size/2-8;if(Math.abs(x)>H||Math.abs(z)>H)return false;
  if((team===1&&z>8)||(team===2&&z< -8))return false;
