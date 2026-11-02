@@ -224,9 +224,10 @@ function mstep(m,dt){if(m.dead>0){m.dead-=dt;if(m.dead<=0){m.hp=m.mhp;m.x=m.hx;m
  for(const p of S.ents.values())if(p.k==="p"&&p.loc===m.loc&&!(p.dead>0)){const d=dist(p,m.x,m.z);const aggro=d<C.mob.aggro*(p.isBot?1.3:1);if(aggro&&d<bd){bd=d;b=p}}
  if(b&&dist(m,m.hx,m.hz)<25){if(bd>C.mob.range)go(m,b.x,b.z,sp,dt);else{m.face=Math.atan2(b.x-m.x,b.z-m.z);if(m.cd<=0){m.cd=C.mob.cd;m.atk=.4;hurt(b,m.dmg*(S.t<m.wkT?1-.02*m.wk:1),m);if(b.isBot)b.bot.lastMobHit=S.t}}}
  else if(dist(m,m.hx,m.hz)>.5){go(m,m.hx,m.hz,sp,dt);m.hp=Math.min(m.mhp,m.hp+m.mhp*.1*dt)}}
+const segDist=(px,pz,ax,az,bx,bz)=>{const dx=bx-ax,dz=bz-az,l=dx*dx+dz*dz,t=l?Math.max(0,Math.min(1,((px-ax)*dx+(pz-az)*dz)/l)):0;return Math.hypot(px-(ax+t*dx),pz-(az+t*dz))};
 function pjstep(dt){for(const q of S.pj){q.life-=dt;q.ox=q.x;q.oz=q.z;
  if(q.tid){const e=S.ents.get(q.tid);if(!e||e.dead>0){q.life=0;continue}const dx=e.x-q.x,dz=e.z-q.z,d=Math.hypot(dx,dz);
-  if(d<.7){{const o=S.ents.get(q.own);hurt(e,q.dmg,o);cc(e,q);if(q.dotV)addDot(e,o,q);if(o&&S.t<o.xaT)for(const f of S.ents.values())if(hostile(o,f)&&dist(f,e.x,e.z)<5)hurt(f,23*C.g.dmgK*C.tierM[o.wt]/C.tierM[5],o);q.life=0}}else{q.x+=dx/d*q.spd*dt;q.z+=dz/d*q.spd*dt}}
+  const nx=q.x+dx/d*q.spd*dt,nz=q.z+dz/d*q.spd*dt;let block=null,bd=1.15;for(const o of S.ents.values()){if(o.loc!==q.loc||o.dead>0||!(o.k==="s"||o.k==="b")||o.id===e.id)continue;const sd=segDist(o.x,o.z,q.x,q.z,nx,nz);if(sd<bd){bd=sd;block=o}}if(block){const own=S.ents.get(q.own);hurt(block,q.dmg,own);q.life=0}else if(d<.7){const o=S.ents.get(q.own);hurt(e,q.dmg,o);cc(e,q);if(q.dotV)addDot(e,o,q);if(o&&S.t<o.xaT)for(const f of S.ents.values())if(hostile(o,f)&&dist(f,e.x,e.z)<5)hurt(f,23*C.g.dmgK*C.tierM[o.wt]/C.tierM[5],o);q.life=0}else{q.x=nx;q.z=nz}}
  else{q.x+=q.vx*dt;q.z+=q.vz*dt;for(const e of S.ents.values())if(!"rbl".includes(e.k)&&!(e.dead>0)&&e.team!==q.team&&e.loc===q.loc&&dist(e,q.x,q.z)<1){if(q.pierce){q.hit=q.hit||new Set;if(q.hit.has(e.id))continue;q.hit.add(e.id)}hurt(e,q.dmg,S.ents.get(q.own));cc(e,q);if(!q.pierce){q.life=0;break}}}}
  S.pj=S.pj.filter(q=>q.life>0)}
 function cast(p,i,tx,tz){const s=C.spell[p.sel[SK[i]]];if(!s||p.dead>0||S.t<p.st||p.cds[i]>0)return;
@@ -327,7 +328,7 @@ function botEnemyTarget(b){
 function botThink(b,dt){if(!b.isBot||b.dead>0)return;b.bot.think-=dt;if(b.bot.think>0)return;b.bot.think=.4;
  const town=botTown(b),work=botWorkLoc(b);
  // Critical health: break contact and return to the team's city instead of fighting to the death.
- if(!b.arena&&b.hp/b.mhp<.52&&b.loc!==town){b.tid=null;b.bot.nodeId=null;b.bot.retreating=true;const H=LS(b).size/2;botMove(b,0,b.team===1?-H+3:H-3);return}
+ if(!b.arena&&b.hp/b.mhp<.62&&b.loc!==town){b.tid=null;b.bot.nodeId=null;b.bot.retreating=true;const H=LS(b).size/2;botMove(b,0,b.team===1?-H+3:H-3);return}
  if(!b.arena&&b.hp/b.mhp<.52&&b.loc===town){b.bot.retreating=false}
  // Arena decision-making is separate from open-world PvP: the squad adapts
  // its posture to the match state before choosing a target.
@@ -338,6 +339,7 @@ function botThink(b,dt){if(!b.isBot||b.dead>0)return;b.bot.think-=dt;if(b.bot.th
  const foe=botEnemyTarget(b);
  if(foe){b.bot.nodeId=null;cmd(b,{t:"tg",id:foe.id});botUseSkill(b,foe);return}
  if(b.tid){const t=S.ents.get(b.tid);if(t&&hostile(b,t)){if(t.k==="m")botUseSkill(b,t);return}b.tid=null}
+ if(b.bot.retreating&&b.loc===town){b.bot.retreating=false;b.hp=Math.min(b.mhp,b.hp+b.mhp*.35)}
  const rawCount=Object.entries(b.bag).reduce((n,[k,v])=>n+(k.startsWith("r:")?v:0),0);
  // Keep a healthy stockpile cycle: process actual gathered materials in town, then return to the field.
  if(b.loc===town){b.bot.nodeId=null;botDeposit(b);b.bot.returning=false;if(botRefine(b))return;if(botCraft(b))return;
@@ -346,7 +348,7 @@ function botThink(b,dt){if(!b.isBot||b.dead>0)return;b.bot.think-=dt;if(b.bot.th
  if(rawCount>=8){b.bot.nodeId=null;if(!b.bot.returning){b.bot.cycle++;b.bot.returning=true}const H=LS(b).size/2;botMove(b,0,b.team===1?-H+3:H-3);return}
  const node=botResourceNode(b),mob=botNearest(b,e=>e.k==="m"&&e.loc===b.loc&&!(e.dead>0));
  // Hunt nearby mobs for hides and experience-like progression, without abandoning a nearby node.
- if(mob&&dist(b,mob.x,mob.z)<7&&(!node||dist(b,mob.x,mob.z)<dist(b,node.x,node.z)*.65)){b.bot.nodeId=null;cmd(b,{t:"tg",id:mob.id});botUseSkill(b,mob);return}
+ if(mob&&b.hp/b.mhp>.72&&dist(b,mob.x,mob.z)<7&&(!node||dist(b,mob.x,mob.z)<dist(b,node.x,node.z)*.65)){b.bot.nodeId=null;cmd(b,{t:"tg",id:mob.id});botUseSkill(b,mob);return}
  if(node){b.bot.nodeId=node.id;b.tid=null;if(dist(b,node.x,node.z)>1.3)botMove(b,node.x,node.z);else b.mv=null;return}
  if(mob){b.bot.nodeId=null;cmd(b,{t:"tg",id:mob.id});botUseSkill(b,mob);return}
 }
