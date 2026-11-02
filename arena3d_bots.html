@@ -151,7 +151,7 @@ const RT={wood:"plank",ore:"bar",fiber:"cloth",hide:"leather",rock:"block"},addB
 const cl=(v,e)=>{const H=LS(e).size/2-1;return Math.max(-H,Math.min(H,v))};
 const stockAdd=(team,k,n)=>{if(!S.stock[team])S.stock[team]={};S.stock[team][k]=(S.stock[team][k]||0)+n};
 const stockHave=(team,k)=>S.stock?.[team]?.[k]||0;
-function botDeposit(b){let moved=0;for(const k of Object.keys(b.bag)){if(!/^[rf]:/.test(k))continue;const n=Math.floor((b.bag[k]||0)*.35);if(n>0){b.bag[k]-=n;stockAdd(b.team,k,n);moved+=n}}return moved}
+function botDeposit(b){if(b.bot.stockCycle===b.bot.cycle)return 0;b.bot.stockCycle=b.bot.cycle;let moved=0;for(const k of Object.keys(b.bag)){if(!/^[rf]:/.test(k))continue;const n=Math.floor((b.bag[k]||0)*.35);if(n>0){b.bag[k]-=n;stockAdd(b.team,k,n);moved+=n}}return moved}
 const solidRadius=e=>e.k==="b"?2.6:e.k==="s"?(e.kind==="castle"?7:e.kind==="tower"?3.6:e.kind==="catapult"?2.5:e.kind==="ballista"?2:1.7):e.k==="p"||e.k==="m"?.72:0;
 function blockedAt(e,x,z){const r=solidRadius(e),H=LS(e).size/2-1;if(Math.abs(x)>H||Math.abs(z)>H)return true;
  for(const o of S.ents.values()){if(o===e||o.loc!==e.loc||o.dead>0||!("pbs".includes(o.k)))continue;
@@ -183,8 +183,8 @@ function build(){const sc=C.scale[C.preset],R=rng(7);
    add({k:"m",team:0,loc:li,zone:L.tier,tr:L.rt[R()*L.rt.length|0],x,z,hx:x,hz:z,hp,mhp:hp,dmg:C.mob.dmg*m.dmgM,cd:0,st:0,sl:0,slF:1,dead:0,atk:0,face:0,moving:false})}
   for(let i=0;i<nn;i++){const x=(R()*2-1)*(H-4),z=(R()*2-1)*(H-10);add({k:"r",loc:li,zone:L.tier,ty:["wood","ore","fiber","rock"][R()*4|0],tr:L.rt[R()*L.rt.length|0],x,z,dead:0})}});
   const count=Math.max(5,Math.min(10,Math.round(C.teamSize||5))),blue=[],red=[];
-  for(let i=0;i<count;i++){const b=newP(1);b.isBot=true;b.bot={phase:"travel",think:0,goal:null,home:0,work:1,cycle:0,role:["wood","ore","fiber","rock"][i%4],nodeId:null};blue.push(b)}
-  for(let i=0;i<count;i++){const b=newP(2);b.isBot=true;b.bot={phase:"travel",think:0,goal:null,home:6,work:5,cycle:0,role:["wood","ore","fiber","rock"][i%4],nodeId:null};red.push(b)}
+  for(let i=0;i<count;i++){const b=newP(1);b.x=b.px=(i%3-1)*1.8;b.z=b.pz=-8-Math.floor(i/3)*1.5;b.isBot=true;b.bot={phase:"travel",think:0,goal:null,home:0,work:1,cycle:0,role:["wood","ore","fiber","rock"][i%4],nodeId:null};blue.push(b)}
+  for(let i=0;i<count;i++){const b=newP(2);b.x=b.px=(i%3-1)*1.8;b.z=b.pz=8+Math.floor(i/3)*1.5;b.isBot=true;b.bot={phase:"travel",think:0,goal:null,home:6,work:5,cycle:0,role:["wood","ore","fiber","rock"][i%4],nodeId:null};red.push(b)}
   ME=blue[0];ME.isBot=false;ME.name="Игрок";ME.bot=null;fixSel(ME);ME.mhp=ME.hp=mhpOf(ME);
   S.teams={blue,red};}
 function hurt(e,a,src){if(e.dead>0)return;if(src&&S.t<src.dmT)a*=1+src.dmF;if(S.t<e.rdT)a*=1+e.rd;if(e.k==="p")a*=1-e.res/100;if(S.t<e.imm)return;if(S.t<e.dfT)a*=1-e.dfF;if(e.sh>0&&S.t<e.shT){const ab=Math.min(e.sh,a);e.sh-=ab;a-=ab}if(a<=0)return;e.hp-=a;S.ev.push({t:"d",x:e.x,z:e.z,v:Math.round(a),p:e.k==="p"});if(e.hp<=0)die(e,src)}
@@ -339,10 +339,10 @@ function botThink(b,dt){if(!b.isBot||b.dead>0)return;b.bot.think-=dt;if(b.bot.th
  if(b.tid){const t=S.ents.get(b.tid);if(t&&hostile(b,t)){if(t.k==="m")botUseSkill(b,t);return}b.tid=null}
  const rawCount=Object.entries(b.bag).reduce((n,[k,v])=>n+(k.startsWith("r:")?v:0),0);
  // Keep a healthy stockpile cycle: process actual gathered materials in town, then return to the field.
- if(b.loc===town){b.bot.nodeId=null;botDeposit(b);if(botRefine(b))return;if(botCraft(b))return;
+ if(b.loc===town){b.bot.nodeId=null;botDeposit(b);b.bot.returning=false;if(botRefine(b))return;if(botCraft(b))return;
   const H=LS(b).size/2,portal={x:0,z:town===6?H-3:-H+3};if(dist(b,portal.x,portal.z)>2.2)botMove(b,portal.x,portal.z);return}
  if(b.loc!==work){const H=LS(b).size/2,pz=b.team===1?H-3:-H+3;botMove(b,0,pz);return}
- if(rawCount>=8){b.bot.nodeId=null;const H=LS(b).size/2;botMove(b,0,b.team===1?-H+3:H-3);return}
+ if(rawCount>=8){b.bot.nodeId=null;if(!b.bot.returning){b.bot.cycle++;b.bot.returning=true}const H=LS(b).size/2;botMove(b,0,b.team===1?-H+3:H-3);return}
  const node=botResourceNode(b),mob=botNearest(b,e=>e.k==="m"&&e.loc===b.loc&&!(e.dead>0));
  // Hunt nearby mobs for hides and experience-like progression, without abandoning a nearby node.
  if(mob&&dist(b,mob.x,mob.z)<7&&(!node||dist(b,mob.x,mob.z)<dist(b,node.x,node.z)*.65)){b.bot.nodeId=null;cmd(b,{t:"tg",id:mob.id});botUseSkill(b,mob);return}
@@ -422,7 +422,7 @@ function portals(p){if(p.arena)return;const H=LS(p).size/2;
    if(T.team&&T.team!==p.team){if(S.t>(p.deny||0)){p.deny=S.t+2;S.ev.push({t:"x",x:p.x,z:p.z})}return}
    const th=T.size/2;p.loc=to;p.x=0;p.z=d>0?th-7:-th+7;p.px=p.x;p.pz=p.z;p.mv=null;p.tid=null;return}}}
 function tick(dt){S.t+=dt;if(S.arena?.active){S.arena.remaining-=dt;if(S.arena.remaining<=0){const c=[...S.ents.values()].filter(e=>e.k==="s"&&e.kind==="castle");const b=c.find(e=>e.team===1)?.hp||0,r=c.find(e=>e.team===2)?.hp||0;endArena(b===r?0:b>r?1:2,"Время матча истекло")}}botStep(dt);arenaTowerStep(dt);S.dots=(S.dots||[]).filter(d=>{if(S.t>=d.next){d.next+=d.iv||1;d.left--;if(!(d.e.dead>0)&&(!d.mv||d.e.moving))hurt(d.e,d.v,d.src)}return d.left>0&&!(d.e.dead>0)});for(const e of [...S.ents.values()]){e.px=e.x;e.pz=e.z;
- if(e.k==="p"){if(e.dead>0){e.dead-=dt;if(e.dead<=0){e.hp=e.mhp;if(e.arena){e.loc=7;const q=arenaSpawn(e.team,e.deaths);e.x=q.x;e.z=q.z}else{e.loc=e.team===1?6:0;e.x=0;e.z=e.team===1?-8:8}e.px=e.x;e.pz=e.z}}else{pstep(e,dt);portals(e)}}
+ if(e.k==="p"){if(e.dead>0){e.dead-=dt;if(e.dead<=0){e.hp=e.mhp;if(e.arena){e.loc=7;const q=arenaSpawn(e.team,e.deaths);e.x=q.x;e.z=q.z}else{e.loc=e.team===1?6:0;e.x=(e.id%3-1)*1.8;e.z=(e.team===1?-8:8)+Math.floor(e.id/3)*1.2}e.px=e.x;e.pz=e.z}}else{pstep(e,dt);portals(e)}}
  else if(e.k==="m")mstep(e,dt);else if(e.k==="l"){e.ttl-=dt;if(e.ttl<=0)S.ents.delete(e.id)}else if(e.dead>0)e.dead-=dt}pjstep(dt)}
 
 /* ===== ГРАФИКА (только читает состояние S) ===== */
