@@ -1,5 +1,5 @@
 GAME OF BULLSHIT — AGENT HANDOFF / PROJECT MASTER PROMPT
-Updated: 2026-10-29
+Updated: 2026-11-04
 Language: Russian UI and collaboration; be direct, technical, and honest.
 
 ========================
@@ -199,3 +199,76 @@ Before extending the lobby, verify the current CI result and test the integratio
 For future ship controls, do not implement client-only boat movement. Design server-authoritative boat entities and boarding state, validate proximity/ownership/crew, constrain boats to water, replicate boat transform to nearby players, and define what happens to the character while aboard. Only then add client interaction prompts, boarding/disembarking, steering and cargo UI. Do not call a ship “usable” until this works in a live multiplayer test.
 
 Always finish with: what changed, commits/backup branch, tests actually run, CI links/results, deployment status if verified, and explicit remaining limitations.
+
+========================
+11. ARENA3D / SIEGE PROTOTYPE — CURRENT CONTEXT (2026-11-04)
+========================
+
+This repository also contains a separate Arena3D / siege strategy prototype under /siege. Do not confuse its browser-only simulation and AI systems with the main Albion-inspired multiplayer game described above. When the user asks about Arena3D, work in /siege and follow this section. Preserve the main game files unless the task explicitly concerns them.
+
+Current known latest Arena3D version:
+- File: siege/Arena3D_v71_Portal_Route_Aware_Approach.html
+- Commit: 7e0e68c4545f77d7564cc46b0717332d76be05f7
+- GitHub: https://github.com/dochlocotwzy/gameofbullshit/blob/main/siege/Arena3D_v71_Portal_Route_Aware_Approach.html
+- Previous versions v67-v70 are retained in /siege; do not overwrite historical versions.
+- For every new Arena3D iteration, create a new sequential vXX file with a descriptive suffix. Do not silently replace v71.
+- The user prefers a usable HTML file. A direct GitHub file link is acceptable because the user has downloaded versions from GitHub. Do not invent sandbox download links.
+
+Arena3D working rules:
+- Before editing, fetch the current main ref and the latest Arena3D HTML. Inspect the exact functions and call sites involved; do not rely only on this handoff.
+- Make the smallest coherent change. Avoid unrelated refactors and preserve existing mechanics.
+- After editing, run a JavaScript syntax check on extracted inline scripts (for example, compile each script with Node's Function constructor where appropriate). Run available tests if present.
+- Be explicit about the verification level: syntax validation is not browser/gameplay testing. Never claim bots work in-game unless that was actually tested.
+- Create the next versioned HTML file (v72, then v73, etc.) rather than updating a previous version. Commit with a descriptive message and provide the exact GitHub link.
+- When diagnosing AI movement, inspect the whole chain: task selection, target selection, route construction, waypoint progression, movement application, portal transition and post-transition lock/cooldown. A valid destination point alone does not prove the bot can complete the trip.
+
+Known Arena3D systems and recent work:
+- Regions have ownership, resource tiers, local stock and upgrade levels.
+- Regional upgrades consume resources from the relevant region's local stock, not automatically from the faction's global stock.
+- The regional caravan uses a small regional depot and carries up to 200 resources; it should choose a reachable approach point around the depot rather than collide with the building.
+- v69 fixed the caravan's approach side; v70 made its depot approach dynamic by testing multiple nearby points and choosing the closest reachable one.
+- Strategic AI in v67 introduced a faction-level attack-region task, preference for neutral neighboring territory before enemy territory, group formation and a capture hold timer. Current known design target: territory capture requires at least two attackers to hold the capture area for 12 seconds. Confirm the current source before assuming these rules remain unchanged.
+- v71 improved portal approach selection: per-traveller cache when approaching a portal, route reachability checks for candidate points, invalid-cache reset and no caching of fallback points. JavaScript syntax was checked, but no browser gameplay test was performed. This is a mitigation, not a confirmed complete fix for portal-stuck bots.
+
+ARENA3D — NEAR-TERM TASK BACKLOG (priority order)
+
+P0 — Stabilize navigation and portal traversal
+1. Reproduce and fully diagnose bots getting stuck at portals after v71. Determine whether they stop before the entrance, fail to appear/leave at the exit, oscillate between regions, or get blocked by portalLock. Trace portalPoint, navBuildRoute, navWaypoint, go, routeBotTo, squadTravelTo, portal transition code and all relevant callers.
+2. Add robust stuck detection based on lack of positional progress, not merely elapsed task time. On failure: invalidate cached portal/waypoint, rebuild route, try another reachable portal approach/exit, and apply bounded retries. Avoid infinite route-rebuild loops.
+3. Ensure portalLock prevents immediate bounce-back but expires or clears when the bot has safely moved away. Check that the exit point itself is reachable and that the next waypoint is in the correct region.
+4. Add lightweight debug visibility/logging for bot ID, current region, target region, current task, portal side, route length, waypoint index, stuck duration and retry count. Make it possible to disable verbose logs.
+5. Test several bots with different spawn positions and obstacles, plus travel in both directions and concurrent portal use. Do not mark fixed based on syntax validation alone.
+
+P1 — Make logistics physical and economically consistent
+1. Replace instant resource withdrawal with a real bot task: the bot travels to the main faction warehouse, reaches a valid interaction point, loads the required materials into its bag, then travels to the destination/workshop.
+2. Deduct stock only at successful physical loading. Support partial loads, bag capacity, missing resources, unavailable routes, interrupted trips and retry behavior without duplicating or losing items.
+3. Keep global faction stock, regional localStock, caravan cargo and bot bag inventories distinct. Define and document which source each task is allowed to use; do not silently treat a regional depot as the main warehouse.
+4. Bots are substitutes for human players and their resurrection/respawn consumes resources too. Model bot resurrection costs explicitly and calculate whether expected faction income can sustain player and bot respawns plus crafting, upgrades and other spending. Avoid infinite free bot replacement or an economy that permanently starves the faction.
+5. Show useful feedback where possible: stock at warehouse, stock in transit, stock delivered, and unavailable materials.
+
+P2 — Improve strategic army AI
+1. Allow multiple independent squads when army size and available manpower justify it. Each squad needs its own target, task state, route, retry timer and member list; prevent the same bot from being assigned to multiple squads.
+2. Support simultaneous operations: attack multiple suitable regions, defend threatened territory and escort logistics units without every squad overwriting one faction-wide target.
+3. Prefer neutral adjacent regions when expansion is safe and useful; attack enemy territory when neutral options are unavailable or strategic conditions justify it.
+4. After a successful capture, assign a garrison sized according to threat and keep the remaining force available for the next operation.
+5. When a friendly region is attacked, recall or redirect nearby available forces and garrisons according to urgency. Do not abandon every front for a minor threat.
+6. If a squad cannot form, find a route or reach its target, release invalid assignments and reform/reassign it. Try alternate paths and portals before giving up.
+7. Keep the 12-second capture-hold behavior (if still present in current source) explicit and configurable. Define how interrupted capture progress behaves and prevent one-frame/brief presence from capturing a region.
+
+P3 — Economy and world simulation depth
+1. Add clear resource production chains and make regional specialization meaningful.
+2. Make workshops and construction consume delivered materials and worker time rather than silently consuming distant stock.
+3. Add regional trade routes and caravan scheduling only after physical warehouse/depot logistics is reliable.
+4. Add population/workers, food upkeep and region development only with a sustainable resource budget and clear UI feedback.
+5. Consider commanders, unit roles, scouting, morale and siege equipment after core navigation, logistics and multi-squad AI are stable.
+
+Arena3D implementation acceptance criteria:
+- No resource is deducted before the corresponding transfer/load action actually succeeds.
+- A bot cannot be in two squads/tasks simultaneously unless the code explicitly models a shared role.
+- Every long-distance task has a reachable route, bounded retry/failure handling and a way to release or reassign the bot.
+- Portal transitions work in both directions and do not cause immediate bounce loops.
+- Captured regions receive a deliberate garrison assignment; threatened regions can request help without corrupting other squads' tasks.
+- Economy balance includes the resource cost of bot resurrection as well as human-player resurrection.
+- Add focused automated checks for pure logic where practical; manually test in the browser for movement/portal behavior before claiming gameplay success.
+
+When the user asks “what next?”, prioritize P0 portal diagnosis, then P1 physical logistics and respawn economy, then P2 multi-squad strategy. Do not start large feature systems while basic navigation and resource transfer are unreliable.
